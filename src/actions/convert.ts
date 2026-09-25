@@ -1,0 +1,406 @@
+/**
+ * Import ("Create PDF from …") and export ("Convert PDF to …") workflows,
+ * plus OCR, compression, PDF/A and flattening. Every export runs on the
+ * current document *with edits applied*.
+ */
+import { PDFDocument } from 'pdf-lib';
+import { marked } from 'marked';
+import { usePDFStore } from '@/store/usePDFStore';
+import { exportCurrentPdf, openPdfBytes, saveDerived, suggestedName, withBusy, PDF_FILTER } from './document';
+import { openPdf, type PDFDocumentProxy } from '@/lib/pdf/pdfService';
+import { htmlToPdf, officeToPdf, pickFiles, pickPaths, readFile, saveBytes, scanPage, isDesktop } from '@/lib/platform';
+import { imageFileToDataUrl } from '@/lib/objectFactory';
+import { decodeTiff } from '@/lib/images';
+import {
+  exportAllSvgZip,
+  exportPagesAsImages,
+  exportPlainText,
+  exportToDocx,
+  exportToHtml,
+  exportToMarkdown,
+  exportToPptx,
+  exportToXlsx,
+  extractStructuredText,
+} from '@/lib/pdf/convert';
+import { makeSearchable, ocrPages } from '@/lib/pdf/ocr';
+import { compressPdf, type CompressOptions } from '@/lib/pdf/compress';
+import { convertToPdfA, pdfaWarnings } from '@/lib/pdf/pdfa';
+import { buildPdf, flattenDocument } from '@/lib/pdf/exportPdf';
+import fontkit from '@pdf-lib/fontkit';
+import { loadFontBytes } from '@/lib/fonts';
+
+// ================================================================ helpers
+
+async function withEditedDoc<T>(fn: (pdf: PDFDocumentProxy, bytes: Uint8Array) => Promise<T>, progress?: (m: string, f: number | null) => void): Promise<T> {
+  const bytes = await exportCurrentPdf({}, progress);
+  const pdf = await openPdf(bytes);
+  try {
+    return await fn(pdf, bytes);
+  } finally {
+    await pdf.loadingTask.destroy().catch(() => undefined);
+  }
+}
+
+function baseName(): string {
+  return suggestedName().replace(/\.pdf$/i, '');
+}
+
+/** Opens freshly created PDF bytes, or appends them when a document is open and `append` is set. */
+export async function deliverPdf(bytes: Uint8Array, name: string, append: boolean): Promise<void> {
+  const store = usePDFStore.getState();
+  if (append && store.pages.length > 0) {
+    await store.mergeDocument(bytes, name);
+    store.toast(`Added ${name} to the document.`, 'success');
+    return;
+  }
+  if (await openPdfBytes(bytes, name.replace(/\.[^.]+$/, '') + '.pdf', null)) {
+    usePDFStore.setState({ dirty: true });
+    usePDFStore.getState().toast('Created. Use Save to store the PDF.', 'success');
+  }
+}
+
+// ================================================================ import: images
+
+export type PageSizeOption = 'fit' | 'a4' | 'letter';
+
+export interface ImagesToPdfOptions {
+  pageSize: PageSizeOption;
+  orientation: 'auto' | 'portrait' | 'landscape';
+  marginMm: number;
+}
+
+const PAGE_SIZES = { a4: [595.28, 841.89], letter: [612, 792] } as const;
+
+export async function imagesToPdf(images: Array<{ src: string; width: number; height: number }>, opts: ImagesToPdfOptions): Promise<Uint8Array> {
+  const doc = await PDFDocument.create();
+  doc.setProducer('Adika PDF Editor');
+  doc.setCreator('Adika PDF Editor');
+  const margin = (opts.marginMm / 25.4) * 72;
+  for (const img of images) {
+    const bytes = dataUrlToBytes(img.src);
+    const embedded = img.src.startsWith('data:image/jpeg') ? await doc.embedJpg(bytes) : await doc.embedPng(bytes);
+    // Pixels → points at 96 DPI for "fit to image".
+    const iw = (img.width * 72) / 96;
+    const ih = (img.height * 72) / 96;
+    let pw: number;
+    let ph: number;
+    if (opts.pageSize === 'fit') {
+      pw = iw + margin * 2;
+      ph = ih + margin * 2;
+    } else {
+      const [w, h] = PAGE_SIZES[opts.pageSize];
+      const landscape = opts.orientation === 'landscape' || (opts.orientation === 'auto' && img.width > img.height);
+      [pw, ph] = landscape ? [h, w] : [w, h];
+    }
+    const page = doc.addPage([pw, ph]);
+    const k = Math.min((pw - margin * 2) / iw, (ph - margin * 2) / ih, opts.pageSize === 'fit' ? 1 : Infinity);
+    const w = iw * k;
+    const h = ih * k;
+    page.drawImage(embedded, { x: (pw - w) / 2, y: (ph - h) / 2, width: w, height: h });
+  }
+  return doc.save();
+}
+
+function dataUrlToBytes(src: string): Uint8Array {
+  const b64 = src.slice(src.indexOf(',') + 1);
+  const bin = atob(b64);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+
+export const IMAGE_EXTENSIONS = ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp', 'tif', 'tiff', 'svg'];
+
+export async function pickImagesAsDataUrls(): Promise<Array<{ src: string; width: number; height: number; name: string }>> {
+  const files = await pickFiles([{ name: 'Images', extensions: IMAGE_EXTENSIONS }], true);
+  const out: Array<{ src: string; width: number; height: number; name: string }> = [];
+  for (const f of files) {
+    if (/\.tiff?$/i.test(f.name)) {
+      for (const p of decodeTiff(f.bytes)) out.push({ ...p, name: f.name });
+    } else {
+      out.push({ ...(await imageFileToDataUrl(f.bytes, f.name)), name: f.name });
+    }
+  }
+  return out;
+}
+
+// ================================================================ import: office / html / text
+
+export const OFFICE_EXTENSIONS = ['doc', 'docx', 'docm', 'dotx', 'rtf', 'odt', 'xls', 'xlsx', 'xlsm', 'xlsb', 'csv', 'ods', 'ppt', 'pptx', 'pptm', 'ppsx', 'odp'];
+
+export async function importOfficeDocuments(append: boolean): Promise<void> {
+  const paths = await pickPaths([{ name: 'Office documents', extensions: OFFICE_EXTENSIONS }], true);
+  if (paths.length === 0) return;
+  await withBusy('Converting with Microsoft Office…', async (progress) => {
+    const results: Uint8Array[] = [];
+    for (let i = 0; i < paths.length; i++) {
+      const name = paths[i].split(/[\\/]/).pop() ?? paths[i];
+      progress(`Converting ${name} (${i + 1}/${paths.length})…`, i / paths.length);
+      results.push(await officeToPdf(paths[i]));
+    }
+    const first = paths[0].split(/[\\/]/).pop() ?? 'Document';
+    const bytes = results.length === 1 ? results[0] : await concatPdfs(results);
+    await deliverPdf(bytes, first, append);
+  });
+}
+
+export async function concatPdfs(list: Uint8Array[]): Promise<Uint8Array> {
+  const out = await PDFDocument.create();
+  for (const bytes of list) {
+    const src = await PDFDocument.load(bytes);
+    const pages = await out.copyPages(src, src.getPageIndices());
+    pages.forEach((p) => out.addPage(p));
+  }
+  return out.save();
+}
+
+export interface HtmlPageOptions {
+  pageSize: 'A4' | 'Letter';
+  landscape: boolean;
+  marginMm: number;
+}
+
+function pageCss(o: HtmlPageOptions): string {
+  return `@page { size: ${o.pageSize} ${o.landscape ? 'landscape' : 'portrait'}; margin: ${o.marginMm}mm; }`;
+}
+
+const DOC_CSS = `
+body { font-family: "Segoe UI", Arial, sans-serif; font-size: 11pt; line-height: 1.5; color: #111; }
+h1, h2, h3 { line-height: 1.25; margin: 1.1em 0 0.4em; } h1 { font-size: 22pt; } h2 { font-size: 16pt; } h3 { font-size: 13pt; }
+pre, code { font-family: Consolas, "Courier New", monospace; font-size: 9.5pt; }
+pre { background: #f5f7fa; padding: 10px 12px; border-radius: 6px; white-space: pre-wrap; word-break: break-word; }
+table { border-collapse: collapse; margin: 0.8em 0; } th, td { border: 1px solid #c8d0da; padding: 4px 8px; } th { background: #eef2f6; }
+blockquote { border-left: 3px solid #0284c7; margin: 0.8em 0; padding: 0.2em 0 0.2em 12px; color: #333; }
+img { max-width: 100%; } a { color: #0369a1; }`;
+
+export function wrapHtml(body: string, title: string, o: HtmlPageOptions): string {
+  return `<!doctype html><html><head><meta charset="utf-8"><title>${escapeHtml(title)}</title><style>${pageCss(o)}${DOC_CSS}</style></head><body>${body}</body></html>`;
+}
+
+function escapeHtml(s: string): string {
+  return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c] ?? c);
+}
+
+/** Injects page CSS and a <base> so relative images/styles of a local HTML file resolve. */
+export function prepareHtmlFile(html: string, dirPath: string | null, o: HtmlPageOptions): string {
+  const base = dirPath ? `<base href="file:///${dirPath.replace(/\\/g, '/').replace(/\/?$/, '/')}">` : '';
+  const style = `<style>${pageCss(o)}</style>`;
+  if (/<head[^>]*>/i.test(html)) return html.replace(/<head[^>]*>/i, (m) => `${m}${base}${style}`);
+  return `<!doctype html><html><head><meta charset="utf-8">${base}${style}</head><body>${html}</body></html>`;
+}
+
+export async function importTextLike(kind: 'html' | 'markdown' | 'text', o: HtmlPageOptions, append: boolean): Promise<void> {
+  const ext = kind === 'html' ? ['html', 'htm', 'xhtml'] : kind === 'markdown' ? ['md', 'markdown'] : ['txt', 'log', 'csv', 'json', 'xml'];
+  const files = await pickFiles([{ name: kind === 'html' ? 'Web pages' : kind === 'markdown' ? 'Markdown' : 'Text files', extensions: ext }], false);
+  const f = files[0];
+  if (!f) return;
+  await withBusy('Rendering to PDF…', async () => {
+    const text = new TextDecoder('utf-8').decode(f.bytes);
+    let html: string;
+    if (kind === 'html') html = prepareHtmlFile(text, f.path ? f.path.replace(/[\\/][^\\/]*$/, '') : null, o);
+    else if (kind === 'markdown') html = wrapHtml(await marked.parse(text, { gfm: true }), f.name, o);
+    else html = wrapHtml(`<pre style="background:none;padding:0">${escapeHtml(text)}</pre>`, f.name, o);
+    await deliverPdf(await htmlToPdf({ html }), f.name, append);
+  });
+}
+
+export async function importUrl(url: string, append: boolean): Promise<void> {
+  await withBusy(`Loading ${url}…`, async () => {
+    const bytes = await htmlToPdf({ url });
+    const name = new URL(url).hostname.replace(/^www\./, '') || 'web-page';
+    await deliverPdf(bytes, `${name}.pdf`, append);
+  });
+}
+
+export async function scanToPdf(opts: ImagesToPdfOptions, append: boolean): Promise<void> {
+  const images: Array<{ src: string; width: number; height: number }> = [];
+  for (;;) {
+    const bytes = await withBusy(images.length ? `Scanning page ${images.length + 1}…` : 'Waiting for the scanner…', () => scanPage());
+    if (!bytes || bytes.length === 0) break;
+    images.push(await imageFileToDataUrl(bytes, 'scan.png'));
+    const more = window.confirm(`Scanned ${images.length} page(s). Scan another page?`);
+    if (!more) break;
+  }
+  if (images.length === 0) return;
+  await withBusy('Building PDF…', async () => deliverPdf(await imagesToPdf(images, opts), 'Scan.pdf', append));
+}
+
+// ================================================================ export
+
+export type ExportFormat = 'docx' | 'xlsx' | 'pptx' | 'png' | 'jpeg' | 'tiff' | 'svg' | 'html' | 'md' | 'txt';
+
+export interface ExportRequest {
+  format: ExportFormat;
+  dpi: number;
+  pageNumbers?: number[];
+  quality?: number;
+}
+
+const FORMAT_INFO: Record<ExportFormat, { ext: string; label: string }> = {
+  docx: { ext: 'docx', label: 'Word document' },
+  xlsx: { ext: 'xlsx', label: 'Excel workbook' },
+  pptx: { ext: 'pptx', label: 'PowerPoint presentation' },
+  png: { ext: 'zip', label: 'PNG images (ZIP)' },
+  jpeg: { ext: 'zip', label: 'JPEG images (ZIP)' },
+  tiff: { ext: 'tif', label: 'Multi-page TIFF' },
+  svg: { ext: 'zip', label: 'SVG pages (ZIP)' },
+  html: { ext: 'html', label: 'HTML5 page' },
+  md: { ext: 'md', label: 'Markdown' },
+  txt: { ext: 'txt', label: 'Plain text' },
+};
+
+export async function exportAs(req: ExportRequest): Promise<void> {
+  const info = FORMAT_INFO[req.format];
+  const result = await withBusy(`Converting to ${info.label}…`, (progress) =>
+    withEditedDoc(async (pdf) => {
+      const tick = (label: string) => (done: number, total: number) => progress(`${label} (${done}/${total})`, total ? done / total : null);
+      const needsText = ['docx', 'xlsx', 'pptx', 'html', 'md', 'txt'].includes(req.format);
+      const text = needsText ? await extractStructuredText(pdf, tick('Reading text'), { detectBold: true, pageNumbers: req.pageNumbers }) : [];
+      switch (req.format) {
+        case 'docx':
+          return exportToDocx(text, baseName());
+        case 'xlsx':
+          return exportToXlsx(text);
+        case 'pptx':
+          return exportToPptx(pdf, text, { dpi: req.dpi, title: baseName() }, tick('Rendering slides'));
+        case 'png':
+        case 'jpeg':
+        case 'tiff':
+          return exportPagesAsImages(pdf, { format: req.format, dpi: req.dpi, pageNumbers: req.pageNumbers, quality: req.quality }, tick('Rendering pages'));
+        case 'svg':
+          return exportAllSvgZip(pdf, { dpi: req.dpi, pageNumbers: req.pageNumbers }, tick('Rendering pages'));
+        case 'html':
+          return exportToHtml(pdf, text, { dpi: req.dpi, title: baseName() }, tick('Rendering pages'));
+        case 'md':
+          return new Blob([exportToMarkdown(text)], { type: 'text/markdown' });
+        case 'txt':
+          return new Blob([exportPlainText(text)], { type: 'text/plain' });
+      }
+    }, progress),
+  );
+  if (!result) return;
+  const path = await saveBytes(result, `${baseName()}.${info.ext}`, [{ name: info.label, extensions: [info.ext] }]);
+  if (path) usePDFStore.getState().toast(path === 'downloaded' ? 'Downloaded.' : `Saved to ${path}`, 'success');
+}
+
+// ================================================================ OCR / compress / PDF-A / flatten
+
+export async function runOcr(opts: { pageNumbers: number[]; dpi: number; lang: string }): Promise<void> {
+  const out = await withBusy('Recognising text (OCR)…', (progress) =>
+    withEditedDoc(async (pdf, bytes) => {
+      const results = await ocrPages(pdf, opts, (m, f) => progress(m, f));
+      const words = results.reduce((n, r) => n + r.words.length, 0);
+      progress('Embedding searchable text…', null);
+      return { bytes: await makeSearchable(bytes, results), words };
+    }, progress),
+  );
+  if (!out) return;
+  usePDFStore.getState().toast(`OCR found ${out.words} words. The text layer is now searchable and selectable.`, 'success');
+  await saveDerived(out.bytes, '-ocr', true);
+}
+
+export async function runCompress(opts: CompressOptions): Promise<{ before: number; after: number } | undefined> {
+  const out = await withBusy('Compressing…', async (progress) => {
+    const bytes = await exportCurrentPdf({}, progress);
+    return compressPdf(bytes, opts, (d, t) => progress(`Optimising images (${d}/${t})`, t ? d / t : null));
+  });
+  if (!out) return undefined;
+  if (out.after >= out.before) {
+    usePDFStore.getState().toast('This PDF is already well optimised — no smaller version could be made.', 'info');
+    return { before: out.before, after: out.after };
+  }
+  await saveDerived(out.bytes, '-compressed', true);
+  return { before: out.before, after: out.after };
+}
+
+export async function runPdfA(meta: { title: string; author: string }): Promise<string[] | undefined> {
+  const out = await withBusy('Converting to PDF/A-2b…', async (progress) => {
+    const bytes = await exportCurrentPdf({}, progress);
+    const pdfa = await convertToPdfA(bytes, meta);
+    return { pdfa, warnings: await pdfaWarnings(pdfa) };
+  });
+  if (!out) return undefined;
+  await saveDerived(out.pdfa, '-pdfa', true);
+  return out.warnings;
+}
+
+export async function flattenCurrent(): Promise<void> {
+  const out = await withBusy('Flattening…', async (progress) => {
+    const bytes = await exportCurrentPdf({}, progress);
+    const doc = await PDFDocument.load(bytes);
+    doc.registerFontkit(fontkit);
+    const font = await doc.embedFont(await loadFontBytes({ family: 'sans', bold: false, italic: false }), { subset: true });
+    flattenDocument(doc, font);
+    return doc.save({ useObjectStreams: true });
+  });
+  if (out) await saveDerived(out, '-flattened', true);
+}
+
+/** Extracts page numbers (1-based) into a new PDF. */
+export async function extractPages(pageNumbers: number[], suffix = '-extract'): Promise<void> {
+  const s = usePDFStore.getState();
+  const pages = pageNumbers.map((n) => s.pages[n - 1]).filter((p) => !!p);
+  if (pages.length === 0) return;
+  const ids = new Set(pages.map((p) => p.id));
+  const bytes = await withBusy('Extracting pages…', () =>
+    buildPdf(
+      { sources: s.sources, pages, objects: s.objects.filter((o) => ids.has(o.pageId)), fieldValues: s.fieldValues },
+      { rasterizeRedactedPage: (p, r) => import('./document').then((m) => m.rasterizeWithRedactions(p, r)) },
+    ),
+  );
+  if (bytes) await saveDerived(bytes, suffix, false);
+}
+
+/** Splits into chunks of `every` pages, or at explicit ranges like "1-3,4-10". */
+export async function splitDocument(ranges: number[][]): Promise<void> {
+  const s = usePDFStore.getState();
+  const base = baseName();
+  const outputs = await withBusy('Splitting…', async (progress) => {
+    const files: Array<{ name: string; bytes: Uint8Array }> = [];
+    for (let i = 0; i < ranges.length; i++) {
+      progress(`Part ${i + 1} of ${ranges.length}`, i / ranges.length);
+      const pages = ranges[i].map((n) => s.pages[n - 1]).filter((p) => !!p);
+      const ids = new Set(pages.map((p) => p.id));
+      const bytes = await buildPdf(
+        { sources: s.sources, pages, objects: s.objects.filter((o) => ids.has(o.pageId)), fieldValues: s.fieldValues },
+        { rasterizeRedactedPage: (p, r) => import('./document').then((m) => m.rasterizeWithRedactions(p, r)) },
+      );
+      files.push({ name: `${base}-part${i + 1}.pdf`, bytes });
+    }
+    return files;
+  });
+  if (!outputs) return;
+  if (outputs.length === 1) {
+    await saveBytes(outputs[0].bytes, outputs[0].name, PDF_FILTER);
+    return;
+  }
+  const JSZip = (await import('jszip')).default;
+  const zip = new JSZip();
+  for (const f of outputs) zip.file(f.name, f.bytes);
+  const blob = await zip.generateAsync({ type: 'blob' });
+  const path = await saveBytes(blob, `${base}-split.zip`, [{ name: 'ZIP archive', extensions: ['zip'] }]);
+  if (path) usePDFStore.getState().toast(`Split into ${outputs.length} files.`, 'success');
+}
+
+/** Parses "1-3, 5, 8-" style ranges (1-based, inclusive). */
+export function parseRanges(input: string, pageCount: number): number[][] {
+  const out: number[][] = [];
+  for (const part of input.split(/[,;]+/)) {
+    const t = part.trim();
+    if (!t) continue;
+    const m = /^(\d*)\s*-\s*(\d*)$/.exec(t);
+    let a: number;
+    let b: number;
+    if (m) {
+      a = m[1] ? parseInt(m[1], 10) : 1;
+      b = m[2] ? parseInt(m[2], 10) : pageCount;
+    } else if (/^\d+$/.test(t)) {
+      a = b = parseInt(t, 10);
+    } else throw new Error(`“${t}” is not a page range.`);
+    if (a < 1 || b > pageCount || a > b) throw new Error(`Range “${t}” is outside 1–${pageCount}.`);
+    out.push(Array.from({ length: b - a + 1 }, (_, i) => a + i));
+  }
+  return out;
+}
+
+export { isDesktop, readFile };

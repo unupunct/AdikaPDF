@@ -1,0 +1,237 @@
+/**
+ * Core domain model for Adika PDF Editor.
+ *
+ * Coordinate system: every editor object lives in the *display space* of its
+ * page at scale 1 — origin top-left, y pointing down, units are PDF points,
+ * and the page's total rotation already applied. Objects carry their own
+ * rotation (degrees clockwise about their top-left origin), so rotating a page
+ * in the organiser just rotates the objects with it.
+ */
+
+export type Rotation = 0 | 90 | 180 | 270;
+
+export type ToolId =
+  | 'select'
+  | 'pan'
+  | 'text'
+  | 'editText'
+  | 'image'
+  | 'rect'
+  | 'ellipse'
+  | 'line'
+  | 'arrow'
+  | 'highlight'
+  | 'pen'
+  | 'redact'
+  | 'signature'
+  | 'field-text'
+  | 'field-checkbox'
+  | 'field-radio'
+  | 'field-dropdown'
+  | 'field-signature';
+
+export type RibbonTab = 'home' | 'edit' | 'sign' | 'organize' | 'forms' | 'security' | 'convert';
+
+export type FontFamily = 'sans' | 'serif' | 'mono';
+export type TextAlign = 'left' | 'center' | 'right';
+
+/** A source PDF loaded into the session (the opened file, or a merged one). */
+export interface SourceDoc {
+  id: string;
+  name: string;
+  bytes: Uint8Array;
+  pageCount: number;
+}
+
+/** One page of the working document, pointing at a page of a source (or blank). */
+export interface PageRef {
+  id: string;
+  kind: 'source' | 'blank';
+  /** Source document id for `kind: 'source'`. */
+  sourceId: string | null;
+  /** 0-based page index inside the source. */
+  sourceIndex: number;
+  /** Intrinsic /Rotate of the source page (never changes). */
+  baseRotation: Rotation;
+  /** Rotation added by the user. Total = (base + user) % 360. */
+  userRotation: Rotation;
+  /** Unrotated page size in points (CropBox). */
+  width: number;
+  height: number;
+}
+
+interface BaseObject {
+  id: string;
+  pageId: string;
+  x: number;
+  y: number;
+  /** Degrees, clockwise, about (x, y). */
+  rotation: number;
+  opacity: number;
+  locked?: boolean;
+}
+
+export interface TextObject extends BaseObject {
+  type: 'text';
+  width: number;
+  height: number;
+  text: string;
+  fontFamily: FontFamily;
+  bold: boolean;
+  italic: boolean;
+  fontSize: number;
+  color: string;
+  align: TextAlign;
+  lineHeight: number;
+  /** Optional box fill, used by "edit existing text" to cover the original run. */
+  background: string | null;
+}
+
+export interface ImageObject extends BaseObject {
+  type: 'image';
+  width: number;
+  height: number;
+  /** PNG or JPEG data URL. */
+  src: string;
+  /** Crop rectangle in source-image pixels. */
+  crop: { x: number; y: number; width: number; height: number } | null;
+  naturalWidth: number;
+  naturalHeight: number;
+}
+
+export interface ShapeObject extends BaseObject {
+  type: 'rect' | 'ellipse' | 'highlight';
+  width: number;
+  height: number;
+  stroke: string | null;
+  strokeWidth: number;
+  fill: string | null;
+}
+
+export interface LineObject extends BaseObject {
+  type: 'line' | 'arrow';
+  /** Local coordinates relative to (x, y): [x1, y1, x2, y2]. */
+  points: [number, number, number, number];
+  stroke: string;
+  strokeWidth: number;
+}
+
+export interface PenObject extends BaseObject {
+  type: 'pen';
+  /** Flat local coordinates relative to (x, y). */
+  points: number[];
+  stroke: string;
+  strokeWidth: number;
+}
+
+export interface RedactObject extends BaseObject {
+  type: 'redact';
+  width: number;
+  height: number;
+  fill: string;
+}
+
+export interface SignatureObject extends BaseObject {
+  type: 'signature';
+  width: number;
+  height: number;
+  src: string;
+  naturalWidth: number;
+  naturalHeight: number;
+  signerName: string;
+  /** ISO timestamp of placement. */
+  signedAt: string;
+  /** Draw a small caption under the ink with signer + date. */
+  showCaption: boolean;
+  kind: 'signature' | 'initials';
+}
+
+export type FieldKind = 'text' | 'checkbox' | 'radio' | 'dropdown' | 'signature';
+
+export interface FieldObject extends BaseObject {
+  type: 'field';
+  fieldKind: FieldKind;
+  width: number;
+  height: number;
+  /** Field name; radio buttons sharing a name form one group. */
+  name: string;
+  /** Export value for radio options, default text for text fields. */
+  value: string;
+  options: string[];
+  required: boolean;
+  fontSize: number;
+  multiline: boolean;
+}
+
+export type EditorObject =
+  | TextObject
+  | ImageObject
+  | ShapeObject
+  | LineObject
+  | PenObject
+  | RedactObject
+  | SignatureObject
+  | FieldObject;
+
+export type EditorObjectType = EditorObject['type'];
+
+/** The part of the document state that undo/redo snapshots. */
+export interface DocSnapshot {
+  pages: PageRef[];
+  objects: EditorObject[];
+}
+
+export interface SearchHit {
+  pageId: string;
+  /** Rect in display space at scale 1. */
+  rects: Array<{ x: number; y: number; width: number; height: number }>;
+}
+
+export interface ToolStyle {
+  stroke: string;
+  fill: string | null;
+  strokeWidth: number;
+  opacity: number;
+  highlightColor: string;
+  fontFamily: FontFamily;
+  fontSize: number;
+  color: string;
+  bold: boolean;
+  italic: boolean;
+}
+
+export interface SavedSignature {
+  id: string;
+  kind: 'signature' | 'initials';
+  src: string;
+  width: number;
+  height: number;
+  signerName: string;
+}
+
+/** Status of a cryptographic signature found in (or applied to) the document. */
+export interface SignatureValidation {
+  fieldName: string;
+  signerName: string;
+  signedAt: string | null;
+  reason: string | null;
+  /** Digest over the signed ByteRange matches and the RSA signature verifies. */
+  integrity: 'valid' | 'invalid' | 'unknown';
+  /** Signed ranges cover the whole file (nothing appended after signing). */
+  coversWholeFile: boolean;
+  selfSigned: boolean;
+  certSubject: string;
+  certIssuer: string;
+  certValidFrom: string;
+  certValidTo: string;
+  hasTimestamp: boolean;
+  message: string;
+  chainStatus?: 'trusted' | 'untrusted' | 'incomplete' | 'expired' | 'unknown';
+  /** Human-readable chain, leaf → root. */
+  chainDetails?: string[];
+  revocationStatus?: 'good' | 'revoked' | 'unknown' | 'not-checked';
+  revocationDetails?: string;
+  modifiedAfterSigning?: boolean;
+  /** e.g. "RSA-2048 / SHA-256". */
+  algorithm?: string;
+}

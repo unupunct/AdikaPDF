@@ -1,0 +1,36 @@
+[package]
+name = "adika-pdf-editor"
+version = "1.0.0"
+description = "Adika PDF Editor - privacy-first offline PDF editor"
+authors = ["unupunct"]
+license = "MIT"
+edition = "2021"
+
+[lib]
+name = "adika_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+percent-encoding = "2"
+cryptoki = "0.12.1"
+sha2 = "0.11.0"
+base64 = "0.23.1"
+hex = "0.4.3"
+ureq = "2"
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "s"
+panic = "abort"
+strip = true
+
+[target."cfg(windows)".dependencies]
+schannel = "0.1.29"

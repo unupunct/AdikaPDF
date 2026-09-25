@@ -1,0 +1,125 @@
+@import 'tailwindcss';
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* Brand palette from the Adika logo: sky blue document, emerald nib, slate type. */
+@theme {
+  --color-brand-50: #f0f9ff;
+  --color-brand-100: #e0f2fe;
+  --color-brand-200: #bae6fd;
+  --color-brand-300: #7dd3fc;
+  --color-brand-400: #38bdf8;
+  --color-brand-500: #0ea5e9;
+  --color-brand-600: #0284c7;
+  --color-brand-700: #0369a1;
+  --color-brand-800: #075985;
+  --color-brand-900: #0c4a6e;
+  --color-accent-500: #10b981;
+  --color-accent-600: #059669;
+  --font-sans: 'Segoe UI Variable', 'Segoe UI', system-ui, -apple-system, sans-serif;
+}
+
+:root {
+  --bg: #f1f5f9;
+  --panel: #ffffff;
+  --panel-2: #f8fafc;
+  --border: #e2e8f0;
+  --text: #0f172a;
+  --muted: #64748b;
+  --canvas: #e2e8f0;
+  --hover: #f1f5f9;
+  --ring: #0284c7;
+  color-scheme: light;
+}
+
+.dark {
+  --bg: #0b1220;
+  --panel: #111a2c;
+  --panel-2: #0f172a;
+  --border: #1f2a40;
+  --text: #e2e8f0;
+  --muted: #94a3b8;
+  --canvas: #070c16;
+  --hover: #1a253b;
+  --ring: #38bdf8;
+  color-scheme: dark;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+  user-select: none;
+}
+
+input,
+textarea,
+select,
+[contenteditable] {
+  user-select: text;
+}
+
+.bg-panel {
+  background: var(--panel);
+}
+.bg-panel-2 {
+  background: var(--panel-2);
+}
+.bg-app {
+  background: var(--bg);
+}
+.bg-canvas {
+  background: var(--canvas);
+}
+.border-app {
+  border-color: var(--border);
+}
+.text-muted {
+  color: var(--muted);
+}
+.hover-app:hover {
+  background: var(--hover);
+}
+
+:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 1px;
+}
+
+/* Thin, theme-aware scrollbars. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--muted) 45%, transparent) transparent;
+}
+
+.checkerboard {
+  background-image:
+    linear-gradient(45deg, #e5e7eb 25%, transparent 25%),
+    linear-gradient(-45deg, #e5e7eb 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #e5e7eb 75%),
+    linear-gradient(-45deg, transparent 75%, #e5e7eb 75%);
+  background-size: 12px 12px;
+  background-position: 0 0, 0 6px, 6px -6px, -6px 0;
+}
+
+@keyframes adika-indeterminate {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(250%);
+  }
+}
+.animate-indeterminate {
+  animation: adika-indeterminate 1.2s ease-in-out infinite;
+}
