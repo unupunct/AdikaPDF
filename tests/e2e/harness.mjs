@@ -14,7 +14,7 @@ export async function launchApp({ args = [], port = 9333, exe = EXE } = {}) {
     ADIKA_E2E: '1',
     WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${port}`,
   };
-  const proc = spawn(exe, args, { env, stdio: 'ignore' });
+  const proc = spawn(exe, args, { env, stdio: process.env.ADIKA_STDERR ? ['ignore', 'ignore', 'inherit'] : 'ignore' });
   let exited = false;
   proc.on('exit', () => (exited = true));
   const deadline = Date.now() + 30000;

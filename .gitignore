@@ -3,3 +3,4 @@ dist
 public/tesseract
 public/pdfjs
 *.log
+.tools

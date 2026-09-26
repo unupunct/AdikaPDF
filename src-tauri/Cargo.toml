@@ -1,6 +1,6 @@
 [package]
 name = "adika-pdf-editor"
-version = "1.0.0"
+version = "1.0.1"
 description = "Adika PDF Editor - privacy-first offline PDF editor"
 authors = ["unupunct"]
 license = "MIT"
@@ -29,7 +29,6 @@ ureq = "2"
 codegen-units = 1
 lto = true
 opt-level = "s"
-panic = "abort"
 strip = true
 
 [target."cfg(windows)".dependencies]

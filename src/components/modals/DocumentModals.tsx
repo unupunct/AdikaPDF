@@ -511,7 +511,7 @@ export function AboutModal() {
   return (
     <Dialog open={open} onOpenChange={(o) => !o && close()} title="About" width={520} footer={<Button variant="primary" onClick={close}>Close</Button>}>
       <AdikaLogo className="mx-auto mb-3 h-14" />
-      <p className="mb-4 text-center text-xs text-muted">Version 1.0.0 · Privacy-first, offline PDF editor · MIT licence</p>
+      <p className="mb-4 text-center text-xs text-muted">Version 1.0.1 · Privacy-first, offline PDF editor · MIT licence</p>
       <table className="w-full text-xs">
         <tbody>
           {shortcuts.map(([k, v]) => (

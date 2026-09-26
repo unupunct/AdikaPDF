@@ -48,6 +48,7 @@ output file independently with pdf-lib and pdf.js.
 
 ## Notes and limits
 
+- Hardware-token signing is tested end to end against a SoftHSM2 token (RSA-2048 and ECDSA P-256, verified independently with pyHanko): `bash tests/token/setup-softhsm.sh && node tests/e2e/token.mjs`.
 - Self-signed signatures prove integrity, not identity; for eIDAS qualified signatures use a
   certificate from a qualified provider on a token.
 - Redacted pages are rebuilt as images (run OCR afterwards to make them searchable again).

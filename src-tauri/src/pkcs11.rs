@@ -203,10 +203,22 @@ pub async fn pkcs11_list_tokens(module: String) -> Result<Vec<TokenInfo>, String
         let ctx = context(&module)?;
         let slots = ctx.get_slots_with_token().map_err(|e| format!("Slot enumeration failed: {e}"))?;
         let mut out = Vec::new();
+        let mut skipped = Vec::new();
         for slot in slots {
-            let info = ctx.get_token_info(slot).map_err(|e| e.to_string())?;
+            // One unusable slot (empty reader, blank or unrecognised card,
+            // SoftHSM's spare uninitialised slot) must not hide the others.
+            let Ok(info) = ctx.get_token_info(slot) else { continue };
+            if !info.token_initialized() {
+                continue;
+            }
             let slot_info = ctx.get_slot_info(slot).map_err(|e| e.to_string())?;
-            let session = ctx.open_ro_session(slot).map_err(|e| format!("Could not open session: {e}"))?;
+            let session = match ctx.open_ro_session(slot) {
+                Ok(s) => s,
+                Err(e) => {
+                    skipped.push(format!("{}: {e}", info.label().trim()));
+                    continue;
+                }
+            };
             let certificates = list_certificates(&session).unwrap_or_default();
             out.push(TokenInfo {
                 slot_id: slot.id(),
@@ -219,6 +231,9 @@ pub async fn pkcs11_list_tokens(module: String) -> Result<Vec<TokenInfo>, String
                 protected_auth_path: info.protected_authentication_path(),
                 certificates,
             });
+        }
+        if out.is_empty() && !skipped.is_empty() {
+            return Err(format!("A token is present but could not be opened ({}).", skipped.join("; ")));
         }
         Ok(out)
     })
