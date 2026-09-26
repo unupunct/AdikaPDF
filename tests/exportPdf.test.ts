@@ -332,3 +332,46 @@ describe('buildPdf', () => {
     expect(texts[0].items.map((i) => i.str).join('')).toContain('FlatValue');
   });
 });
+
+describe('embedded fonts render (regression: pdf-lib subsetting corrupted glyphs)', () => {
+  it('every drawn character has a real glyph outline in the embedded font', async () => {
+    const fontkit = (await import('@pdf-lib/fontkit')).default;
+    const { PDFRawStream, PDFName, PDFDict, decodePDFRawStream } = await import('pdf-lib');
+    const a = await makeSource([{ w: 400, h: 300, label: 'Fonts' }]);
+    const [p] = refs(a, [{ w: 400, h: 300 }]);
+    const strings = {
+      sans: 'Semnat în Cluj-Napoca ăâîșț ĂÂÎȘȚ 0123',
+      serif: 'Contract nr. 58213 — țară',
+      mono: 'const x = "șț";',
+    } as const;
+    const objects: EditorObject[] = (Object.keys(strings) as Array<keyof typeof strings>).map((family, i) =>
+      text(p.id, 20, 20 + i * 40, strings[family], { id: `t-${family}`, fontFamily: family, bold: family === 'serif', italic: family === 'mono' }),
+    );
+    const out = await buildPdf({ sources: { [a.id]: a }, pages: [p], objects, fieldValues: {} }, opts);
+    const doc = await PDFDocument.load(out);
+    const fonts: Array<ReturnType<typeof fontkit.create>> = [];
+    for (const [, obj] of doc.context.enumerateIndirectObjects()) {
+      // Font programs are only reachable from their FontDescriptor.
+      if (!(obj instanceof PDFDict) || obj.get(PDFName.of('Type')) !== PDFName.of('FontDescriptor')) continue;
+      for (const key of ['FontFile2', 'FontFile3']) {
+        const file = obj.lookup(PDFName.of(key));
+        if (file instanceof PDFRawStream) fonts.push(fontkit.create(decodePDFRawStream(file).decode()));
+      }
+    }
+    expect(fonts.length).toBe(3);
+    const allChars = [...new Set([...Object.values(strings).join('')])].filter((c) => c.trim());
+    for (const font of fonts) {
+      // Glyphs this font was asked to draw must have outlines (not emptied/corrupt).
+      const covered = allChars.filter((c) => font.hasGlyphForCodePoint(c.codePointAt(0)!));
+      const drawn = covered.filter((c) => Object.values(strings).some((s) => s.includes(c)));
+      let inked = 0;
+      for (const c of drawn) {
+        const g = font.glyphForCodePoint(c.codePointAt(0)!);
+        if ((g.path as unknown as { commands: unknown[] }).commands.length > 0) inked++;
+      }
+      expect(inked).toBeGreaterThan(8);
+    }
+    // And pruning actually shrank the files (not the ~500 KB full fonts).
+    expect(out.length).toBeLessThan(400_000);
+  });
+});

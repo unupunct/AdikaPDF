@@ -189,6 +189,12 @@ export function makeField(
 /** Reads an image file into a PNG/JPEG data URL (other formats are converted to PNG). */
 export async function imageFileToDataUrl(bytes: Uint8Array, name: string): Promise<{ src: string; width: number; height: number }> {
   const lower = name.toLowerCase();
+  if (lower.endsWith('.heic') || lower.endsWith('.heif')) {
+    const { decodeHeic } = await import('./images/heic');
+    const images = await decodeHeic(bytes);
+    if (images.length === 0) throw new Error('No image found in the HEIC file.');
+    return images[0];
+  }
   if (lower.endsWith('.tif') || lower.endsWith('.tiff')) {
     const { decodeTiff } = await import('./images');
     const pages = decodeTiff(bytes);

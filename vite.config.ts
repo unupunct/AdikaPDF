@@ -7,7 +7,11 @@ export default defineConfig({
   plugins: [react(), tailwindcss()],
   base: './',
   resolve: {
-    alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) },
+    alias: {
+      '@': fileURLToPath(new URL('./src', import.meta.url)),
+      // @kenjiuno/msgreader pulls in iconv-lite, which needs Node's Buffer.
+      'iconv-lite': fileURLToPath(new URL('./src/lib/pdf/iconvLiteShim.ts', import.meta.url)),
+    },
   },
   worker: { format: 'es' },
   build: {

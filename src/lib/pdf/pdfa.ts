@@ -1,18 +1,23 @@
-// PDF/A-2b conversion helpers.
+// PDF/A-1b / 2b / 3b conversion helpers.
 //
-// This module adds the structural markers that PDF/A-2b requires (sRGB output
+// This module adds the structural markers that PDF/A requires (sRGB output
 // intent with an embedded ICC profile, XMP metadata consistent with the Info
 // dictionary, a trailer /ID) and removes the features that PDF/A forbids
-// outright (encryption, JavaScript, embedded files, XFA). It does NOT embed
-// missing fonts or flatten transparency; `pdfaWarnings` reports those so the
-// UI can tell the user honestly to validate the result with veraPDF.
+// outright (encryption, JavaScript, XFA; embedded files for 1b/2b; optional
+// content for 1b). PDF/A-3b keeps embedded files and gives each one the
+// associated-file markers (/AFRelationship, catalog /AF, MIME /Subtype,
+// /Params /ModDate). It does NOT embed missing fonts or flatten transparency;
+// `pdfaWarnings` reports those so the UI can tell the user honestly to
+// validate the result with veraPDF.
 
 import {
+  AFRelationship,
   PDFArray,
   PDFDict,
   PDFDocument,
   PDFHexString,
   PDFName,
+  PDFNumber,
   PDFRawStream,
   PDFRef,
   PDFStream,
@@ -207,6 +212,8 @@ export interface XmpFields {
   subject?: string;
   keywords?: string;
   creatorTool?: string;
+  /** ISO 19005 part: 1, 2 or 3 (default 2). Conformance is always B. */
+  part?: 1 | 2 | 3;
 }
 
 export function buildPdfAXmp(f: XmpFields): string {
@@ -221,7 +228,7 @@ export function buildPdfAXmp(f: XmpFields): string {
     '  xmlns:dc="http://purl.org/dc/elements/1.1/"',
     '  xmlns:xmp="http://ns.adobe.com/xap/1.0/"',
     '  xmlns:pdf="http://ns.adobe.com/pdf/1.3/">',
-    '<pdfaid:part>2</pdfaid:part>',
+    `<pdfaid:part>${f.part ?? 2}</pdfaid:part>`,
     '<pdfaid:conformance>B</pdfaid:conformance>',
     '<dc:format>application/pdf</dc:format>',
     `<dc:title>${lang(f.title)}</dc:title>`,
@@ -246,6 +253,44 @@ export function buildPdfAXmp(f: XmpFields): string {
 // Conversion
 // ---------------------------------------------------------------------------
 
+/** PDF/A conformance level produced by `convertToPdfA`. */
+export type PdfALevel = '1b' | '2b' | '3b';
+
+export type PdfAAttachmentRelationship = 'Source' | 'Data' | 'Alternative' | 'Supplement' | 'Unspecified';
+
+export interface PdfAAttachment {
+  name: string;
+  mime: string;
+  bytes: Uint8Array;
+  relationship?: PdfAAttachmentRelationship;
+  description?: string;
+}
+
+export interface PdfAMeta {
+  title: string;
+  author: string;
+  /** Default '2b'. */
+  level?: PdfALevel;
+  /** Files to embed as associated files. Only honoured for PDF/A-3b. */
+  attachments?: PdfAAttachment[];
+}
+
+export interface PdfAConversionResult {
+  bytes: Uint8Array;
+  /** What the conversion changed or ignored (human-readable). */
+  notes: string[];
+}
+
+const ALLOWED_AF = new Set(['Source', 'Data', 'Alternative', 'Supplement', 'Unspecified']);
+
+function levelPart(level: PdfALevel): 1 | 2 | 3 {
+  return level === '1b' ? 1 : level === '3b' ? 3 : 2;
+}
+
+function levelLabel(level: PdfALevel): string {
+  return `PDF/A-${level}`;
+}
+
 function nameOf(o: PDFObject | undefined): string | undefined {
   return o instanceof PDFName ? o.decodeText() : undefined;
 }
@@ -257,11 +302,21 @@ function dictOf(doc: PDFDocument, o: PDFObject | undefined): PDFDict | undefined
   return undefined;
 }
 
+function arrayOf(doc: PDFDocument, o: PDFObject | undefined): PDFArray | undefined {
+  const v = o instanceof PDFRef ? doc.context.lookup(o) : o;
+  return v instanceof PDFArray ? v : undefined;
+}
+
+function numberOf(doc: PDFDocument, o: PDFObject | undefined): number | undefined {
+  const v = o instanceof PDFRef ? doc.context.lookup(o) : o;
+  return v instanceof PDFNumber ? v.asNumber() : undefined;
+}
+
 function isJsAction(doc: PDFDocument, o: PDFObject | undefined): boolean {
   const d = dictOf(doc, o);
   if (!d) return false;
   const s = nameOf(d.get(PDFName.of('S')));
-  // Actions PDF/A-2 forbids.
+  // Actions PDF/A forbids.
   return s === 'JavaScript' || s === 'Launch' || s === 'ImportData' || s === 'Sound' || s === 'Movie' || s === 'RichMediaExecute';
 }
 
@@ -277,11 +332,8 @@ function toHex(b: Uint8Array): string {
   return Array.from(b, (x) => x.toString(16).padStart(2, '0')).join('').toUpperCase();
 }
 
-function infoText(doc: PDFDocument, key: string): string | undefined {
-  const infoRef = doc.context.trailerInfo.Info;
-  const info = dictOf(doc, infoRef as PDFObject | undefined);
-  const v = info?.get(PDFName.of(key));
-  const r = v instanceof PDFRef ? doc.context.lookup(v) : v;
+function textOf(doc: PDFDocument, o: PDFObject | undefined): string | undefined {
+  const r = o instanceof PDFRef ? doc.context.lookup(o) : o;
   if (r instanceof PDFString || r instanceof PDFHexString) {
     const t = r.decodeText();
     return t.length ? t : undefined;
@@ -289,28 +341,204 @@ function infoText(doc: PDFDocument, key: string): string | undefined {
   return undefined;
 }
 
-export async function convertToPdfA(
-  bytes: Uint8Array,
-  meta: { title: string; author: string },
-): Promise<Uint8Array> {
+function infoText(doc: PDFDocument, key: string): string | undefined {
+  const infoRef = doc.context.trailerInfo.Info;
+  const info = dictOf(doc, infoRef as PDFObject | undefined);
+  return textOf(doc, info?.get(PDFName.of(key)));
+}
+
+/** A file specification that carries an embedded file (/EF). */
+function isFilespec(d: PDFDict): boolean {
+  return d.has(PDFName.of('EF'));
+}
+
+/**
+ * Visits every dictionary of every indirect object, including direct
+ * sub-dictionaries (e.g. an ExtGState written inline in /Resources). The
+ * callback receives the dictionary and whether it belongs to a stream.
+ */
+function visitDicts(doc: PDFDocument, fn: (d: PDFDict, ref: PDFRef, stream: PDFStream | undefined) => void): void {
+  const walk = (o: PDFObject, ref: PDFRef, depth: number) => {
+    if (depth > 8) return;
+    if (o instanceof PDFDict) {
+      fn(o, ref, undefined);
+      for (const v of o.values()) if (v instanceof PDFDict || v instanceof PDFArray) walk(v, ref, depth + 1);
+    } else if (o instanceof PDFArray) {
+      for (let i = 0; i < o.size(); i++) {
+        const v = o.get(i);
+        if (v instanceof PDFDict || v instanceof PDFArray) walk(v, ref, depth + 1);
+      }
+    }
+  };
+  for (const [ref, obj] of doc.context.enumerateIndirectObjects()) {
+    if (obj instanceof PDFStream) {
+      fn(obj.dict, ref, obj);
+      for (const v of obj.dict.values()) if (v instanceof PDFDict || v instanceof PDFArray) walk(v, ref, 1);
+    } else {
+      walk(obj, ref, 0);
+    }
+  }
+}
+
+function stringBytes(o: PDFObject | undefined): Uint8Array {
+  if (o instanceof PDFString || o instanceof PDFHexString) return o.asBytes();
+  return new Uint8Array();
+}
+
+function compareBytes(a: Uint8Array, b: Uint8Array): number {
+  const n = Math.min(a.length, b.length);
+  for (let i = 0; i < n; i++) if (a[i] !== b[i]) return a[i] - b[i];
+  return a.length - b.length;
+}
+
+/** Name-tree leaves must be sorted by key; pdf-lib appends attachments unsorted. */
+function sortEmbeddedFilesTree(doc: PDFDocument): void {
+  const names = dictOf(doc, doc.catalog.get(PDFName.of('Names')));
+  const ef = dictOf(doc, names?.get(PDFName.of('EmbeddedFiles')));
+  const arr = arrayOf(doc, ef?.get(PDFName.of('Names')));
+  if (!arr || ef?.has(PDFName.of('Kids'))) return;
+  const pairs: [PDFObject, PDFObject][] = [];
+  for (let i = 0; i + 1 < arr.size(); i += 2) pairs.push([arr.get(i), arr.get(i + 1)]);
+  pairs.sort((x, y) => compareBytes(stringBytes(x[0]), stringBytes(y[0])));
+  const sorted = doc.context.obj([]);
+  for (const [k, v] of pairs) {
+    sorted.push(k);
+    sorted.push(v);
+  }
+  ef?.set(PDFName.of('Names'), sorted);
+}
+
+/** Deletes embedded file streams (PDF/A-1b/2b): pdf-lib would otherwise keep the orphans. */
+function dropEmbeddedFiles(doc: PDFDocument): number {
+  const ctx = doc.context;
+  let n = 0;
+  visitDicts(doc, (d) => {
+    const ef = dictOf(doc, d.get(PDFName.of('EF')));
+    if (!ef) return;
+    for (const v of ef.values()) if (v instanceof PDFRef) ctx.delete(v);
+    d.delete(PDFName.of('EF'));
+    d.delete(PDFName.of('RF'));
+    n++;
+  });
+  return n;
+}
+
+/** Sets the 3-byte version in a "%PDF-x.y" header in place. */
+function patchHeaderVersion(bytes: Uint8Array, version: string): Uint8Array {
+  const head = String.fromCharCode(...bytes.subarray(0, 8));
+  if (/^%PDF-\d\.\d$/.test(head)) {
+    for (let i = 0; i < 3; i++) bytes[5 + i] = version.charCodeAt(i);
+  }
+  return bytes;
+}
+
+/**
+ * Makes every embedded file PDF/A-3 conformant: /AFRelationship on the file
+ * specification, /F + /UF, MIME /Subtype and /Params /ModDate on the embedded
+ * file stream, and a document-level /AF array listing all of them.
+ */
+function normalizeAssociatedFiles(doc: PDFDocument, now: Date): number {
+  const ctx = doc.context;
+  const FS = PDFName.of('FS');
+  // Direct file specifications inside annotations cannot be listed in /AF by
+  // reference; make them indirect first.
+  for (const [, obj] of ctx.enumerateIndirectObjects()) {
+    if (!(obj instanceof PDFDict)) continue;
+    const fs = obj.get(FS);
+    if (fs instanceof PDFDict && isFilespec(fs)) obj.set(FS, ctx.register(fs));
+  }
+  const refs: PDFRef[] = [];
+  const seen = new Set<string>();
+  for (const [ref, obj] of ctx.enumerateIndirectObjects()) {
+    if (!(obj instanceof PDFDict) || !isFilespec(obj)) continue;
+    const rel = nameOf(obj.get(PDFName.of('AFRelationship')));
+    if (!rel || !ALLOWED_AF.has(rel)) obj.set(PDFName.of('AFRelationship'), PDFName.of('Unspecified'));
+    const f = textOf(doc, obj.get(PDFName.of('F')));
+    const uf = textOf(doc, obj.get(PDFName.of('UF')));
+    const fileName = uf ?? f ?? 'attachment';
+    if (!uf) obj.set(PDFName.of('UF'), PDFHexString.fromText(fileName));
+    if (!f) obj.set(PDFName.of('F'), PDFString.of(fileName.replace(/[^\x20-\x7e]/g, '_').replace(/[()\\]/g, '_')));
+    const ef = dictOf(doc, obj.get(PDFName.of('EF')));
+    if (ef) {
+      for (const key of ef.keys()) {
+        const stream = ctx.lookup(ef.get(key));
+        if (!(stream instanceof PDFStream)) continue;
+        const sd = stream.dict;
+        if (!(sd.get(PDFName.of('Subtype')) instanceof PDFName)) {
+          sd.set(PDFName.of('Subtype'), PDFName.of('application/octet-stream'));
+        }
+        let params = dictOf(doc, sd.get(PDFName.of('Params')));
+        if (!params) {
+          params = ctx.obj({});
+          sd.set(PDFName.of('Params'), params);
+        }
+        if (!params.has(PDFName.of('ModDate'))) params.set(PDFName.of('ModDate'), PDFString.fromDate(now));
+      }
+    }
+    const tag = ref.toString();
+    if (!seen.has(tag)) {
+      seen.add(tag);
+      refs.push(ref);
+    }
+  }
+  if (!refs.length) {
+    doc.catalog.delete(PDFName.of('AF'));
+    return 0;
+  }
+  const af = ctx.obj([]);
+  const existing = arrayOf(doc, doc.catalog.get(PDFName.of('AF')));
+  const listed = new Set<string>();
+  if (existing) {
+    for (let i = 0; i < existing.size(); i++) {
+      const e = existing.get(i);
+      if (e instanceof PDFRef && seen.has(e.toString()) && !listed.has(e.toString())) {
+        listed.add(e.toString());
+        af.push(e);
+      }
+    }
+  }
+  for (const r of refs) if (!listed.has(r.toString())) af.push(r);
+  doc.catalog.set(PDFName.of('AF'), af);
+  return refs.length;
+}
+
+/**
+ * Converts to PDF/A (default level 2b) and reports what was changed.
+ * Throws for encrypted input.
+ */
+export async function convertToPdfADetailed(bytes: Uint8Array, meta: PdfAMeta): Promise<PdfAConversionResult> {
+  const level: PdfALevel = meta.level ?? '2b';
+  const label = levelLabel(level);
+  const notes: string[] = [];
   const doc = await PDFDocument.load(bytes, { ignoreEncryption: true, updateMetadata: false });
   if (doc.isEncrypted) {
     throw new Error('PDF/A cannot be produced from an encrypted PDF. Remove the password protection first.');
   }
   const ctx = doc.context;
   const catalog = doc.catalog;
+  const keepFiles = level === '3b';
 
   // --- Strip forbidden features -------------------------------------------
   const names = dictOf(doc, catalog.get(PDFName.of('Names')));
   if (names) {
     names.delete(PDFName.of('JavaScript'));
-    names.delete(PDFName.of('EmbeddedFiles'));
+    if (!keepFiles && names.has(PDFName.of('EmbeddedFiles'))) {
+      names.delete(PDFName.of('EmbeddedFiles'));
+      notes.push(`Embedded files were removed (${label} does not allow them).`);
+    }
   }
   if (isJsAction(doc, catalog.get(PDFName.of('OpenAction')))) catalog.delete(PDFName.of('OpenAction'));
   catalog.delete(PDFName.of('AA'));
-  catalog.delete(PDFName.of('AF'));
+  if (!keepFiles) catalog.delete(PDFName.of('AF'));
   catalog.delete(PDFName.of('NeedsRendering'));
   catalog.delete(PDFName.of('Collection'));
+  if (level === '1b') {
+    catalog.delete(PDFName.of('Version'));
+    if (catalog.has(PDFName.of('OCProperties'))) {
+      catalog.delete(PDFName.of('OCProperties'));
+      notes.push('Optional content (layers) was removed: PDF/A-1 does not support it. All layers are now always visible.');
+    }
+  }
   const acro = dictOf(doc, catalog.get(PDFName.of('AcroForm')));
   if (acro) {
     acro.delete(PDFName.of('XFA'));
@@ -321,29 +549,50 @@ export async function convertToPdfA(
   const AA = PDFName.of('AA');
   const JS = PDFName.of('JS');
   const Annots = PDFName.of('Annots');
-  for (const [, obj] of ctx.enumerateIndirectObjects()) {
-    const d = obj instanceof PDFDict ? obj : undefined;
-    if (!d) continue;
+  const OC = PDFName.of('OC');
+  const Group = PDFName.of('Group');
+  let removedAttachAnnots = 0;
+  let removedGroups = 0;
+  visitDicts(doc, (d) => {
     d.delete(AA);
     if (isJsAction(doc, d.get(A))) d.delete(A);
     if (nameOf(d.get(PDFName.of('S'))) === 'JavaScript') d.delete(JS);
     // Chained actions (/Next) may also carry JavaScript.
     const next = d.get(PDFName.of('Next'));
     if (isJsAction(doc, next)) d.delete(PDFName.of('Next'));
-    d.delete(PDFName.of('AF'));
-    // Drop file-attachment annotations (embedded files).
-    const annots = d.get(Annots);
-    const arr = annots instanceof PDFRef ? ctx.lookup(annots) : annots;
-    if (arr instanceof PDFArray) {
+    if (!keepFiles) d.delete(PDFName.of('AF'));
+    if (level === '1b') {
+      d.delete(OC);
+      const g = dictOf(doc, d.get(Group));
+      const type = nameOf(d.get(PDFName.of('Type')));
+      if (g && nameOf(g.get(PDFName.of('S'))) === 'Transparency' && (type === 'Page' || nameOf(d.get(PDFName.of('Subtype'))) === 'Form')) {
+        d.delete(Group);
+        removedGroups++;
+      }
+    }
+    // Drop annotation types PDF/A forbids (and file attachments unless 3b).
+    const arr = arrayOf(doc, d.get(Annots));
+    if (arr) {
       for (let i = arr.size() - 1; i >= 0; i--) {
         const ad = dictOf(doc, arr.get(i));
         const sub = nameOf(ad?.get(PDFName.of('Subtype')));
-        if (sub === 'FileAttachment' || sub === 'Sound' || sub === 'Movie' || sub === 'Screen' || sub === 'RichMedia' || sub === '3D') {
+        if (sub === 'FileAttachment' && !keepFiles) {
+          arr.remove(i);
+          removedAttachAnnots++;
+        } else if (sub === 'Sound' || sub === 'Movie' || sub === 'Screen' || sub === 'RichMedia' || sub === '3D') {
           arr.remove(i);
         }
       }
     }
+  });
+  if (!keepFiles) {
+    const dropped = dropEmbeddedFiles(doc);
+    if (dropped && !notes.some((n) => n.startsWith('Embedded files'))) {
+      notes.push(`Embedded files were removed (${label} does not allow them).`);
+    }
   }
+  if (removedAttachAnnots) notes.push(`${removedAttachAnnots} file-attachment annotation(s) were removed.`);
+  if (removedGroups) notes.push(`${removedGroups} transparency group(s) were removed (PDF/A-1 forbids them).`);
 
   // --- Info dictionary ----------------------------------------------------
   const now = new Date(Math.floor(Date.now() / 1000) * 1000);
@@ -372,6 +621,31 @@ export async function convertToPdfA(
   if (keywords) info.set(PDFName.of('Keywords'), PDFHexString.fromText(keywords));
   if (creatorTool) doc.setCreator(creatorTool);
 
+  // --- Associated files (3b) ---------------------------------------------
+  const attachments = meta.attachments ?? [];
+  if (attachments.length && !keepFiles) {
+    notes.push(
+      `${attachments.length} attachment(s) were not embedded: ${label} does not allow embedded files. Choose PDF/A-3b to keep them.`,
+    );
+  }
+  if (keepFiles) {
+    for (const a of attachments) {
+      const rel = a.relationship && ALLOWED_AF.has(a.relationship) ? a.relationship : 'Unspecified';
+      await doc.attach(a.bytes, a.name, {
+        mimeType: a.mime || 'application/octet-stream',
+        description: a.description ?? a.name,
+        creationDate: now,
+        modificationDate: now,
+        afRelationship: AFRelationship[rel],
+      });
+    }
+    // Materialise the file specifications so they can be normalised below.
+    await doc.flush();
+    sortEmbeddedFilesTree(doc);
+    const n = normalizeAssociatedFiles(doc, now);
+    if (n) notes.push(`${n} embedded file(s) are associated with the document (/AF).`);
+  }
+
   // --- XMP metadata (uncompressed) ----------------------------------------
   const xmp = buildPdfAXmp({
     title: meta.title,
@@ -382,6 +656,7 @@ export async function convertToPdfA(
     subject,
     keywords,
     creatorTool,
+    part: levelPart(level),
   });
   const xmpStream = ctx.stream(new TextEncoder().encode(xmp), {
     Type: 'Metadata',
@@ -390,6 +665,8 @@ export async function convertToPdfA(
   catalog.set(PDFName.of('Metadata'), ctx.register(xmpStream));
 
   // --- Output intent ------------------------------------------------------
+  // The ICC v2 sRGB profile is valid for all three parts (PDF/A-1 requires v2
+  // or lower; later parts accept it too).
   const icc = buildSrgbIccProfile();
   const iccStream = ctx.flateStream(icc, { N: 3 });
   const iccRef = ctx.register(iccStream);
@@ -406,29 +683,76 @@ export async function convertToPdfA(
   const idHex = toHex(randomId());
   ctx.trailerInfo.ID = ctx.obj([PDFHexString.of(idHex), PDFHexString.of(idHex)]);
 
-  // Classic xref table: keeps the trailer /ID in the file trailer.
-  return doc.save({ useObjectStreams: false, updateFieldAppearances: false });
+  // Classic xref table (no object or xref streams, which PDF 1.4 lacks):
+  // keeps the trailer /ID in the file trailer.
+  const out = await doc.save({ useObjectStreams: false, updateFieldAppearances: false });
+  if (level === '1b') patchHeaderVersion(out, '1.4');
+  return { bytes: out, notes };
+}
+
+/** Converts to PDF/A (default level 2b). See `convertToPdfADetailed`. */
+export async function convertToPdfA(bytes: Uint8Array, meta: PdfAMeta): Promise<Uint8Array> {
+  return (await convertToPdfADetailed(bytes, meta)).bytes;
 }
 
 // ---------------------------------------------------------------------------
 // Warnings
 // ---------------------------------------------------------------------------
 
-export async function pdfaWarnings(bytes: Uint8Array): Promise<string[]> {
+function filterNames(doc: PDFDocument, o: PDFObject | undefined): string[] {
+  const n = nameOf(o instanceof PDFRef ? doc.context.lookup(o) : o);
+  if (n) return [n];
+  const arr = arrayOf(doc, o);
+  const out: string[] = [];
+  if (arr) for (let i = 0; i < arr.size(); i++) {
+    const x = nameOf(arr.get(i));
+    if (x) out.push(x);
+  }
+  return out;
+}
+
+function detectLevel(doc: PDFDocument): PdfALevel | undefined {
+  const m = doc.context.lookup(doc.catalog.get(PDFName.of('Metadata')));
+  if (!(m instanceof PDFRawStream) || m.dict.has(PDFName.of('Filter'))) return undefined;
+  const xmp = new TextDecoder().decode(m.contents);
+  const part = /<pdfaid:part>\s*(\d)\s*</.exec(xmp)?.[1] ?? /pdfaid:part="(\d)"/.exec(xmp)?.[1];
+  return part === '1' ? '1b' : part === '2' ? '2b' : part === '3' ? '3b' : undefined;
+}
+
+/**
+ * Lists the PDF/A problems this module cannot fix automatically, adapted to
+ * the level (detected from the XMP when not given; default 2b). The last line
+ * always asks for veraPDF validation.
+ */
+export async function pdfaWarnings(bytes: Uint8Array, level?: PdfALevel): Promise<string[]> {
   const doc = await PDFDocument.load(bytes, { ignoreEncryption: true, updateMetadata: false });
   const warnings: string[] = [];
   if (doc.isEncrypted) {
     warnings.push('The document is encrypted; PDF/A forbids encryption.');
     return warnings;
   }
+  const lv: PdfALevel = level ?? detectLevel(doc) ?? '2b';
+  const label = levelLabel(lv);
   const ctx = doc.context;
   const nonEmbedded = new Set<string>();
   let transparencyGroups = 0;
   let softMasks = 0;
+  let imageSoftMasks = 0;
+  let alpha = 0;
+  const blendModes = new Set<string>();
+  let jpx = 0;
+  let deep = 0;
+  let lzw = 0;
+  let filespecs = 0;
+  let filespecsNoRel = 0;
+  let efNoMime = 0;
+  let efNoModDate = 0;
+  const af = arrayOf(doc, doc.catalog.get(PDFName.of('AF')));
+  const afRefs = new Set<string>();
+  if (af) for (let i = 0; i < af.size(); i++) afRefs.add(String(af.get(i)));
+  let filespecsNotInAf = 0;
 
-  for (const [, obj] of ctx.enumerateIndirectObjects()) {
-    const d = obj instanceof PDFDict ? obj : obj instanceof PDFRawStream ? obj.dict : undefined;
-    if (!d) continue;
+  visitDicts(doc, (d, ref, stream) => {
     const type = nameOf(d.get(PDFName.of('Type')));
     const subtype = nameOf(d.get(PDFName.of('Subtype')));
 
@@ -445,8 +769,42 @@ export async function pdfaWarnings(bytes: Uint8Array): Promise<string[]> {
     const group = dictOf(doc, d.get(PDFName.of('Group')));
     if (group && nameOf(group.get(PDFName.of('S'))) === 'Transparency') transparencyGroups++;
     const smask = d.get(PDFName.of('SMask'));
-    if (type === 'ExtGState' && smask && nameOf(smask) !== 'None') softMasks++;
-  }
+    if (type === 'ExtGState') {
+      if (smask && nameOf(smask) !== 'None') softMasks++;
+      for (const k of ['CA', 'ca']) {
+        const v = numberOf(doc, d.get(PDFName.of(k)));
+        if (v !== undefined && v < 1) alpha++;
+      }
+      for (const bm of filterNames(doc, d.get(PDFName.of('BM')))) {
+        if (bm !== 'Normal' && bm !== 'Compatible') blendModes.add(bm);
+      }
+    }
+    if (stream) {
+      const filters = filterNames(doc, d.get(PDFName.of('Filter')));
+      if (filters.includes('LZWDecode')) lzw++;
+      if (subtype === 'Image') {
+        if (filters.includes('JPXDecode')) jpx++;
+        if (numberOf(doc, d.get(PDFName.of('BitsPerComponent'))) === 16) deep++;
+        if (smask && !(smask instanceof PDFName)) imageSoftMasks++;
+      }
+    }
+    if (isFilespec(d)) {
+      filespecs++;
+      const rel = nameOf(d.get(PDFName.of('AFRelationship')));
+      if (!rel || !ALLOWED_AF.has(rel)) filespecsNoRel++;
+      if (!afRefs.has(ref.toString())) filespecsNotInAf++;
+      const ef = dictOf(doc, d.get(PDFName.of('EF')));
+      if (ef) {
+        for (const key of ef.keys()) {
+          const s = ctx.lookup(ef.get(key));
+          if (!(s instanceof PDFStream)) continue;
+          if (!(s.dict.get(PDFName.of('Subtype')) instanceof PDFName)) efNoMime++;
+          const params = dictOf(doc, s.dict.get(PDFName.of('Params')));
+          if (!params?.has(PDFName.of('ModDate'))) efNoModDate++;
+        }
+      }
+    }
+  });
 
   if (nonEmbedded.size) {
     const list = [...nonEmbedded].slice(0, 10).join(', ');
@@ -455,14 +813,50 @@ export async function pdfaWarnings(bytes: Uint8Array): Promise<string[]> {
       `${nonEmbedded.size} font(s) are not embedded (${list}${more}). PDF/A requires every font to be embedded; validators will reject this file.`,
     );
   }
-  if (transparencyGroups) {
-    warnings.push(
-      `${transparencyGroups} transparency group(s) found. PDF/A-2 allows transparency, but blending must resolve against the sRGB output intent; check the result.`,
-    );
+
+  if (lv === '1b') {
+    const head = String.fromCharCode(...bytes.subarray(0, 8));
+    if (head !== '%PDF-1.4' && !/^%PDF-1\.[0-3]$/.test(head)) {
+      warnings.push(`The file header is "${head}"; PDF/A-1 is based on PDF 1.4.`);
+    }
+    const transparency = transparencyGroups + softMasks + imageSoftMasks + alpha + blendModes.size;
+    if (transparency) {
+      const parts: string[] = [];
+      if (transparencyGroups) parts.push(`${transparencyGroups} transparency group(s)`);
+      if (softMasks) parts.push(`${softMasks} soft mask(s) in graphics states`);
+      if (imageSoftMasks) parts.push(`${imageSoftMasks} image(s) with an alpha channel (SMask)`);
+      if (alpha) parts.push(`${alpha} constant opacity value(s) below 1 (/CA, /ca)`);
+      if (blendModes.size) parts.push(`blend modes ${[...blendModes].join(', ')}`);
+      warnings.push(
+        `Transparency found: ${parts.join('; ')}. PDF/A-1 forbids transparency; flatten the document or choose PDF/A-2b.`,
+      );
+    }
+    if (jpx) warnings.push(`${jpx} JPEG 2000 image(s) (JPXDecode) found; PDF/A-1 forbids JPEG 2000. Choose PDF/A-2b or re-compress the images.`);
+    if (deep) warnings.push(`${deep} image(s) with 16 bits per component found; PDF/A-1 allows at most 8.`);
+    if (doc.catalog.has(PDFName.of('OCProperties'))) {
+      warnings.push('The document contains optional content (layers); PDF/A-1 forbids it.');
+    }
+  } else {
+    if (transparencyGroups) {
+      warnings.push(
+        `${transparencyGroups} transparency group(s) found. ${label} allows transparency, but blending must resolve against the sRGB output intent; check the result.`,
+      );
+    }
+    if (softMasks) {
+      warnings.push(`${softMasks} soft mask(s) found in graphics states.`);
+    }
   }
-  if (softMasks) {
-    warnings.push(`${softMasks} soft mask(s) found in graphics states.`);
+  if (lzw) warnings.push(`${lzw} stream(s) use LZW compression, which PDF/A forbids. Re-compress the document.`);
+
+  if (lv === '3b') {
+    if (filespecsNoRel) warnings.push(`${filespecsNoRel} embedded file(s) lack a valid /AFRelationship.`);
+    if (filespecsNotInAf) warnings.push(`${filespecsNotInAf} embedded file(s) are not listed in the document /AF array.`);
+    if (efNoMime) warnings.push(`${efNoMime} embedded file stream(s) lack a MIME type (/Subtype).`);
+    if (efNoModDate) warnings.push(`${efNoModDate} embedded file stream(s) lack /Params /ModDate.`);
+  } else if (filespecs) {
+    warnings.push(`${filespecs} embedded file(s) found; ${label} does not allow arbitrary embedded files. Choose PDF/A-3b to keep them.`);
   }
-  warnings.push('The result carries PDF/A-2b markers but has not been validated. Validate it with veraPDF before archiving.');
+
+  warnings.push(`The result carries ${label} markers but has not been validated. Validate it with veraPDF before archiving.`);
   return warnings;
 }

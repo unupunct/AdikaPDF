@@ -14,6 +14,7 @@ import * as pdfjs from 'pdfjs-dist/legacy/build/pdf.mjs';
 import { Document, Packer, Paragraph, HeadingLevel, Table, TableRow, TableCell, TextRun } from 'docx';
 import JSZip from 'jszip';
 import { launchApp, tempDir } from './harness.mjs';
+import { registerFormatTests } from './formats.part.mjs';
 
 const only = process.argv.slice(2).filter((a) => !a.startsWith('--'));
 const shots = process.argv.includes('--shots');
@@ -728,7 +729,7 @@ test('PDF/A-2b conversion and flatten', async () => {
   await open(F.form);
   const warnings = await S(() => window.__adika.convert.runPdfA({ title: 'Archive', author: 'Adika' }));
   await idle();
-  const path = await savedFile(/-pdfa\.pdf$/);
+  const path = await savedFile(/-pdfa2b\.pdf$/);
   const doc = await PDFDocument.load(readFileSync(path));
   assert(doc.getPageCount() === 1, 'PDF/A output loads');
   const raw = readFileSync(path).toString('latin1');
@@ -753,6 +754,8 @@ test('scanner reports a clear message when no scanner is attached', async () => 
   assert(/scanner|cancel|ok:0|err:/i.test(res), `scan result: ${res}`);
   console.log(`   scan → ${res.slice(0, 120)}`);
 });
+
+registerFormatTests(test, { S, page, dir, open, idle, savedFile, assert, pdfText, join, writeFileSync, readFileSync, JSZip, PDFDocument, F, pdfjs, FONT_DATA });
 
 test('dark mode toggle and welcome after close', async () => {
   await page.click('[data-testid="theme-toggle"]');

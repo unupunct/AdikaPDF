@@ -14,9 +14,9 @@ OCR and convert PDFs entirely on your computer. Nothing is uploaded.
 | Organize | Drag-and-drop page grid, rotate, delete, duplicate, insert blank, merge, split, extract |
 | Forms | Create text, checkbox, radio, dropdown and signature fields; fill existing forms; CSV export (single or batch) |
 | Security | True redaction (content destroyed), AES-256 password protection with permissions, metadata sanitising |
-| Convert to PDF | Word / Excel / PowerPoint (via installed Microsoft Office, LibreOffice fallback), images (PNG/JPG/WebP/TIFF/GIF/BMP), HTML files and web pages, Markdown, text, WIA scanner, camera |
-| Convert from PDF | Word, Excel (table columns detected), PowerPoint, PNG/JPEG/TIFF, SVG, HTML5, Markdown, text |
-| Optimise | Offline OCR (searchable text layer), compression, PDF/A-2b, flatten |
+| Convert to PDF | Word / Excel / PowerPoint (via installed Microsoft Office, LibreOffice fallback), images (PNG/JPG/WebP/TIFF/GIF/BMP, **HEIC/HEIF** iPhone photos), HTML files and web pages, Markdown, text, **EPUB** e-books, **e-mails** (.eml, Outlook .msg, .mht — attachments kept inside the PDF), **XPS / OpenXPS** (vector), **DXF** CAD drawings (vector, CAD layers as PDF layers), WIA scanner, camera |
+| Convert from PDF | Word (.docx), **OpenDocument (.odt)**, **RTF**, Excel (table columns detected), **CSV**, PowerPoint, PNG/JPEG/TIFF, SVG, HTML5, **EPUB**, Markdown, text, **JSON** (text with positions, outline, metadata, form data) |
+| Optimise | Offline OCR in 10 languages (Română, English, Deutsch, Français, Español, Italiano, Magyar, Português, Nederlands, Polski) with a searchable Unicode text layer, compression, **PDF/A-1b, 2b and 3b** (3b can embed the source files), flatten |
 
 ## Install
 
@@ -54,8 +54,9 @@ output file independently with pdf-lib and pdf.js.
 - Redacted pages are rebuilt as images (run OCR afterwards to make them searchable again).
 - Password-protected PDFs open read-only.
 - PDF/A output carries the required markers; validate critical archives with veraPDF.
-- OCR language: English.
+- OCR is statistical: on clean scans most words come out exactly, but check important text (e.g. a capital Ș at the start of a line can be read as S).
+- EPUB with DRM, binary DXF and DWG files are not supported (save DWG drawings as DXF).
 
 ## License
 
-MIT. Bundled Noto fonts are under the SIL Open Font License.
+MIT. Third-party components keep their own licences, including: pdf.js and Noto fonts (Apache-2.0 / SIL OFL), pdf-lib and Tesseract.js (MIT, traineddata Apache-2.0), node-forge (BSD/GPL dual, used under BSD), **libheif-js (LGPL-3.0, shipped as a separate, unmodified module)**, @kenjiuno/msgreader (Apache-2.0), @kenjiuno/decompressrtf (BSD-2-Clause), postal-mime (MIT-0), dxf-parser (MIT), docx and JSZip (MIT).

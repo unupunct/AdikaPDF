@@ -2,7 +2,7 @@
 import { create } from 'zustand';
 import type { ExportFormat } from '@/actions/convert';
 
-export type ImportKind = 'office' | 'images' | 'html' | 'markdown' | 'scan';
+export type ImportKind = 'office' | 'images' | 'html' | 'markdown' | 'documents' | 'cad' | 'scan';
 
 interface ModalArgs {
   exportFormat: ExportFormat;

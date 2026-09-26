@@ -478,6 +478,10 @@ function ConvertTab() {
           <Small icon={<FileText size={i} />} label="Markdown / text" onClick={() => openImport('markdown')} />
           <Small icon={<Camera size={i} />} label="Scanner / camera" onClick={() => openImport('scan')} />
         </Stack>
+        <Stack>
+          <Small icon={<BookCopy size={i} />} label="EPUB / e-mail / XPS" onClick={() => openImport('documents')} testId="btn-import-documents" />
+          <Small icon={<PenTool size={i} />} label="CAD (DXF)" onClick={() => openImport('cad')} testId="btn-import-cad" />
+        </Stack>
       </Group>
       <Group label="Export PDF to">
         <Big icon={<FileInput size={I} />} label="Word" disabled={!hasDoc} onClick={() => openExport('docx')} testId="btn-export-docx" />
@@ -487,6 +491,11 @@ function ConvertTab() {
           <Small icon={<FileImage size={i} />} label="Images" disabled={!hasDoc} onClick={() => openExport('png')} />
           <Small icon={<PenTool size={i} />} label="SVG" disabled={!hasDoc} onClick={() => openExport('svg')} />
           <Small icon={<FileCode2 size={i} />} label="HTML / Markdown" disabled={!hasDoc} onClick={() => openExport('html')} />
+        </Stack>
+        <Stack>
+          <Small icon={<FileText size={i} />} label="ODT / RTF" disabled={!hasDoc} onClick={() => openExport('odt')} />
+          <Small icon={<BookCopy size={i} />} label="EPUB" disabled={!hasDoc} onClick={() => openExport('epub')} />
+          <Small icon={<TableProperties size={i} />} label="CSV / JSON" disabled={!hasDoc} onClick={() => openExport('csv')} />
         </Stack>
       </Group>
       <Group label="Optimize">

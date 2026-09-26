@@ -6,7 +6,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { usePDFStore } from '@/store/usePDFStore';
 import { openPdfBytes, withBusy } from '@/actions/document';
-import { deliverPdf, imagesToPdf, OFFICE_EXTENSIONS, IMAGE_EXTENSIONS } from '@/actions/convert';
+import { CAD_EXTENSIONS, DOCUMENT_EXTENSIONS, deliverPdf, documentToPdf, imagesToPdf, OFFICE_EXTENSIONS, IMAGE_EXTENSIONS } from '@/actions/convert';
+import { loadFontBytes } from '@/lib/fonts';
 import { imageFileToDataUrl } from '@/lib/objectFactory';
 import { decodeTiff } from '@/lib/images';
 
@@ -58,6 +59,7 @@ async function handleFiles(files: File[]): Promise<void> {
   const pdfs = files.filter((f) => ext(f) === 'pdf');
   const images = files.filter((f) => IMAGE_EXTENSIONS.includes(ext(f)));
   const office = files.filter((f) => OFFICE_EXTENSIONS.includes(ext(f)));
+  const docs = files.filter((f) => DOCUMENT_EXTENSIONS.includes(ext(f)) || CAD_EXTENSIONS.includes(ext(f)));
   const store = usePDFStore.getState();
   const hasDoc = store.pages.length > 0;
 
@@ -76,6 +78,20 @@ async function handleFiles(files: File[]): Promise<void> {
       });
       usePDFStore.getState().toast(`Added ${pdfs.length} PDF${pdfs.length > 1 ? 's' : ''} at the end.`, 'success');
     }
+  }
+  for (const f of docs) {
+    await withBusy(`Converting ${f.name}…`, async () => {
+      const bytes = new Uint8Array(await f.arrayBuffer());
+      let pdf: Uint8Array;
+      if (ext(f) === 'dxf') {
+        const { DXF_DEFAULT_OPTIONS, decodeDxf, dxfToPdf } = await import('@/lib/pdf/dxf');
+        pdf = (await dxfToPdf(decodeDxf(bytes), { ...DXF_DEFAULT_OPTIONS, loadFont: () => loadFontBytes({ family: 'sans', bold: false, italic: false }) })).bytes;
+      } else {
+        pdf = (await documentToPdf(bytes, f.name, { pageSize: 'A4', landscape: false, marginMm: 15 })).bytes;
+      }
+      const st = usePDFStore.getState();
+      await deliverPdf(pdf, f.name, st.pages.length > 0 && !st.readOnlyReason);
+    });
   }
   if (images.length) {
     const decoded: Array<{ src: string; width: number; height: number }> = [];

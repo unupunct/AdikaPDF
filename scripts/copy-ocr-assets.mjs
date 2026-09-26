@@ -1,4 +1,4 @@
-// Copies the tesseract.js runtime (worker, WASM cores, English LSTM data) into
+// Copies the tesseract.js runtime (worker, WASM cores, LSTM language data) into
 // public/tesseract so OCR runs fully offline.
 //
 // tesseract.js v7 (src/worker-script/browser/getCore.js) loads, when corePath
@@ -8,7 +8,8 @@
 //   tesseract-core-relaxedsimd.wasm.js | tesseract-core-simd.wasm.js
 //   | tesseract-core.wasm.js                 (legacy / combined OEM)
 // The *.wasm.js builds embed their WASM, so they are self-contained. Language
-// data is fetched as `${langPath}/${lang}.traineddata.gz` when gzip is true.
+// data is fetched as `${langPath}/${lang}.traineddata.gz` when gzip is true;
+// every installed @tesseract.js-data/<lang> package is copied.
 //
 // Default copies only what OEM.LSTM_ONLY needs (~12 MB of cores). Pass --all
 // to copy every core variant (*.js and *.wasm, ~44 MB).
@@ -49,9 +50,16 @@ if (!cores.length) {
 }
 for (const f of cores) copy(join(coreDir, f), join(dest, f));
 
-copy(
-  join(nm, '@tesseract.js-data', 'eng', '4.0.0_best_int', 'eng.traineddata.gz'),
-  join(langDest, 'eng.traineddata.gz'),
-);
+const dataDir = join(nm, '@tesseract.js-data');
+const langs = existsSync(dataDir)
+  ? readdirSync(dataDir).filter((l) => existsSync(join(dataDir, l, '4.0.0_best_int', `${l}.traineddata.gz`)))
+  : [];
+if (!langs.includes('eng')) {
+  console.error('tesseract: English data missing (node_modules/@tesseract.js-data/eng)');
+  failed = true;
+}
+for (const l of langs) {
+  copy(join(dataDir, l, '4.0.0_best_int', `${l}.traineddata.gz`), join(langDest, `${l}.traineddata.gz`));
+}
 
 if (failed) process.exit(1);

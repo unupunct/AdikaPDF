@@ -10,6 +10,53 @@ import { protectDocument } from '@/actions/security';
 import type { PdfPermissions } from '@/lib/crypto/encrypt';
 import { AdikaLogo } from '@/components/shell/AdikaLogo';
 import { cn } from '@/lib/cn';
+import { OCR_LANGUAGES } from '@/lib/pdf/ocr';
+import type { PdfALevel } from '@/lib/pdf/pdfa';
+import { pickFiles } from '@/lib/platform';
+
+const PDFA_HINTS: Record<PdfALevel, string> = {
+  '1b': 'Accepted by the most archives. Transparency and layers are removed or flagged.',
+  '2b': 'The usual choice for long-term storage and e-government submissions.',
+  '3b': 'Like 2b, and keeps attached files (e.g. the editable original) inside the archive.',
+};
+
+function guessMime(name: string): string {
+  const ext = name.split('.').pop()?.toLowerCase() ?? '';
+  const map: Record<string, string> = {
+    docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    xml: 'application/xml',
+    csv: 'text/csv',
+    txt: 'text/plain',
+    json: 'application/json',
+    pdf: 'application/pdf',
+    png: 'image/png',
+    jpg: 'image/jpeg',
+    jpeg: 'image/jpeg',
+  };
+  return map[ext] ?? 'application/octet-stream';
+}
+
+const OCR_LANG_KEY = 'adika.ocrLangs';
+
+function loadOcrLangs(): string[] {
+  try {
+    const v = JSON.parse(localStorage.getItem(OCR_LANG_KEY) ?? 'null') as unknown;
+    if (Array.isArray(v) && v.every((x) => typeof x === 'string') && v.length) return v as string[];
+  } catch {
+    /* ignore */
+  }
+  return ['ron', 'eng'];
+}
+
+function saveOcrLangs(langs: string[]): void {
+  try {
+    localStorage.setItem(OCR_LANG_KEY, JSON.stringify(langs));
+  } catch {
+    /* ignore */
+  }
+}
 
 const close = () => usePDFStore.getState().openModal(null);
 
@@ -385,13 +432,20 @@ export function OcrModal() {
   const [scope, setScope] = useState<'all' | 'current' | 'range'>('all');
   const [range, setRange] = useState('1-');
   const [dpi, setDpi] = useState(300);
+  const [langs, setLangs] = useState<string[]>(() => loadOcrLangs());
   const [error, setError] = useState<string | null>(null);
+
+  const toggleLang = (code: string) => {
+    const next = langs.includes(code) ? langs.filter((l) => l !== code) : [...langs, code];
+    setLangs(next.length ? next : ['eng']);
+  };
 
   const run = async () => {
     try {
       const pageNumbers = scope === 'all' ? Array.from({ length: count }, (_, i) => i + 1) : scope === 'current' ? [Math.max(1, current)] : [...new Set(parseRanges(range, count).flat())];
+      saveOcrLangs(langs);
       close();
-      await runOcr({ pageNumbers, dpi, lang: 'eng' });
+      await runOcr({ pageNumbers, dpi, lang: langs.join('+') });
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
@@ -425,7 +479,21 @@ export function OcrModal() {
       <Field label="Resolution" hint="300 DPI is best for typical scans; 400 for small print.">
         <Select value={String(dpi)} onChange={(v) => setDpi(Number(v))} ariaLabel="OCR resolution" options={[{ value: '200', label: '200 DPI (fast)' }, { value: '300', label: '300 DPI (recommended)' }, { value: '400', label: '400 DPI (small text)' }]} />
       </Field>
-      <Callout kind="info">Language: English (Latin script). Accents such as ă, î, ș, ț are usually recognised as their base letters.</Callout>
+      <Field label="Document languages" hint="Pick every language that appears in the scan. Fewer languages = faster and more accurate.">
+        <div className="flex flex-wrap gap-1.5" data-testid="ocr-langs">
+          {OCR_LANGUAGES.map((l) => (
+            <button
+              key={l.code}
+              type="button"
+              aria-pressed={langs.includes(l.code)}
+              onClick={() => toggleLang(l.code)}
+              className={cn('rounded-full border px-2.5 py-1 text-xs', langs.includes(l.code) ? 'border-brand-600 bg-brand-600 text-white' : 'border-app hover-app')}
+            >
+              {l.label}
+            </button>
+          ))}
+        </div>
+      </Field>
       {error ? <Callout kind="error">{error}</Callout> : null}
     </Dialog>
   );
@@ -438,6 +506,8 @@ export function PdfaModal() {
   const fileName = usePDFStore((s) => s.fileName);
   const [title, setTitle] = useState('');
   const [author, setAuthor] = useState('');
+  const [level, setLevel] = useState<PdfALevel>('2b');
+  const [attachments, setAttachments] = useState<Array<{ name: string; mime: string; bytes: Uint8Array }>>([]);
   const [warnings, setWarnings] = useState<string[] | null>(null);
 
   useEffect(() => {
@@ -451,14 +521,14 @@ export function PdfaModal() {
     <Dialog
       open={open}
       onOpenChange={(o) => !o && close()}
-      title="Convert to PDF/A-2b (archival)"
-      description="Embeds an sRGB output intent and XMP metadata, and removes JavaScript, attachments and encryption."
+      title="Convert to PDF/A (archival)"
+      description="Embeds an sRGB output intent and XMP metadata, and removes JavaScript and encryption."
       width={560}
       testId="pdfa-modal"
       footer={
         <>
           <Button onClick={close}>Close</Button>
-          <Button variant="primary" onClick={async () => setWarnings((await runPdfA({ title, author })) ?? null)} data-testid="pdfa-run">
+          <Button variant="primary" onClick={async () => setWarnings((await runPdfA({ title, author, level, attachments: level === '3b' ? attachments : undefined })) ?? null)} data-testid="pdfa-run">
             Convert and save copy
           </Button>
         </>
@@ -472,6 +542,32 @@ export function PdfaModal() {
           <Input value={author} onChange={(e) => setAuthor(e.target.value)} />
         </Field>
       </div>
+      <Field label="Standard" hint={PDFA_HINTS[level]}>
+        <Select
+          value={level}
+          onChange={setLevel}
+          ariaLabel="PDF/A level"
+          options={[
+            { value: '1b', label: 'PDF/A-1b — widest compatibility (PDF 1.4, no transparency)' },
+            { value: '2b', label: 'PDF/A-2b — recommended (transparency, layers allowed)' },
+            { value: '3b', label: 'PDF/A-3b — with embedded source files' },
+          ]}
+        />
+      </Field>
+      {level === '3b' ? (
+        <div className="mb-3">
+          <Button
+            size="sm"
+            onClick={async () => {
+              const files = await pickFiles([{ name: 'Any file', extensions: ['*'] }], true);
+              setAttachments([...attachments, ...files.map((f) => ({ name: f.name, mime: guessMime(f.name), bytes: f.bytes }))]);
+            }}
+          >
+            Attach source files…
+          </Button>
+          <span className="ml-2 text-xs text-muted">{attachments.length ? attachments.map((a) => a.name).join(', ') : 'e.g. the original .docx or .xlsx'}</span>
+        </div>
+      ) : null}
       {warnings ? (
         warnings.length ? (
           <Callout kind="warn">
@@ -511,7 +607,7 @@ export function AboutModal() {
   return (
     <Dialog open={open} onOpenChange={(o) => !o && close()} title="About" width={520} footer={<Button variant="primary" onClick={close}>Close</Button>}>
       <AdikaLogo className="mx-auto mb-3 h-14" />
-      <p className="mb-4 text-center text-xs text-muted">Version 1.0.1 · Privacy-first, offline PDF editor · MIT licence</p>
+      <p className="mb-4 text-center text-xs text-muted">Version 1.1.0 · Privacy-first, offline PDF editor · MIT licence</p>
       <table className="w-full text-xs">
         <tbody>
           {shortcuts.map(([k, v]) => (
@@ -523,7 +619,7 @@ export function AboutModal() {
         </tbody>
       </table>
       <p className="mt-4 text-[11px] text-muted">
-        Built with pdf.js (Mozilla), pdf-lib, Konva, node-forge, Tesseract.js, Noto fonts (SIL OFL) and Tauri.
+        Built with pdf.js (Mozilla), pdf-lib, Konva, node-forge, Tesseract.js, libheif (LGPL-3.0), postal-mime, msgreader, dxf-parser, Noto fonts (SIL OFL) and Tauri.
       </p>
     </Dialog>
   );

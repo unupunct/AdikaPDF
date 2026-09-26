@@ -13,7 +13,7 @@ void (async () => {
     enabled = await invoke<boolean>('e2e_mode').catch(() => false);
   }
   if (!enabled) return;
-  const [store, dialogs, document, convert, security, sign, platform, signature, search] = await Promise.all([
+  const [store, dialogs, document, convert, security, sign, platform, signature, search, email] = await Promise.all([
     import('./store/usePDFStore'),
     import('./store/useDialogs'),
     import('./actions/document'),
@@ -23,6 +23,7 @@ void (async () => {
     import('./lib/platform'),
     import('./lib/crypto/digitalSignature'),
     import('./lib/search'),
+    import('./lib/pdf/email'),
   ]);
   (window as unknown as { __adika: unknown }).__adika = {
     store: store.usePDFStore,
@@ -34,6 +35,7 @@ void (async () => {
     platform,
     signature,
     search,
+    email,
   };
 })();
 

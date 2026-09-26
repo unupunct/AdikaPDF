@@ -70,6 +70,7 @@ import {
 } from '@/lib/geometry';
 import { loadFontBytes, type FontVariant } from '@/lib/fonts';
 import { layoutText, canvasMeasure, type Measure } from '@/lib/textLayout';
+import { embedFontForText } from './fontEmbed';
 import type { FieldValue } from '@/store/usePDFStore';
 
 export interface ExportInput {
@@ -226,19 +227,41 @@ function removeAnnotations(page: PDFPage): void {
 interface DrawContext {
   doc: PDFDocument;
   fonts: Map<string, PDFFont>;
+  /** Every string drawn per font variant, so each font keeps just those glyphs. */
+  fontTexts: Map<string, string[]>;
   images: Map<string, PDFImage>;
   opts: Required<Pick<ExportOptions, 'measure' | 'loadFont'>>;
   fieldFont: PDFFont | null;
 }
 
+function variantKey(v: FontVariant): string {
+  return `${v.family}-${v.bold}-${v.italic}`;
+}
+
 async function fontFor(ctx: DrawContext, v: FontVariant): Promise<PDFFont> {
-  const key = `${v.family}-${v.bold}-${v.italic}`;
+  const key = variantKey(v);
   let f = ctx.fonts.get(key);
   if (!f) {
-    f = await ctx.doc.embedFont(await ctx.opts.loadFont(v), { subset: true });
+    f = await embedFontForText(ctx.doc, await ctx.opts.loadFont(v), ctx.fontTexts.get(key) ?? []);
     ctx.fonts.set(key, f);
   }
   return f;
+}
+
+/** Strings each font variant will draw (text boxes and signature captions). */
+function collectFontTexts(objects: EditorObject[]): Map<string, string[]> {
+  const out = new Map<string, string[]>();
+  const add = (v: FontVariant, s: string) => {
+    const k = variantKey(v);
+    const list = out.get(k) ?? [];
+    list.push(s);
+    out.set(k, list);
+  };
+  for (const o of objects) {
+    if (o.type === 'text') add({ family: o.fontFamily, bold: o.bold, italic: o.italic }, o.text);
+    if (o.type === 'signature' && o.showCaption) add({ family: 'sans', bold: false, italic: false }, `${signatureCaption(o)}…`);
+  }
+  return out;
 }
 
 async function imageFor(ctx: DrawContext, src: string): Promise<PDFImage> {
@@ -663,7 +686,7 @@ export async function buildPdf(input: ExportInput, options: ExportOptions = {}):
 
   // 5. Objects.
   const needsFieldFont = objects.some((o) => o.type === 'field') || formTouched;
-  const ctx: DrawContext = { doc, fonts: new Map(), images: new Map(), opts, fieldFont: null };
+  const ctx: DrawContext = { doc, fonts: new Map(), fontTexts: collectFontTexts(objects), images: new Map(), opts, fieldFont: null };
   if (needsFieldFont) {
     // Full (non-subset) font so recipients can type any character later.
     ctx.fieldFont = await doc.embedFont(await opts.loadFont({ family: 'sans', bold: false, italic: false }), { subset: false });

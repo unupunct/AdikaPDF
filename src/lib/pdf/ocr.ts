@@ -4,9 +4,10 @@
 // scripts/copy-ocr-assets.mjs. Nothing is fetched from a CDN.
 
 import type { PDFDocumentProxy } from 'pdfjs-dist';
+import { embedFontForText } from './fontEmbed';
+import fontkit from '@pdf-lib/fontkit';
 import {
   PDFDocument,
-  StandardFonts,
   TextRenderingMode,
   beginText,
   endText,
@@ -20,6 +21,38 @@ import {
   type PDFFont,
 } from 'pdf-lib';
 import { canvasToBlob, renderPageToCanvas } from './convert';
+import { loadFontBytes } from '../fonts';
+
+/** Languages whose traineddata is bundled under public/tesseract/lang. */
+export const OCR_LANGUAGES: Array<{ code: string; label: string }> = [
+  { code: 'eng', label: 'English' },
+  { code: 'ron', label: 'Română' },
+  { code: 'deu', label: 'Deutsch' },
+  { code: 'fra', label: 'Français' },
+  { code: 'spa', label: 'Español' },
+  { code: 'ita', label: 'Italiano' },
+  { code: 'hun', label: 'Magyar' },
+  { code: 'por', label: 'Português' },
+  { code: 'nld', label: 'Nederlands' },
+  { code: 'pol', label: 'Polski' },
+];
+
+const KNOWN_LANGS = new Set(OCR_LANGUAGES.map((l) => l.code));
+
+/**
+ * Normalises a language spec ('ron+eng', ['ron', 'eng'], ' RON + eng ') to a
+ * de-duplicated list of bundled codes. Unknown codes are dropped; falls back
+ * to English when nothing usable remains.
+ */
+export function parseOcrLangs(lang: string | string[] | undefined): string[] {
+  const raw = Array.isArray(lang) ? lang : (lang ?? 'eng').split('+');
+  const out: string[] = [];
+  for (const r of raw) {
+    const c = r.trim().toLowerCase();
+    if (KNOWN_LANGS.has(c) && !out.includes(c)) out.push(c);
+  }
+  return out.length ? out : ['eng'];
+}
 
 export interface OcrWord {
   text: string;
@@ -87,12 +120,13 @@ function assetBase(): URL {
 
 export async function ocrPages(
   pdf: PDFDocumentProxy,
-  opts: { pageNumbers: number[]; dpi?: number; lang?: string },
+  opts: { pageNumbers: number[]; dpi?: number; lang?: string | string[] },
   onProgress?: (msg: string, fraction: number) => void,
 ): Promise<OcrPageResult[]> {
   const { createWorker, OEM } = await import('tesseract.js');
   const dpi = opts.dpi ?? 300;
-  const lang = opts.lang ?? 'eng';
+  // tesseract.js v7 accepts an array (or a '+'-joined string) of languages.
+  const langs = parseOcrLangs(opts.lang);
   const pages = opts.pageNumbers.filter((n) => n >= 1 && n <= pdf.numPages);
   const total = Math.max(1, pages.length);
   let current = 0;
@@ -101,7 +135,7 @@ export async function ocrPages(
 
   const base = assetBase();
   onProgress?.('Loading OCR engine', 0);
-  const worker = await createWorker(lang, OEM.LSTM_ONLY, {
+  const worker = await createWorker(langs, OEM.LSTM_ONLY, {
     workerPath: new URL('tesseract/worker.min.js', base).href,
     corePath: new URL('tesseract/', base).href,
     langPath: new URL('tesseract/lang', base).href,
@@ -145,19 +179,32 @@ export async function ocrPages(
 // Invisible text layer
 // ---------------------------------------------------------------------------
 
-/** Replaces characters the font cannot encode (WinAnsi for Helvetica) with '?'. */
-export function sanitizeForFont(text: string, supported: Set<number>): string {
+/** Replaces characters the font cannot encode with `replacement` (default '?'). */
+export function sanitizeForFont(text: string, supported: Set<number>, replacement = '?'): string {
   let out = '';
   for (const ch of text) {
     const cp = ch.codePointAt(0)!;
-    out += supported.has(cp) ? ch : '?';
+    out += supported.has(cp) ? ch : replacement;
   }
   return out;
 }
 
-export async function makeSearchable(bytes: Uint8Array, results: OcrPageResult[]): Promise<Uint8Array> {
+export interface MakeSearchableOptions {
+  /** TTF/OTF bytes for the invisible text. Default: bundled Noto Sans Regular. */
+  loadFont?: () => Promise<Uint8Array>;
+}
+
+export async function makeSearchable(
+  bytes: Uint8Array,
+  results: OcrPageResult[],
+  opts?: MakeSearchableOptions,
+): Promise<Uint8Array> {
   const doc = await PDFDocument.load(bytes, { updateMetadata: false });
-  const font: PDFFont = await doc.embedFont(StandardFonts.Helvetica);
+  doc.registerFontkit(fontkit);
+  const fontBytes = await (opts?.loadFont ?? (() => loadFontBytes({ family: 'sans', bold: false, italic: false })))();
+  // Noto Sans covers Latin Extended, so ă â î ș ț survive extraction. Only the
+  // recognised words' glyphs are kept (see fontEmbed.ts for why not subset: true).
+  const font: PDFFont = await embedFontForText(doc, fontBytes, results.flatMap((r) => r.words.map((w) => w.text)));
   const supported = new Set(font.getCharacterSet());
   const pages = doc.getPages();
   const ctx = doc.context;
@@ -180,7 +227,8 @@ export async function makeSearchable(bytes: Uint8Array, results: OcrPageResult[]
 
     const ops = [pushGraphicsState(), beginText(), setTextRenderingMode(TextRenderingMode.Invisible)];
     for (const w of r.words) {
-      const text = sanitizeForFont(w.text, supported).trim();
+      // Characters missing from the font are dropped rather than faked.
+      const text = sanitizeForFont(w.text, supported, '').trim();
       if (!text) continue;
       const width = w.width * sx;
       const height = w.height * sy;

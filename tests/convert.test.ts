@@ -1,4 +1,5 @@
 import { afterAll, describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
 import { PDFArray, PDFDict, PDFDocument, PDFName, PDFRawStream, StandardFonts } from 'pdf-lib';
 import JSZip from 'jszip';
 import * as pdfjs from 'pdfjs-dist/legacy/build/pdf.mjs';
@@ -385,14 +386,16 @@ describe('OCR text layer', () => {
       },
       { pageNumber: 2, widthPt: 300, heightPt: 200, words: [{ text: 'Cropped', x: 10, y: 10, width: 60, height: 12, confidence: 90 }] },
     ];
-    const out = await makeSearchable(bytes, results);
+    // Node has no fetch for Vite asset URLs: hand the bundled TTF over directly.
+    const notoSans = new URL('../node_modules/@expo-google-fonts/noto-sans/400Regular/NotoSans_400Regular.ttf', import.meta.url);
+    const out = await makeSearchable(bytes, results, { loadFont: async () => new Uint8Array(readFileSync(notoSans)) });
     const pdf = await openPdf(out);
     const page = await pdf.getPage(1);
     const tc = await page.getTextContent();
     const text = tc.items.map((i) => ('str' in i ? i.str : '')).join(' ');
     expect(text).toContain('Scanned');
     expect(text).toContain('invoice');
-    expect(text).toContain('?ar?');
+    expect(text).toContain('Ţară');
     // Position: first word's left edge ~ x=40, baseline ~ 300-40-14*0.8.
     const first = tc.items.find((i) => 'str' in i && i.str.startsWith('Scanned')) as { transform: number[]; width: number };
     expect(first.transform[4]).toBeCloseTo(40, 0);

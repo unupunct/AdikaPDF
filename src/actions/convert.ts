@@ -24,7 +24,9 @@ import {
 } from '@/lib/pdf/convert';
 import { makeSearchable, ocrPages } from '@/lib/pdf/ocr';
 import { compressPdf, type CompressOptions } from '@/lib/pdf/compress';
-import { convertToPdfA, pdfaWarnings } from '@/lib/pdf/pdfa';
+import { convertToPdfADetailed, pdfaWarnings, type PdfAMeta } from '@/lib/pdf/pdfa';
+import type { DxfToPdfOptions } from '@/lib/pdf/dxf';
+export type { DxfToPdfOptions };
 import { buildPdf, flattenDocument } from '@/lib/pdf/exportPdf';
 import fontkit from '@pdf-lib/fontkit';
 import { loadFontBytes } from '@/lib/fonts';
@@ -109,7 +111,9 @@ function dataUrlToBytes(src: string): Uint8Array {
   return out;
 }
 
-export const IMAGE_EXTENSIONS = ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp', 'tif', 'tiff', 'svg'];
+export const IMAGE_EXTENSIONS = ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp', 'tif', 'tiff', 'svg', 'heic', 'heif'];
+export const DOCUMENT_EXTENSIONS = ['epub', 'eml', 'mht', 'mhtml', 'msg', 'xps', 'oxps'];
+export const CAD_EXTENSIONS = ['dxf'];
 
 export async function pickImagesAsDataUrls(): Promise<Array<{ src: string; width: number; height: number; name: string }>> {
   const files = await pickFiles([{ name: 'Images', extensions: IMAGE_EXTENSIONS }], true);
@@ -117,6 +121,9 @@ export async function pickImagesAsDataUrls(): Promise<Array<{ src: string; width
   for (const f of files) {
     if (/\.tiff?$/i.test(f.name)) {
       for (const p of decodeTiff(f.bytes)) out.push({ ...p, name: f.name });
+    } else if (/\.hei[cf]$/i.test(f.name)) {
+      const { decodeHeic } = await import('@/lib/images/heic');
+      for (const p of await decodeHeic(f.bytes)) out.push({ ...p, name: f.name });
     } else {
       out.push({ ...(await imageFileToDataUrl(f.bytes, f.name)), name: f.name });
     }
@@ -225,9 +232,80 @@ export async function scanToPdf(opts: ImagesToPdfOptions, append: boolean): Prom
   await withBusy('Building PDF…', async () => deliverPdf(await imagesToPdf(images, opts), 'Scan.pdf', append));
 }
 
+// ================================================================ import: EPUB, email, XPS, DXF
+
+/** Converts an EPUB, e-mail (.eml/.msg/.mht) or XPS/OXPS file to PDF bytes. */
+export async function documentToPdf(bytes: Uint8Array, fileName: string, o: HtmlPageOptions): Promise<{ bytes: Uint8Array; notes: string[] }> {
+  const ext = fileName.split('.').pop()?.toLowerCase() ?? '';
+  if (ext === 'xps' || ext === 'oxps') {
+    const { xpsToPdf } = await import('@/lib/pdf/xps');
+    const r = await xpsToPdf(bytes);
+    return { bytes: r.bytes, notes: r.warnings };
+  }
+  if (ext === 'epub') {
+    const { epubToHtml } = await import('@/lib/pdf/epub');
+    const book = await epubToHtml(bytes);
+    const pdf = await htmlToPdf({ html: prepareHtmlFile(book.html, null, o) });
+    const doc = await PDFDocument.load(pdf);
+    doc.setTitle(book.title);
+    if (book.author) doc.setAuthor(book.author);
+    doc.setProducer('Adika PDF Editor');
+    return { bytes: await doc.save(), notes: [] };
+  }
+  if (['eml', 'msg', 'mht', 'mhtml'].includes(ext)) {
+    const { emailToHtml } = await import('@/lib/pdf/email');
+    const mail = await emailToHtml(bytes, fileName);
+    const pdf = await htmlToPdf({ html: prepareHtmlFile(mail.html, null, o) });
+    const doc = await PDFDocument.load(pdf);
+    doc.setTitle(mail.subject || fileName);
+    doc.setProducer('Adika PDF Editor');
+    // Keep the original attachments inside the PDF (paperclip panel in readers).
+    for (const a of mail.attachments.filter((x) => !x.inline)) {
+      await doc.attach(a.bytes, a.name, { mimeType: a.mime || 'application/octet-stream', description: `Attachment of "${mail.subject}"` });
+    }
+    return { bytes: await doc.save(), notes: [] };
+  }
+  throw new Error(`Unsupported document type: .${ext}`);
+}
+
+export async function importDocuments(o: HtmlPageOptions, append: boolean): Promise<void> {
+  const files = await pickFiles([{ name: 'E-books, e-mails and XPS', extensions: DOCUMENT_EXTENSIONS }], true);
+  if (files.length === 0) return;
+  await withBusy('Converting…', async (progress) => {
+    const parts: Uint8Array[] = [];
+    const notes: string[] = [];
+    for (let i = 0; i < files.length; i++) {
+      progress(`Converting ${files[i].name} (${i + 1}/${files.length})…`, i / files.length);
+      const r = await documentToPdf(files[i].bytes, files[i].name, o);
+      parts.push(r.bytes);
+      notes.push(...r.notes);
+    }
+    await deliverPdf(parts.length === 1 ? parts[0] : await concatPdfs(parts), files[0].name, append);
+    if (notes.length) usePDFStore.getState().toast(`Converted with ${notes.length} note(s): ${notes.slice(0, 3).join('; ')}`, 'info');
+  });
+}
+
+export async function importDxf(opts: DxfToPdfOptions, append: boolean): Promise<void> {
+  const files = await pickFiles([{ name: 'DXF drawings', extensions: CAD_EXTENSIONS }], true);
+  if (files.length === 0) return;
+  await withBusy('Converting drawing…', async (progress) => {
+    const { dxfToPdf, decodeDxf } = await import('@/lib/pdf/dxf');
+    const parts: Uint8Array[] = [];
+    const notes: string[] = [];
+    for (let i = 0; i < files.length; i++) {
+      progress(`Drawing ${files[i].name} (${i + 1}/${files.length})…`, i / files.length);
+      const r = await dxfToPdf(decodeDxf(files[i].bytes), { ...opts, loadFont: () => loadFontBytes({ family: 'sans', bold: false, italic: false }) });
+      parts.push(r.bytes);
+      notes.push(...r.warnings);
+    }
+    await deliverPdf(parts.length === 1 ? parts[0] : await concatPdfs(parts), files[0].name, append);
+    if (notes.length) usePDFStore.getState().toast(notes.slice(0, 3).join(' · '), 'info');
+  });
+}
+
 // ================================================================ export
 
-export type ExportFormat = 'docx' | 'xlsx' | 'pptx' | 'png' | 'jpeg' | 'tiff' | 'svg' | 'html' | 'md' | 'txt';
+export type ExportFormat = 'docx' | 'odt' | 'rtf' | 'xlsx' | 'csv' | 'pptx' | 'png' | 'jpeg' | 'tiff' | 'svg' | 'html' | 'epub' | 'md' | 'txt' | 'json';
 
 export interface ExportRequest {
   format: ExportFormat;
@@ -238,6 +316,11 @@ export interface ExportRequest {
 
 const FORMAT_INFO: Record<ExportFormat, { ext: string; label: string }> = {
   docx: { ext: 'docx', label: 'Word document' },
+  odt: { ext: 'odt', label: 'OpenDocument text' },
+  rtf: { ext: 'rtf', label: 'Rich Text' },
+  csv: { ext: 'csv', label: 'CSV table' },
+  epub: { ext: 'epub', label: 'EPUB e-book' },
+  json: { ext: 'json', label: 'JSON data' },
   xlsx: { ext: 'xlsx', label: 'Excel workbook' },
   pptx: { ext: 'pptx', label: 'PowerPoint presentation' },
   png: { ext: 'zip', label: 'PNG images (ZIP)' },
@@ -252,13 +335,26 @@ const FORMAT_INFO: Record<ExportFormat, { ext: string; label: string }> = {
 export async function exportAs(req: ExportRequest): Promise<void> {
   const info = FORMAT_INFO[req.format];
   const result = await withBusy(`Converting to ${info.label}…`, (progress) =>
-    withEditedDoc(async (pdf) => {
+    withEditedDoc(async (pdf, bytes) => {
       const tick = (label: string) => (done: number, total: number) => progress(`${label} (${done}/${total})`, total ? done / total : null);
-      const needsText = ['docx', 'xlsx', 'pptx', 'html', 'md', 'txt'].includes(req.format);
+      const needsText = ['docx', 'odt', 'rtf', 'xlsx', 'csv', 'pptx', 'html', 'epub', 'md', 'txt', 'json'].includes(req.format);
       const text = needsText ? await extractStructuredText(pdf, tick('Reading text'), { detectBold: true, pageNumbers: req.pageNumbers }) : [];
       switch (req.format) {
         case 'docx':
           return exportToDocx(text, baseName());
+        case 'odt':
+          return (await import('@/lib/pdf/exportFormats')).exportToOdt(text, baseName());
+        case 'rtf':
+          return new Blob([(await import('@/lib/pdf/exportFormats')).exportToRtf(text, baseName())], { type: 'application/rtf' });
+        case 'csv':
+          return new Blob([(await import('@/lib/pdf/exportFormats')).exportToCsv(text, { delimiter: ',' })], { type: 'text/csv' });
+        case 'json': {
+          const fields = await (await import('./security')).readFormFields(bytes);
+          const json = await (await import('@/lib/pdf/exportFormats')).exportToJson(pdf, text, { formFields: fields.map((f) => ({ name: f.name, kind: f.kind, value: f.value })) });
+          return new Blob([json], { type: 'application/json' });
+        }
+        case 'epub':
+          return (await import('@/lib/pdf/epub')).pdfToEpub(text, { title: baseName(), author: '' });
         case 'xlsx':
           return exportToXlsx(text);
         case 'pptx':
@@ -313,14 +409,15 @@ export async function runCompress(opts: CompressOptions): Promise<{ before: numb
   return { before: out.before, after: out.after };
 }
 
-export async function runPdfA(meta: { title: string; author: string }): Promise<string[] | undefined> {
-  const out = await withBusy('Converting to PDF/A-2b…', async (progress) => {
+export async function runPdfA(meta: PdfAMeta): Promise<string[] | undefined> {
+  const level = meta.level ?? '2b';
+  const out = await withBusy(`Converting to PDF/A-${level}…`, async (progress) => {
     const bytes = await exportCurrentPdf({}, progress);
-    const pdfa = await convertToPdfA(bytes, meta);
-    return { pdfa, warnings: await pdfaWarnings(pdfa) };
+    const r = await convertToPdfADetailed(bytes, meta);
+    return { pdfa: r.bytes, warnings: [...r.notes, ...(await pdfaWarnings(r.bytes, level))] };
   });
   if (!out) return undefined;
-  await saveDerived(out.pdfa, '-pdfa', true);
+  await saveDerived(out.pdfa, `-pdfa${level}`, true);
   return out.warnings;
 }
 
@@ -329,7 +426,8 @@ export async function flattenCurrent(): Promise<void> {
     const bytes = await exportCurrentPdf({}, progress);
     const doc = await PDFDocument.load(bytes);
     doc.registerFontkit(fontkit);
-    const font = await doc.embedFont(await loadFontBytes({ family: 'sans', bold: false, italic: false }), { subset: true });
+    // Full font: flattened field values may use any character (pdf-lib's subsetter is broken).
+    const font = await doc.embedFont(await loadFontBytes({ family: 'sans', bold: false, italic: false }), { subset: false });
     flattenDocument(doc, font);
     return doc.save({ useObjectStreams: true });
   });

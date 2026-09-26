@@ -1,6 +1,6 @@
 /** "Create PDF from…" (import) and "Export PDF to…" dialogs. */
 import { useEffect, useRef, useState } from 'react';
-import { Camera, FileImage, FileType2, Globe, ScanLine, Trash2 } from 'lucide-react';
+import { BookOpen, Camera, DraftingCompass, FileImage, FileType2, Globe, ScanLine, Trash2 } from 'lucide-react';
 import { usePDFStore } from '@/store/usePDFStore';
 import { useModalArgs, type ImportKind } from '@/store/useModalArgs';
 import { Button, Callout, Checkbox, Dialog, Field, Input, Select, Tabs } from '@/components/ui/primitives';
@@ -8,12 +8,15 @@ import {
   deliverPdf,
   exportAs,
   imagesToPdf,
+  importDocuments,
+  importDxf,
   importOfficeDocuments,
   importTextLike,
   importUrl,
   parseRanges,
   pickImagesAsDataUrls,
   scanToPdf,
+  type DxfToPdfOptions,
   type ExportFormat,
   type HtmlPageOptions,
   type ImagesToPdfOptions,
@@ -66,6 +69,8 @@ export function ImportModal() {
           { value: 'office', label: 'Office' },
           { value: 'images', label: 'Images' },
           { value: 'html', label: 'Web & text' },
+          { value: 'documents', label: 'E-books & mail' },
+          { value: 'cad', label: 'CAD' },
           { value: 'scan', label: 'Scan / camera' },
         ]}
       />
@@ -149,8 +154,51 @@ export function ImportModal() {
         </>
       ) : null}
 
+      {kind === 'documents' ? (
+        <>
+          <p className="mb-3 text-xs text-muted">
+            EPUB e-books (DRM-free), e-mails (.eml, Outlook .msg, .mht) and XPS / OpenXPS documents. E-mail attachments are kept inside the PDF; remote images in e-mails are blocked for privacy.
+          </p>
+          {!avail?.edge ? <Callout kind="warn">EPUB and e-mail conversion use Microsoft Edge to lay out pages; XPS works without it.</Callout> : null}
+          <HtmlOptions value={htmlOpts} onChange={setHtmlOpts} />
+          <Button variant="primary" onClick={() => void run(() => importDocuments(htmlOpts, append))} data-testid="import-documents-pick">
+            <BookOpen size={15} /> Choose files…
+          </Button>
+        </>
+      ) : null}
+
+      {kind === 'cad' ? <CadPanel append={append} run={run} /> : null}
+
       {kind === 'scan' ? <ScanPanel append={append} imgOpts={imgOpts} setImgOpts={setImgOpts} run={run} /> : null}
     </Dialog>
+  );
+}
+
+function CadPanel({ append, run }: { append: boolean; run: (fn: () => Promise<void>) => Promise<void> }) {
+  const [o, setO] = useState<DxfToPdfOptions>({ paper: 'auto', orientation: 'auto', marginMm: 10, blackOnWhite: true, lineWeightMm: 0.25, layers: true });
+  return (
+    <>
+      <p className="mb-3 text-xs text-muted">AutoCAD DXF drawings (ASCII, any version) become vector PDFs. Each CAD layer can become a PDF layer you can switch on and off. DWG files must first be saved as DXF.</p>
+      <div className="grid grid-cols-3 gap-3">
+        <Field label="Paper">
+          <Select value={o.paper} onChange={(paper) => setO({ ...o, paper })} ariaLabel="Paper" options={[{ value: 'auto', label: 'Fit drawing' }, { value: 'A4', label: 'A4' }, { value: 'A3', label: 'A3' }, { value: 'A2', label: 'A2' }, { value: 'Letter', label: 'Letter' }]} />
+        </Field>
+        <Field label="Orientation">
+          <Select value={o.orientation} disabled={o.paper === 'auto'} onChange={(orientation) => setO({ ...o, orientation })} ariaLabel="Orientation" options={[{ value: 'auto', label: 'Automatic' }, { value: 'portrait', label: 'Portrait' }, { value: 'landscape', label: 'Landscape' }]} />
+        </Field>
+        <Field label="Margin (mm)">
+          <Input type="number" min={0} max={50} value={o.marginMm} onChange={(e) => setO({ ...o, marginMm: Math.max(0, Number(e.target.value)) })} />
+        </Field>
+      </div>
+      <Field label="Default line weight (mm)">
+        <Input type="number" min={0.05} max={2} step={0.05} value={o.lineWeightMm} onChange={(e) => setO({ ...o, lineWeightMm: Math.max(0.05, Number(e.target.value)) })} />
+      </Field>
+      <Checkbox checked={o.blackOnWhite} onChange={(blackOnWhite) => setO({ ...o, blackOnWhite })} label="Black lines on white paper (print style)" />
+      <Checkbox checked={o.layers} onChange={(layers) => setO({ ...o, layers })} label="Keep CAD layers as PDF layers" />
+      <Button className="mt-2" variant="primary" onClick={() => void run(() => importDxf(o, append))} data-testid="import-dxf-pick">
+        <DraftingCompass size={15} /> Choose DXF drawings…
+      </Button>
+    </>
   );
 }
 
@@ -264,15 +312,20 @@ function ScanPanel({ append, imgOpts, setImgOpts, run }: { append: boolean; imgO
 
 const FORMATS: Array<{ value: ExportFormat; label: string; hint: string }> = [
   { value: 'docx', label: 'Word (.docx)', hint: 'Editable paragraphs rebuilt from the text layout; headings and bold are detected.' },
+  { value: 'odt', label: 'OpenDocument (.odt)', hint: 'For LibreOffice / OpenOffice; headings, bold, tables and page sizes kept.' },
+  { value: 'rtf', label: 'Rich Text (.rtf)', hint: 'Opens in any word processor, including WordPad.' },
   { value: 'xlsx', label: 'Excel (.xlsx)', hint: 'Table columns are detected from text alignment; numbers become numeric cells. One sheet per page.' },
+  { value: 'csv', label: 'CSV table (.csv)', hint: 'The tables found in the PDF as comma-separated rows (all lines if there are no tables).' },
   { value: 'pptx', label: 'PowerPoint (.pptx)', hint: 'One slide per page (page image), with the page text in the speaker notes.' },
   { value: 'png', label: 'PNG images (ZIP)', hint: 'Lossless page images.' },
   { value: 'jpeg', label: 'JPEG images (ZIP)', hint: 'Smaller page images.' },
   { value: 'tiff', label: 'TIFF (multi-page)', hint: 'One multi-page TIFF file, uncompressed.' },
   { value: 'svg', label: 'SVG (ZIP)', hint: 'Page artwork as an embedded image with real, selectable SVG text on top.' },
   { value: 'html', label: 'HTML5 page', hint: 'A single self-contained, responsive web page with selectable text.' },
+  { value: 'epub', label: 'EPUB e-book (.epub)', hint: 'Reflowable e-book with chapters from the headings, for e-readers and phones.' },
   { value: 'md', label: 'Markdown (.md)', hint: 'Clean text with headings, bold and tables.' },
   { value: 'txt', label: 'Plain text (.txt)', hint: 'Just the text, for search or AI tools.' },
+  { value: 'json', label: 'JSON data (.json)', hint: 'Structured text with positions, fonts, outline, metadata and form-field values.' },
 ];
 
 export function ExportModal() {
