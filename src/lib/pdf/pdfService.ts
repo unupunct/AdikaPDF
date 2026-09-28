@@ -182,12 +182,20 @@ export interface EmbeddedFile {
 export async function getEmbeddedFiles(sourceId: string): Promise<EmbeddedFile[]> {
   const doc = await getSourceDoc(sourceId);
   const raw = await doc.getAttachments();
-  if (!raw) return [];
   // pdf.js 6 lists attachments lazily: content is fetched per id when absent.
   const out: EmbeddedFile[] = [];
-  for (const [id, a] of raw) {
+  for (const [id, a] of raw ?? []) {
     const content = a.content ?? (await doc.getAttachmentContent(id).catch(() => null)) ?? new Uint8Array(0);
     out.push({ filename: a.filename, description: a.description || null, content });
+  }
+  // Files attached as comments (paperclip annotations) are listed too, as Acrobat does.
+  for (let n = 1; n <= doc.numPages; n++) {
+    const annots = (await (await doc.getPage(n)).getAnnotations().catch(() => [])) as Array<{ subtype?: string; fileId?: string; file?: { filename: string; description?: string } }>;
+    for (const a of annots) {
+      if (a.subtype !== 'FileAttachment' || !a.fileId || !a.file) continue;
+      const content = (await doc.getAttachmentContent(a.fileId).catch(() => null)) ?? new Uint8Array(0);
+      out.push({ filename: a.file.filename, description: a.file.description || `Attached on page ${n}`, content });
+    }
   }
   return out;
 }

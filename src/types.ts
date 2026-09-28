@@ -35,7 +35,16 @@ export type ToolId =
   | 'markup-highlight'
   | 'markup-underline'
   | 'markup-strikeout'
-  | 'markup-squiggly';
+  | 'markup-squiggly'
+  | 'stamp'
+  | 'link'
+  | 'crop'
+  | 'textbox'
+  | 'callout'
+  | 'cloud'
+  | 'polygon'
+  | 'polyline'
+  | 'attach';
 
 export type RibbonTab = 'home' | 'view' | 'edit' | 'comment' | 'sign' | 'organize' | 'forms' | 'security' | 'convert';
 
@@ -96,6 +105,10 @@ export interface TextObject extends BaseObject {
   annotation?: boolean;
   /** Author of a typewriter comment. */
   author?: string;
+  /** Text box / callout comment: border colour of the box (null = no border). */
+  border?: string | null;
+  /** Callout comment: the point the leader line points to, relative to (x, y). */
+  callout?: { x: number; y: number } | null;
 }
 
 /** Comment metadata shared by annotation-type objects. */
@@ -130,6 +143,62 @@ export interface MarkupObject extends BaseObject, CommentMeta {
   /** The marked-up text (for the comments list). */
   selectedText: string;
   /** Optional comment on the markup. */
+  text: string;
+}
+
+/** Rubber stamp (PDF /Stamp annotation): a word box such as APPROVED, or a picture. */
+export interface StampObject extends BaseObject, CommentMeta {
+  type: 'stamp';
+  width: number;
+  height: number;
+  /** Stamp word ("APPROVED"); empty for picture stamps. */
+  label: string;
+  /** Second line, e.g. "Ana Pop, 28.09.2026 14:05". */
+  subtitle: string;
+  color: string;
+  /** Standard stamp name written as /Name (Approved, Draft, …). */
+  name: string;
+  /** Picture stamp (PNG or JPEG data URL). */
+  src?: string;
+  /** Optional comment on the stamp. */
+  text: string;
+}
+
+/** Hyperlink area (PDF /Link annotation) to a web address or a page of this document. */
+export interface LinkObject extends BaseObject {
+  type: 'link';
+  width: number;
+  height: number;
+  target: { kind: 'url'; url: string } | { kind: 'page'; pageId: string };
+}
+
+/** Polygon, polyline or cloud comment (PDF /Polygon, /PolyLine, /Square with a cloudy border). */
+export interface PolyObject extends BaseObject, CommentMeta {
+  type: 'poly';
+  kind: 'polygon' | 'polyline' | 'cloud';
+  /** Local vertices [x0, y0, x1, y1, …] relative to (x, y); a cloud keeps its 4 box corners. */
+  points: number[];
+  width: number;
+  height: number;
+  stroke: string;
+  strokeWidth: number;
+  fill: string | null;
+  /** Optional comment. */
+  text: string;
+}
+
+/** File attachment comment (PDF /FileAttachment annotation): a paperclip icon carrying a file. */
+export interface AttachmentObject extends BaseObject, CommentMeta {
+  type: 'attachment';
+  width: number;
+  height: number;
+  fileName: string;
+  mime: string;
+  /** File content, base64. */
+  data: string;
+  size: number;
+  color: string;
+  /** Description shown as the comment. */
   text: string;
 }
 
@@ -219,14 +288,35 @@ export type EditorObject =
   | SignatureObject
   | FieldObject
   | NoteObject
-  | MarkupObject;
+  | MarkupObject
+  | StampObject
+  | LinkObject
+  | PolyObject
+  | AttachmentObject;
 
 export type EditorObjectType = EditorObject['type'];
+
+/** An edited bookmark (outline item). */
+export interface BookmarkItem {
+  id: string;
+  title: string;
+  /** Destination page (null for web links or pages that were deleted). */
+  pageId: string | null;
+  /** Top of the view on that page, PDF units from the page bottom (null = whole page). */
+  top: number | null;
+  url: string | null;
+  bold: boolean;
+  italic: boolean;
+  open: boolean;
+  children: BookmarkItem[];
+}
 
 /** The part of the document state that undo/redo snapshots. */
 export interface DocSnapshot {
   pages: PageRef[];
   objects: EditorObject[];
+  /** Edited bookmarks; null keeps the file's own outline unchanged. */
+  outline?: BookmarkItem[] | null;
 }
 
 export interface SearchHit {

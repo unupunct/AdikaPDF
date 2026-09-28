@@ -8,6 +8,7 @@
  */
 import { create } from 'zustand';
 import type {
+  BookmarkItem,
   DocSnapshot,
   EditorObject,
   PageRef,
@@ -29,6 +30,7 @@ import {
 } from '@/lib/geometry';
 import { openPdf, registerSource, releaseSource } from '@/lib/pdf/pdfService';
 import { uid } from '@/lib/uid';
+import type { StampTemplate } from '@/lib/objectFactory';
 
 const HISTORY_LIMIT = 200;
 export const MIN_ZOOM = 0.1;
@@ -41,6 +43,8 @@ export interface UndoableState {
   objects: EditorObject[];
   /** Values for form fields that already exist in a source, keyed `${sourceId}::${fieldName}`. */
   fieldValues: Record<string, FieldValue>;
+  /** Edited bookmarks; null keeps the file's own outline. */
+  outline: BookmarkItem[] | null;
 }
 
 export type ModalId =
@@ -61,7 +65,11 @@ export type ModalId =
   | 'unlock'
   | 'properties'
   | 'print'
-  | 'tools';
+  | 'tools'
+  | 'link'
+  | 'crop'
+  | 'pageMarks'
+  | 'compare';
 
 export interface Toast {
   id: string;
@@ -121,6 +129,8 @@ interface PDFState extends UndoableState {
   savedSignatures: SavedSignature[];
   pendingSignature: SavedSignature | null;
   pendingImage: { src: string; width: number; height: number } | null;
+  /** Stamp chosen in the Stamp menu, placed with the next click. */
+  pendingStamp: StampTemplate | null;
   clipboard: EditorObject[];
   /** Incremented to ask the viewer to scroll a page into view. */
   scrollRequest: { pageId: string; seq: number; y?: number } | null;
@@ -207,6 +217,7 @@ interface PDFState extends UndoableState {
   removeSavedSignature: (id: string) => void;
   setPendingSignature: (sig: SavedSignature | null) => void;
   setPendingImage: (img: PDFState['pendingImage']) => void;
+  setPendingStamp: (t: StampTemplate | null) => void;
 }
 
 const DEFAULT_STYLE: ToolStyle = {
@@ -253,10 +264,10 @@ function initialTheme(): 'light' | 'dark' {
 }
 
 function snapshot(s: UndoableState): UndoableState {
-  return { pages: s.pages, objects: s.objects, fieldValues: s.fieldValues };
+  return { pages: s.pages, objects: s.objects, fieldValues: s.fieldValues, outline: s.outline };
 }
 
-const EMPTY_DOC: UndoableState = { pages: [], objects: [], fieldValues: {} };
+const EMPTY_DOC: UndoableState = { pages: [], objects: [], fieldValues: {}, outline: null };
 
 export const usePDFStore = create<PDFState>()((set, get) => ({
   ...EMPTY_DOC,
@@ -287,6 +298,7 @@ export const usePDFStore = create<PDFState>()((set, get) => ({
   savedSignatures: loadSavedSignatures(),
   pendingSignature: null,
   pendingImage: null,
+  pendingStamp: null,
   clipboard: [],
   scrollRequest: null,
   renderEpoch: 0,
@@ -690,10 +702,11 @@ export const usePDFStore = create<PDFState>()((set, get) => ({
   },
   setPendingSignature: (pendingSignature) => set({ pendingSignature, tool: pendingSignature ? 'signature' : 'select' }),
   setPendingImage: (pendingImage) => set({ pendingImage, tool: pendingImage ? 'image' : 'select' }),
+  setPendingStamp: (pendingStamp) => set({ pendingStamp, tool: pendingStamp ? 'stamp' : 'select' }),
 }));
 
 /** Snapshot of the undoable document, e.g. for export. */
 export function currentDoc(): DocSnapshot & { sources: Record<string, SourceDoc>; fieldValues: Record<string, FieldValue> } {
   const s = usePDFStore.getState();
-  return { pages: s.pages, objects: s.objects, sources: s.sources, fieldValues: s.fieldValues };
+  return { pages: s.pages, objects: s.objects, sources: s.sources, fieldValues: s.fieldValues, outline: s.outline };
 }

@@ -3,7 +3,7 @@
  * others can show, reply to, edit or delete them:
  *  - NoteObject        → /Text (sticky note) + /Popup
  *  - MarkupObject      → /Highlight, /Underline, /StrikeOut, /Squiggly with QuadPoints
- *  - TextObject.annotation (typewriter) → /FreeText
+ *  - TextObject.annotation (typewriter, text box, callout) → /FreeText
  * Every annotation gets an appearance stream (/AP /N) so it renders the same
  * everywhere, including apps that do not generate appearances themselves.
  */
@@ -60,11 +60,11 @@ export function pdfDate(iso: string): string {
   return `D:${t.getFullYear()}${p(t.getMonth() + 1)}${p(t.getDate())}${p(t.getHours())}${p(t.getMinutes())}${p(t.getSeconds())}${sign}${p(Math.floor(Math.abs(off) / 60))}'${p(Math.abs(off) % 60)}'`;
 }
 
-function text(s: string): PDFHexString {
+export function text(s: string): PDFHexString {
   return PDFHexString.fromText(s);
 }
 
-function addToPage(doc: PDFDocument, page: PDFPage, ref: PDFRef): void {
+export function addToPage(doc: PDFDocument, page: PDFPage, ref: PDFRef): void {
   let annots = page.node.Annots();
   if (!annots) {
     annots = doc.context.obj([]) as PDFArray;
@@ -74,11 +74,11 @@ function addToPage(doc: PDFDocument, page: PDFPage, ref: PDFRef): void {
 }
 
 /** Linear part of a matrix (the appearance /Matrix; translation comes from /Rect). */
-function linear(m: Matrix): Matrix {
+export function linear(m: Matrix): Matrix {
   return [m[0], m[1], m[2], m[3], 0, 0];
 }
 
-function appearance(doc: PDFDocument, ops: PDFOperator[], bbox: [number, number, number, number], matrix: Matrix, resources?: PDFDict): PDFRef {
+export function appearance(doc: PDFDocument, ops: PDFOperator[], bbox: [number, number, number, number], matrix: Matrix, resources?: PDFDict): PDFRef {
   const stream = doc.context.formXObject(ops, {
     BBox: bbox,
     Matrix: matrix,
@@ -87,7 +87,7 @@ function appearance(doc: PDFDocument, ops: PDFOperator[], bbox: [number, number,
   return doc.context.register(stream);
 }
 
-function transparency(doc: PDFDocument, opacity: number, blend: 'Normal' | 'Multiply' = 'Normal'): PDFRef {
+export function transparency(doc: PDFDocument, opacity: number, blend: 'Normal' | 'Multiply' = 'Normal'): PDFRef {
   return doc.context.register(doc.context.obj({ Type: 'ExtGState', CA: opacity, ca: opacity, BM: blend }));
 }
 
@@ -253,18 +253,56 @@ export function writeMarkup(doc: PDFDocument, page: PDFPage, pm: Matrix, o: Mark
   addToPage(doc, page, ref);
 }
 
-// ------------------------------------------------------------------ typewriter
+// ------------------------------------------------------------------ typewriter, text box, callout
+
+/** Where a callout's leader line leaves the box: the box point nearest the anchor (local display coords). */
+export function calloutKnee(w: number, h: number, anchor: { x: number; y: number }): { x: number; y: number } {
+  const x = Math.min(w, Math.max(0, anchor.x));
+  const y = Math.min(h, Math.max(0, anchor.y));
+  if (x > 0 && x < w && y > 0 && y < h) return { x: 0, y: h / 2 }; // anchor inside the box
+  // Leave from the middle of the nearest side.
+  if (anchor.x < 0) return { x: 0, y: Math.min(h, Math.max(0, h / 2)) };
+  if (anchor.x > w) return { x: w, y: h / 2 };
+  return { x: w / 2, y: anchor.y < 0 ? 0 : h };
+}
 
 export function writeFreeText(doc: PDFDocument, page: PDFPage, pm: Matrix, o: TextObject, font: PDFFont, measure: Measure): void {
   const layout = layoutText(o, measure);
   const h = Math.max(o.height, layout.contentHeight);
   const local = multiply(pm, multiply(translate(o.x, o.y), rotateCw(o.rotation)));
   const frame = multiply(local, [1, 0, 0, -1, 0, h]);
-  const r = transformRectBounds(local, { x: 0, y: 0, width: o.width, height: h });
+  const anchor = o.callout ?? null;
+  // The appearance covers the box and, for callouts, the leader line (display-local coordinates).
+  const pad = anchor ? 4 : 0;
+  const bx0 = anchor ? Math.min(0, anchor.x) - pad : 0;
+  const by0 = anchor ? Math.min(0, anchor.y) - pad : 0;
+  const bx1 = anchor ? Math.max(o.width, anchor.x) + pad : o.width;
+  const by1 = anchor ? Math.max(h, anchor.y) + pad : h;
+  const r = transformRectBounds(local, { x: bx0, y: by0, width: bx1 - bx0, height: by1 - by0 });
   const color = hexToRgbTuple(o.color);
   const fontName = PDFName.of('F1');
   const ops: PDFOperator[] = [pushGraphicsState()];
   if (o.background) ops.push(setFillingRgbColor(...hexToRgbTuple(o.background)), rectangle(0, 0, o.width, h), fill());
+  const border = o.border ? hexToRgbTuple(o.border) : null;
+  if (border) ops.push(setStrokingRgbColor(...border), setLineWidth(1), rectangle(0.5, 0.5, o.width - 1, h - 1), stroke());
+  if (anchor) {
+    // Leader line in the appearance frame (y up): knee on the box edge → anchor, with an open arrow head.
+    const knee = calloutKnee(o.width, h, anchor);
+    const ax = anchor.x;
+    const ay = h - anchor.y;
+    const kx = knee.x;
+    const ky = h - knee.y;
+    const ang = Math.atan2(ay - ky, ax - kx);
+    const len = 7;
+    const lc = border ?? color;
+    ops.push(setStrokingRgbColor(...lc), setLineWidth(1), moveTo(kx, ky), lineTo(ax, ay), stroke());
+    ops.push(
+      moveTo(ax - len * Math.cos(ang - 0.45), ay - len * Math.sin(ang - 0.45)),
+      lineTo(ax, ay),
+      lineTo(ax - len * Math.cos(ang + 0.45), ay - len * Math.sin(ang + 0.45)),
+      stroke(),
+    );
+  }
   ops.push(setFillingRgbColor(...color));
   for (const line of layout.lines) {
     if (!line.text) continue;
@@ -273,8 +311,25 @@ export function writeFreeText(doc: PDFDocument, page: PDFPage, pm: Matrix, o: Te
   ops.push(popGraphicsState());
   const gsRef = o.opacity < 1 ? transparency(doc, o.opacity) : null;
   if (gsRef) ops.unshift(setGraphicsState(PDFName.of('GS0')));
-  const ap = appearance(doc, ops, [0, 0, o.width, h], linear(frame), doc.context.obj(gsRef ? { Font: { F1: font.ref }, ExtGState: { GS0: gsRef } } : { Font: { F1: font.ref } }));
+  // BBox in the flipped appearance frame: display-local y maps to h - y.
+  const bbox: [number, number, number, number] = [bx0, h - by1, bx1, h - by0];
+  const ap = appearance(doc, ops, bbox, linear(frame), doc.context.obj(gsRef ? { Font: { F1: font.ref }, ExtGState: { GS0: gsRef } } : { Font: { F1: font.ref } }));
   const [cr, cg, cb] = color;
+  const intent = anchor ? 'FreeTextCallout' : border ? null : 'FreeTextTypeWriter';
+  const extra: Record<string, unknown> = {};
+  if (anchor) {
+    const knee = calloutKnee(o.width, h, anchor);
+    const toPage = (x: number, y: number) => applyMatrix(local, x, y);
+    const [a0, a1] = toPage(anchor.x, anchor.y);
+    const [k0, k1] = toPage(knee.x, knee.y);
+    extra.CL = [a0, a1, k0, k1];
+    extra.LE = 'OpenArrow';
+    const box = transformRectBounds(local, { x: 0, y: 0, width: o.width, height: h });
+    // RD: how far the text box lies inside Rect on each side (left, bottom, right, top).
+    extra.RD = [box.x - r.x, box.y - r.y, r.x + r.width - (box.x + box.width), r.y + r.height - (box.y + box.height)];
+  }
+  if (o.background) extra.IC = hexToRgbTuple(o.background);
+  if (border) extra.C = border;
   const ref = doc.context.register(
     doc.context.obj({
       Type: 'Annot',
@@ -287,8 +342,9 @@ export function writeFreeText(doc: PDFDocument, page: PDFPage, pm: Matrix, o: Te
       // Default appearance lets other apps re-flow the text when edited.
       DA: PDFString.of(`${cr.toFixed(3)} ${cg.toFixed(3)} ${cb.toFixed(3)} rg /Helv ${o.fontSize} Tf`),
       Q: o.align === 'center' ? 1 : o.align === 'right' ? 2 : 0,
-      IT: 'FreeTextTypeWriter',
-      BS: { W: 0 },
+      ...(intent ? { IT: intent } : {}),
+      BS: { W: border ? 1 : 0 },
+      ...extra,
       F: 4,
       P: page.ref,
       AP: { N: ap },

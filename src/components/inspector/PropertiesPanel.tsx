@@ -6,7 +6,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { AlignCenter, AlignLeft, AlignRight, BadgeCheck, BadgeX, Bold, Italic, Lock, Unlock } from 'lucide-react';
 import { usePDFStore, type FieldValue } from '@/store/usePDFStore';
-import type { EditorObject, FieldObject, FontFamily, ImageObject, TextObject } from '@/types';
+import type { EditorObject, FieldObject, FontFamily, ImageObject, LinkObject, TextObject } from '@/types';
 import { Button, Checkbox, ColorSwatch, Field, Input, Select, Textarea } from '@/components/ui/primitives';
 import { FONT_LABELS } from '@/lib/fonts';
 import { layoutText } from '@/lib/textLayout';
@@ -45,6 +45,10 @@ function objectLabel(o: EditorObject): string {
     redact: 'Redaction',
     signature: 'Signature',
     field: 'Form field',
+    stamp: 'Stamp',
+    link: 'Link',
+    poly: 'Shape comment',
+    attachment: 'File attachment',
     note: 'Note',
     markup: 'Text markup',
   };
@@ -225,6 +229,66 @@ function TypeSpecific({ obj, update }: { obj: EditorObject; update: (p: Partial<
           <p className="mt-2 text-[11px] text-muted">Saved as a real PDF comment: Acrobat, Foxit and other readers can open, reply to or delete it.</p>
         </Section>
       );
+    case 'stamp':
+      return (
+        <Section title="Stamp">
+          {!obj.src ? (
+            <>
+              <Field label="Text">
+                <Input value={obj.label} onChange={(e) => update({ label: e.target.value, modifiedAt: new Date().toISOString() })} />
+              </Field>
+              <Field label="Second line">
+                <Input value={obj.subtitle} placeholder="Name, date…" onChange={(e) => update({ subtitle: e.target.value, modifiedAt: new Date().toISOString() })} />
+              </Field>
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <span className="text-xs">Colour</span>
+                <ColorSwatch label="Stamp colour" value={obj.color} onChange={(color) => update({ color: color ?? '#b91c1c' })} />
+              </div>
+            </>
+          ) : null}
+          <Field label="Comment">
+            <Textarea rows={2} value={obj.text} onChange={(e) => update({ text: e.target.value, modifiedAt: new Date().toISOString() })} />
+          </Field>
+          <p className="text-[11px] text-muted">{obj.author} · saved as a PDF stamp that Acrobat and Foxit can move or delete.</p>
+        </Section>
+      );
+    case 'link':
+      return <LinkProps obj={obj} update={update} />;
+    case 'poly':
+      return (
+        <Section title={obj.kind === 'cloud' ? 'Cloud' : obj.kind === 'polygon' ? 'Polygon' : 'Polyline'}>
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <span className="text-xs">Line</span>
+            <ColorSwatch label="Line colour" value={obj.stroke} onChange={(stroke) => update({ stroke: stroke ?? '#e11d48' })} />
+          </div>
+          {obj.kind !== 'polyline' ? (
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <span className="text-xs">Fill</span>
+              <ColorSwatch label="Fill colour" value={obj.fill} allowNone onChange={(fill) => update({ fill })} />
+            </div>
+          ) : null}
+          <Num label="Line width" value={obj.strokeWidth} min={0.5} max={20} step={0.5} onChange={(strokeWidth) => update({ strokeWidth })} />
+          <Field label="Comment">
+            <Textarea rows={3} value={obj.text} onChange={(e) => update({ text: e.target.value, modifiedAt: new Date().toISOString() })} />
+          </Field>
+        </Section>
+      );
+    case 'attachment':
+      return (
+        <Section title="File attachment">
+          <p className="mb-2 break-all text-xs">
+            {obj.fileName} · {(obj.size / 1024).toFixed(obj.size < 10240 ? 1 : 0)} KB
+          </p>
+          <Field label="Description">
+            <Textarea rows={2} value={obj.text} onChange={(e) => update({ text: e.target.value, modifiedAt: new Date().toISOString() })} />
+          </Field>
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-xs">Icon colour</span>
+            <ColorSwatch label="Icon colour" value={obj.color} onChange={(color) => update({ color: color ?? '#2563eb' })} />
+          </div>
+          <p className="mt-2 text-[11px] text-muted">The file travels inside the PDF; readers open it from the paperclip or the Attachments panel.</p>
+        </Section>
+      );
     case 'markup':
       return (
         <Section title="Text markup">
@@ -247,10 +311,44 @@ function TypeSpecific({ obj, update }: { obj: EditorObject; update: (p: Partial<
   }
 }
 
+function LinkProps({ obj, update }: { obj: LinkObject; update: (p: Partial<LinkObject>) => void }) {
+  const pages = usePDFStore((s) => s.pages);
+  const pageNo = obj.target.kind === 'page' ? pages.findIndex((p) => obj.target.kind === 'page' && p.id === obj.target.pageId) + 1 : 1;
+  return (
+    <Section title="Link">
+      <Field label="Goes to">
+        <Select
+          value={obj.target.kind}
+          ariaLabel="Link target"
+          onChange={(kind) => update({ target: kind === 'url' ? { kind: 'url', url: '' } : { kind: 'page', pageId: pages[0]?.id ?? '' } })}
+          options={[
+            { value: 'url', label: 'A web page' },
+            { value: 'page', label: 'A page in this document' },
+          ]}
+        />
+      </Field>
+      {obj.target.kind === 'url' ? (
+        <Field label="Address">
+          <Input value={obj.target.url} placeholder="https://…" data-testid="inspector-link-url" onChange={(e) => update({ target: { kind: 'url', url: e.target.value } })} />
+        </Field>
+      ) : (
+        <Num label={`Page (1–${pages.length})`} value={pageNo} min={1} max={pages.length} onChange={(n) => update({ target: { kind: 'page', pageId: pages[Math.round(n) - 1]?.id ?? '' } })} />
+      )}
+      <p className="mt-2 text-[11px] text-muted">The link works once the document is saved; the dashed box is only shown while editing.</p>
+    </Section>
+  );
+}
+
 function TextProps({ obj, update }: { obj: TextObject; update: (p: Partial<TextObject>) => void }) {
   const relayout = (p: Partial<TextObject>) => update({ ...p, height: layoutText({ ...obj, ...p }).contentHeight });
   return (
-    <Section title="Text">
+    <Section title={obj.callout ? 'Callout' : obj.border ? 'Text box comment' : 'Text'}>
+      {obj.annotation ? (
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <span className="text-xs">Border</span>
+          <ColorSwatch label="Border colour" value={obj.border ?? null} allowNone onChange={(border) => update({ border })} />
+        </div>
+      ) : null}
       <Field label="Content">
         <Textarea rows={3} value={obj.text} onChange={(e) => relayout({ text: e.target.value })} data-testid="inspector-text" />
       </Field>

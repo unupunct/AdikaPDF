@@ -56,7 +56,13 @@ import {
   Minus,
   ArrowUpRight,
   MessagesSquare,
+  MessageSquareQuote,
+  SquareDashedText,
+  Cloud,
+  Pentagon,
+  Spline,
 } from 'lucide-react';
+import { CommentFileMenu, StampMenu } from './CommentTools';
 import { getAuthor, setAuthor } from '@/lib/author';
 import { usePDFStore } from '@/store/usePDFStore';
 import { closeDocumentAction, openDialog, openPdfPath, saveDocument } from '@/actions/document';
@@ -385,7 +391,7 @@ export function CommentTab() {
     window.addEventListener('adika:author', update);
     return () => window.removeEventListener('adika:author', update);
   }, []);
-  const count = s.objects.filter((o) => o.type === 'note' || o.type === 'markup' || (o.type === 'text' && o.annotation)).length;
+  const count = s.objects.filter((o) => o.type === 'note' || o.type === 'markup' || o.type === 'stamp' || o.type === 'poly' || o.type === 'attachment' || (o.type === 'text' && o.annotation)).length;
   return (
     <>
       <Group label="Tools">
@@ -396,6 +402,12 @@ export function CommentTab() {
       <Group label="Comment">
         <ToolBtn tool="note" icon={<StickyNote size={I} />} label="Note" tip="Click to add a sticky note (N)" />
         <ToolBtn tool="typewriter" icon={<Keyboard size={I} />} label="Typewriter" tip="Click and type text onto the page, as a comment others can edit" />
+        <Stack>
+          <ToolBtn big={false} tool="textbox" icon={<SquareDashedText size={i} />} label="Text box" tip="Drag a box and type a comment in it" />
+          <ToolBtn big={false} tool="callout" icon={<MessageSquareQuote size={i} />} label="Callout" tip="Press on the point to comment on, drag to where the text box goes" />
+          <ToolBtn big={false} tool="attach" icon={<Paperclip size={i} />} label="Attach file" tip="Click on the page, then choose a file to attach as a comment" />
+        </Stack>
+        <StampMenu />
       </Group>
       <Group label="Text markup">
         <ToolBtn tool="markup-highlight" icon={<Highlighter size={I} />} label="Highlight" tip="Select text to highlight it" />
@@ -415,10 +427,16 @@ export function CommentTab() {
         <Stack>
           <ToolBtn big={false} tool="line" icon={<Minus size={i} />} label="Line" />
           <ToolBtn big={false} tool="arrow" icon={<ArrowUpRight size={i} />} label="Arrow" />
+          <ToolBtn big={false} tool="cloud" icon={<Cloud size={i} />} label="Cloud" tip="Drag a box to draw a cloud around something" />
+        </Stack>
+        <Stack>
+          <ToolBtn big={false} tool="polygon" icon={<Pentagon size={i} />} label="Polygon" tip="Click the corners; double-click, Enter or click the first point to finish" />
+          <ToolBtn big={false} tool="polyline" icon={<Spline size={i} />} label="Polyline" tip="Click the points; double-click or Enter to finish" />
         </Stack>
       </Group>
       <Group label="Manage">
         <Big icon={<MessagesSquare size={I} />} label={count ? `Comments (${count})` : 'Comments'} disabled={!hasDoc} onClick={() => usePDFStore.setState({ sidebarOpen: true, sidebarTab: 'comments' })} tip="List all comments" testId="btn-comments" />
+        <CommentFileMenu />
         <Stack>
           <label className="flex h-[19px] items-center gap-1 px-1 text-[11px] text-muted">
             Author

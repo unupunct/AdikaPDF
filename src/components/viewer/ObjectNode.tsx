@@ -6,7 +6,9 @@
 import { memo, useEffect, useState } from 'react';
 import { Arrow, Ellipse, Group, Image as KImage, Line, Path, Rect, Shape, Text } from 'react-konva';
 import type Konva from 'konva';
-import type { EditorObject, SignatureObject, TextObject } from '@/types';
+import type { EditorObject, PolyObject, SignatureObject, StampObject, TextObject } from '@/types';
+import { cloudPathData } from '@/lib/cloud';
+import { calloutKnee } from '@/lib/pdf/annotations';
 import { layoutText } from '@/lib/textLayout';
 import { canvasFont, cssFontFamily } from '@/lib/fonts';
 import { canvasMeasure } from '@/lib/textLayout';
@@ -187,6 +189,26 @@ function Content({ obj }: { obj: EditorObject }) {
           ) : null}
         </>
       );
+    case 'stamp':
+      return <StampContent obj={obj} />;
+    case 'poly':
+      return <PolyContent obj={obj} />;
+    case 'attachment':
+      return (
+        <>
+          <Rect width={obj.width} height={obj.height} fill="transparent" />
+          <Path
+            data="M10.5 15 V6 C10.5 1.5 4.5 1.5 4.5 6 V15.5 C4.5 18.8 8.5 18.8 8.5 15.5 V7 C8.5 5.2 6.5 5.2 6.5 7 V14"
+            stroke={obj.color}
+            strokeWidth={1.6}
+            lineCap="round"
+            scaleX={obj.width / 16}
+            scaleY={obj.height / 20}
+          />
+        </>
+      );
+    case 'link':
+      return <Rect width={obj.width} height={obj.height} fill="rgba(37,99,235,0.08)" stroke="#2563eb" strokeWidth={1} dash={[4, 2]} strokeScaleEnabled={false} />;
     case 'field': {
       const label =
         obj.fieldKind === 'checkbox' ? '☐' : obj.fieldKind === 'radio' ? '◯' : obj.fieldKind === 'signature' ? `✍ ${obj.name}` : obj.fieldKind === 'dropdown' ? `${obj.name} ▾` : obj.value || obj.name;
@@ -226,7 +248,12 @@ function TextContent({ obj }: { obj: TextObject }) {
   const layout = layoutText(obj);
   const height = Math.max(obj.height, layout.contentHeight);
   const variant = { family: obj.fontFamily, bold: obj.bold, italic: obj.italic };
+  const knee = obj.callout ? calloutKnee(obj.width, height, obj.callout) : null;
   return (
+    <>
+    {obj.callout && knee ? (
+      <Arrow points={[knee.x, knee.y, obj.callout.x, obj.callout.y]} stroke={obj.border ?? obj.color} fill={obj.border ?? obj.color} strokeWidth={1} pointerLength={7} pointerWidth={6} opacity={obj.opacity} hitStrokeWidth={8} />
+    ) : null}
     <Shape
       width={obj.width}
       height={height}
@@ -245,6 +272,11 @@ function TextContent({ obj }: { obj: TextObject }) {
           ctx.setAttr('fillStyle', 'rgba(100,116,139,0.8)');
           ctx.fillText('Type here…', layout.lines[0]?.x ?? 2, layout.lines[0]?.baseline ?? obj.fontSize);
         }
+        if (obj.border) {
+          ctx.setAttr('strokeStyle', obj.border);
+          ctx.setAttr('lineWidth', 1);
+          ctx.strokeRect(0.5, 0.5, obj.width - 1, height - 1);
+        }
       }}
       hitFunc={(ctx, shape) => {
         ctx.beginPath();
@@ -253,6 +285,53 @@ function TextContent({ obj }: { obj: TextObject }) {
         ctx.fillStrokeShape(shape);
       }}
     />
+    </>
+  );
+}
+
+function StampContent({ obj }: { obj: StampObject }) {
+  const img = useHtmlImage(obj.src ?? '');
+  if (obj.src) return <KImage image={img} width={obj.width} height={obj.height} opacity={obj.opacity} />;
+  const h = obj.height;
+  const main = Math.min(obj.subtitle ? h * 0.42 : h * 0.55, ((obj.width - 14) / Math.max(1, obj.label.length)) * 1.6);
+  return (
+    <Group opacity={obj.opacity}>
+      <Rect x={1.5} y={1.5} width={obj.width - 3} height={h - 3} cornerRadius={Math.min(8, h / 4)} stroke={obj.color} strokeWidth={2} fill="rgba(255,255,255,0.01)" />
+      <Rect x={4} y={4} width={obj.width - 8} height={h - 8} cornerRadius={Math.max(1, Math.min(8, h / 4) - 2.5)} stroke={obj.color} strokeWidth={0.75} listening={false} />
+      <Text
+        text={obj.label}
+        width={obj.width}
+        y={obj.subtitle ? h * 0.54 - main : (h - main) / 2}
+        height={main * 1.1}
+        align="center"
+        fontSize={main}
+        fontStyle="bold"
+        fontFamily={cssFontFamily('sans')}
+        fill={obj.color}
+        wrap="none"
+        listening={false}
+      />
+      {obj.subtitle ? (
+        <Text text={obj.subtitle} width={obj.width} y={h * 0.62} align="center" fontSize={h * 0.2} fontFamily={cssFontFamily('sans')} fill={obj.color} wrap="none" listening={false} />
+      ) : null}
+    </Group>
+  );
+}
+
+function PolyContent({ obj }: { obj: PolyObject }) {
+  if (obj.kind === 'cloud') {
+    return (
+      <>
+        <Rect width={obj.width} height={obj.height} fill="transparent" />
+        <Path data={cloudPathData(obj.width, obj.height, Math.max(10, obj.strokeWidth * 6))} stroke={obj.stroke} strokeWidth={obj.strokeWidth} fill={obj.fill ?? undefined} opacity={obj.opacity} />
+      </>
+    );
+  }
+  return (
+    <>
+      <Rect width={obj.width} height={obj.height} fill="transparent" />
+      <Line points={obj.points} closed={obj.kind === 'polygon'} stroke={obj.stroke} strokeWidth={obj.strokeWidth} fill={obj.kind === 'polygon' ? (obj.fill ?? undefined) : undefined} opacity={obj.opacity} lineJoin="round" lineCap="round" hitStrokeWidth={Math.max(10, obj.strokeWidth + 8)} />
+    </>
   );
 }
 

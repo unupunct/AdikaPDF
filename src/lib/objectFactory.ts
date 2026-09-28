@@ -1,5 +1,9 @@
 /** Default-valued constructors for editor objects. */
 import type {
+  AttachmentObject,
+  LinkObject,
+  PolyObject,
+  StampObject,
   MarkupKind,
   MarkupObject,
   NoteObject,
@@ -299,4 +303,120 @@ export function blobToDataUrl(blob: Blob): Promise<string> {
     r.onerror = () => reject(r.error ?? new Error('Read failed'));
     r.readAsDataURL(blob);
   });
+}
+
+// ------------------------------------------------------------------ stamps, links, comment shapes
+
+/** Standard rubber stamps (Acrobat's names, so other apps recognise them). */
+export const STAMP_PRESETS: Array<{ name: string; label: string; color: string }> = [
+  { name: 'Approved', label: 'APPROVED', color: '#15803d' },
+  { name: 'NotApproved', label: 'NOT APPROVED', color: '#b91c1c' },
+  { name: 'Draft', label: 'DRAFT', color: '#1d4ed8' },
+  { name: 'Final', label: 'FINAL', color: '#15803d' },
+  { name: 'Confidential', label: 'CONFIDENTIAL', color: '#b91c1c' },
+  { name: 'ForComment', label: 'FOR COMMENT', color: '#1d4ed8' },
+  { name: 'Completed', label: 'COMPLETED', color: '#15803d' },
+  { name: 'Reviewed', label: 'REVIEWED', color: '#1d4ed8' },
+  { name: 'Received', label: 'RECEIVED', color: '#1d4ed8' },
+  { name: 'Void', label: 'VOID', color: '#b91c1c' },
+];
+
+/** A pending stamp chosen in the menu, placed with the next click. */
+export type StampTemplate = Pick<StampObject, 'label' | 'name' | 'color'> & { dynamic: boolean; src?: string; width?: number; height?: number };
+
+/** dd.mm.yyyy HH:mm, as dynamic stamps show it. */
+export function stampDate(d = new Date()): string {
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${p(d.getDate())}.${p(d.getMonth() + 1)}.${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+/** Stamp centred on (x, y). Dynamic stamps carry the author and date on a second line. */
+export function makeStamp(pageId: string, x: number, y: number, t: StampTemplate, author: string): StampObject {
+  const now = new Date();
+  const subtitle = t.dynamic ? `${author ? `${author}, ` : ''}${stampDate(now)}` : '';
+  let width = t.width ?? Math.max(90, t.label.length * 11 + 24);
+  let height = t.height ?? (subtitle ? 44 : 32);
+  if (t.src && t.width && t.height) {
+    // Picture stamps: at most 180 pt wide.
+    const k = Math.min(1, 180 / t.width);
+    width = t.width * k;
+    height = t.height * k;
+  }
+  return {
+    id: uid('obj'),
+    type: 'stamp',
+    pageId,
+    x: x - width / 2,
+    y: y - height / 2,
+    width,
+    height,
+    rotation: 0,
+    opacity: 1,
+    label: t.label,
+    subtitle,
+    color: t.color,
+    name: t.name,
+    ...(t.src ? { src: t.src } : {}),
+    text: '',
+    author,
+    createdAt: now.toISOString(),
+    modifiedAt: now.toISOString(),
+  };
+}
+
+export function makeLink(pageId: string, rect: { x: number; y: number; width: number; height: number }, target: LinkObject['target']): LinkObject {
+  return { id: uid('obj'), type: 'link', pageId, ...rect, rotation: 0, opacity: 1, target };
+}
+
+/** Polygon / polyline from page points, or a cloud from a box; points become local to the bounding box. */
+export function makePoly(kind: PolyObject['kind'], pageId: string, pagePoints: number[], style: ToolStyle, author: string): PolyObject {
+  const xs = pagePoints.filter((_, i) => i % 2 === 0);
+  const ys = pagePoints.filter((_, i) => i % 2 === 1);
+  const x = Math.min(...xs);
+  const y = Math.min(...ys);
+  const now = new Date().toISOString();
+  return {
+    id: uid('obj'),
+    type: 'poly',
+    kind,
+    pageId,
+    x,
+    y,
+    rotation: 0,
+    opacity: style.opacity,
+    points: pagePoints.map((v, i) => (i % 2 === 0 ? v - x : v - y)),
+    width: Math.max(1, Math.max(...xs) - x),
+    height: Math.max(1, Math.max(...ys) - y),
+    stroke: style.stroke,
+    strokeWidth: Math.max(1, style.strokeWidth),
+    fill: kind === 'polyline' ? null : style.fill,
+    text: '',
+    author,
+    createdAt: now,
+    modifiedAt: now,
+  };
+}
+
+export function makeAttachment(pageId: string, x: number, y: number, file: { name: string; mime: string; data: string; size: number }, author: string): AttachmentObject {
+  const now = new Date().toISOString();
+  return {
+    id: uid('obj'),
+    type: 'attachment',
+    pageId,
+    x: x - 8,
+    y: y - 10,
+    width: 16,
+    height: 20,
+    rotation: 0,
+    opacity: 1,
+    fileName: file.name,
+    mime: file.mime,
+    data: file.data,
+    size: file.size,
+    color: '#2563eb',
+    text: file.name,
+    author,
+    createdAt: now,
+    modifiedAt: now,
+  };
 }
