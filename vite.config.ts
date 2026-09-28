@@ -14,6 +14,13 @@ export default defineConfig({
     },
   },
   worker: { format: 'es' },
+  server: {
+    port: 5173,
+    strictPort: true,
+    // Cargo rewrites files under src-tauri/target while the dev server runs;
+    // watching them crashes Vite with EBUSY on Windows.
+    watch: { ignored: ['**/src-tauri/**'] },
+  },
   build: {
     target: 'es2022',
     chunkSizeWarningLimit: 4000,
