@@ -7,6 +7,7 @@
  */
 import { invoke } from '@tauri-apps/api/core';
 import { open as openDialog, save as saveDialog } from '@tauri-apps/plugin-dialog';
+import { translate } from './i18n';
 
 export const isDesktop = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
 
@@ -64,6 +65,9 @@ export async function writeFile(path: string, bytes: Uint8Array): Promise<void> 
   await invoke('write_file', bytes, { headers: { 'x-path': encodeURIComponent(path) } });
 }
 
+/** File-type names in the interface language for the Windows dialogs. */
+const localFilters = (filters: FileFilter[]) => filters.map((f) => ({ ...f, name: translate(f.name) }));
+
 function browserPick(filters: FileFilter[], multiple: boolean): Promise<PickedFile[]> {
   return new Promise((resolve) => {
     const input = document.createElement('input');
@@ -88,7 +92,7 @@ export async function pickFiles(filters: FileFilter[], multiple = false): Promis
   if (!isDesktop) return browserPick(filters, multiple);
   const queued = e2ePick();
   if (queued) return Promise.all(queued.map(async (p) => ({ name: baseName(p), path: p, bytes: await readFile(p) })));
-  const result = await openDialog({ multiple, filters, directory: false });
+  const result = await openDialog({ multiple, filters: localFilters(filters), directory: false });
   if (!result) return [];
   const paths = Array.isArray(result) ? result : [result];
   return Promise.all(paths.map(async (p) => ({ name: baseName(p), path: p, bytes: await readFile(p) })));
@@ -99,7 +103,7 @@ export async function pickPaths(filters: FileFilter[], multiple = false): Promis
   if (!isDesktop) throw new DesktopOnlyError('Choosing files for native conversion');
   const queued = e2ePick();
   if (queued) return queued;
-  const result = await openDialog({ multiple, filters, directory: false });
+  const result = await openDialog({ multiple, filters: localFilters(filters), directory: false });
   if (!result) return [];
   return Array.isArray(result) ? result : [result];
 }
@@ -128,7 +132,7 @@ export async function saveBytes(
     setTimeout(() => URL.revokeObjectURL(url), 30_000);
     return 'downloaded';
   }
-  const path = existingPath ?? (e2e.saveDir ? `${e2e.saveDir}/${suggestedName}` : await saveDialog({ defaultPath: suggestedName, filters }));
+  const path = existingPath ?? (e2e.saveDir ? `${e2e.saveDir}/${suggestedName}` : await saveDialog({ defaultPath: suggestedName, filters: localFilters(filters) }));
   if (!path) return null;
   await writeFile(path, data);
   if (e2e.saveDir) e2e.saved.push(path);

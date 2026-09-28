@@ -37,7 +37,9 @@ export function TabBar() {
             title={info.name ?? 'New tab'}
           >
             <FileText size={13} className={active ? 'text-brand-600' : ''} />
-            <span className="min-w-0 flex-1 truncate">{info.name ?? 'New tab'}</span>
+            <span className="min-w-0 flex-1 truncate" data-no-translate={info.name ? '' : undefined}>
+              {info.name ?? 'New tab'}
+            </span>
             {info.dirty ? <span className="text-brand-600" aria-label="Unsaved changes">●</span> : null}
             <button
               type="button"

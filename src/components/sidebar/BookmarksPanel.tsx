@@ -212,6 +212,7 @@ function Item({
             onClick={() => onFollow(node)}
             onDoubleClick={() => onStartRename(node)}
             data-testid="outline-item"
+            data-no-translate
             className={cn('min-w-0 flex-1 truncate py-1 text-left text-[12.5px]', node.bold && 'font-semibold', node.italic && 'italic', !node.pageId && !node.url && 'text-muted')}
             title={node.pageId || node.url ? node.title : `${node.title} (its page was deleted)`}
           >

@@ -73,7 +73,7 @@ export function StatusBar() {
           data-testid="status-signatures"
         >
           {invalid ? <BadgeX size={13} /> : <BadgeCheck size={13} />}
-          {sigs.length} signature{sigs.length > 1 ? 's' : ''} · {invalid ? 'problem' : 'intact'}
+          {`${sigs.length} signature${sigs.length > 1 ? 's' : ''} · ${invalid ? 'problem' : 'intact'}`}
         </button>
       ) : null}
       {showUpdate && upd.latest ? (

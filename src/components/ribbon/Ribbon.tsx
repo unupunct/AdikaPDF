@@ -118,7 +118,7 @@ export function Ribbon() {
           </button>
         ))}
       </div>
-      <div className={cn('flex h-[84px] items-stretch gap-0 overflow-x-auto border-t border-app px-1.5 py-1.5', !hasDoc && tab !== 'home' && tab !== 'convert' && tab !== 'view' && 'opacity-60')}>
+      <div data-testid="ribbon" className={cn('flex h-[84px] items-stretch gap-0 overflow-x-auto border-t border-app px-1.5 py-1.5', !hasDoc && tab !== 'home' && tab !== 'convert' && tab !== 'view' && 'opacity-60')}>
         {tab === 'home' && <HomeTab />}
         {tab === 'view' && <ViewTab />}
         {tab === 'comment' && <CommentTab />}

@@ -92,7 +92,7 @@ export function FindRedactModal() {
       {matches ? (
         matches.length ? (
           <div className="max-h-48 overflow-auto rounded-md border border-app" data-testid="find-redact-results">
-            <table className="w-full text-[12px]">
+            <table className="w-full text-[12px]" data-no-translate>
               <tbody>
                 {matches.slice(0, 200).map((m, i) => (
                   <tr key={i} className="border-b border-app last:border-0">

@@ -89,7 +89,8 @@ export function BatchModal() {
             <Button onClick={close}>Close</Button>
           )}
           <Button variant="primary" disabled={!ready} onClick={() => void run()} data-testid="batch-run">
-            {running ? <Loader2 size={13} className="animate-spin" /> : null} Run on {files.length} file{files.length === 1 ? '' : 's'}
+            {running ? <Loader2 size={13} className="animate-spin" /> : null}
+            {`Run on ${files.length} file${files.length === 1 ? '' : 's'}`}
           </Button>
         </>
       }
@@ -110,7 +111,9 @@ export function BatchModal() {
                   {r ? (
                     r.status === 'done' ? <CheckCircle2 size={13} className="text-accent-600" /> : r.status === 'skipped' ? <MinusCircle size={13} className="text-amber-600" /> : <XCircle size={13} className="text-rose-600" />
                   ) : null}
-                  <span className="min-w-0 flex-1 truncate">{name(f)}</span>
+                  <span className="min-w-0 flex-1 truncate" data-no-translate>
+                    {name(f)}
+                  </span>
                   {r ? <span className="max-w-[55%] truncate text-muted" data-testid="batch-result">{r.status === 'done' ? `→ ${name(r.output!)}${r.message ? ` (${r.message})` : ''}` : r.message}</span> : null}
                   {!running && !r ? (
                     <button type="button" aria-label="Remove" className="rounded p-0.5 hover-app" onClick={() => setFiles((cur) => cur.filter((x) => x !== f))}>
