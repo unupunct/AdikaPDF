@@ -4,6 +4,7 @@ import { usePDFStore } from '@/store/usePDFStore';
 import { closeDocumentAction, openDialog, saveDocument } from '@/actions/document';
 import { printDocument } from '@/actions/print';
 import { cycleTab } from '@/store/tabs';
+import { readCurrentPage, readToEnd, stopReading, togglePauseReading } from '@/actions/readingAids';
 import { rotateView, startPresentation, toggleFullscreen } from '@/components/ribbon/ReaderTabs';
 
 /** Selects all text on a page's text layer (Ctrl+A in the Select text tool). */
@@ -52,6 +53,15 @@ export function useShortcuts(): void {
       }
       if (key === 'escape' && s.fullscreen) {
         void toggleFullscreen();
+        return;
+      }
+      // Read aloud (Acrobat's keys): V page, B to the end, C pause/resume, E stop.
+      if (mod && e.shiftKey && ['v', 'b', 'c', 'e'].includes(key) && s.pages.length) {
+        e.preventDefault();
+        if (key === 'v') readCurrentPage();
+        else if (key === 'b') readToEnd();
+        else if (key === 'c') togglePauseReading();
+        else stopReading();
         return;
       }
       if (mod && key === 'tab') {

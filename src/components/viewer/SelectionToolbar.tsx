@@ -1,10 +1,11 @@
 /**
- * Floating toolbar over selected text (like Foxit): copy, highlight,
+ * Floating toolbar over selected text (like Foxit): copy, read aloud, highlight,
  * underline, strikeout, squiggly. With a markup tool active, the markup is
  * applied as soon as the mouse is released instead.
  */
 import { useEffect, useState } from 'react';
-import { Copy, Highlighter, Strikethrough, Underline, Waves } from 'lucide-react';
+import { Copy, Highlighter, Strikethrough, Underline, Volume2, Waves } from 'lucide-react';
+import { readSelection } from '@/actions/readingAids';
 import { usePDFStore } from '@/store/usePDFStore';
 import { applyMarkupToSelection, selectionByPage } from '@/lib/selectionMarkup';
 import { markupKindOf } from '@/lib/tools';
@@ -65,6 +66,9 @@ export function SelectionToolbar() {
     >
       <Btn label="Copy" testId="sel-copy" onClick={() => void navigator.clipboard?.writeText(window.getSelection()?.toString() ?? '').then(() => usePDFStore.getState().toast('Copied.', 'success'))}>
         <Copy size={14} />
+      </Btn>
+      <Btn label="Read aloud" testId="sel-read" onClick={readSelection}>
+        <Volume2 size={14} />
       </Btn>
       {readOnly ? null : (
         <>
