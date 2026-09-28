@@ -1,6 +1,7 @@
 /** Default-valued constructors for editor objects. */
 import type {
   AttachmentObject,
+  MeasureObject,
   LinkObject,
   PolyObject,
   StampObject,
@@ -415,6 +416,35 @@ export function makeAttachment(pageId: string, x: number, y: number, file: { nam
     size: file.size,
     color: '#2563eb',
     text: file.name,
+    author,
+    createdAt: now,
+    modifiedAt: now,
+  };
+}
+
+/** Measurement from page points (distance: 2 points; perimeter / area: the clicked vertices). */
+export function makeMeasure(kind: MeasureObject['kind'], pageId: string, pagePoints: number[], scale: MeasureObject['scale'], author: string): MeasureObject {
+  const xs = pagePoints.filter((_, i) => i % 2 === 0);
+  const ys = pagePoints.filter((_, i) => i % 2 === 1);
+  const x = Math.min(...xs);
+  const y = Math.min(...ys);
+  const now = new Date().toISOString();
+  return {
+    id: uid('obj'),
+    type: 'measure',
+    kind,
+    pageId,
+    x,
+    y,
+    rotation: 0,
+    opacity: 1,
+    points: pagePoints.map((v, i) => (i % 2 === 0 ? v - x : v - y)),
+    width: Math.max(1, Math.max(...xs) - x),
+    height: Math.max(1, Math.max(...ys) - y),
+    stroke: '#dc2626',
+    strokeWidth: 1,
+    scale,
+    text: '',
     author,
     createdAt: now,
     modifiedAt: now,

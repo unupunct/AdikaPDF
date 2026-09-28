@@ -6,7 +6,9 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { AlignCenter, AlignLeft, AlignRight, BadgeCheck, BadgeX, Bold, Italic, Lock, Unlock } from 'lucide-react';
 import { usePDFStore, type FieldValue } from '@/store/usePDFStore';
-import type { EditorObject, FieldObject, FontFamily, ImageObject, LinkObject, TextObject } from '@/types';
+import type { EditorObject, FieldObject, FontFamily, ImageObject, LinkObject, MeasureObject, TextObject } from '@/types';
+import { measureValue } from '@/lib/measure';
+import { ScaleEditor } from '@/components/ribbon/MeasureTools';
 import { Button, Checkbox, ColorSwatch, Field, Input, Select, Textarea } from '@/components/ui/primitives';
 import { FONT_LABELS } from '@/lib/fonts';
 import { layoutText } from '@/lib/textLayout';
@@ -49,6 +51,7 @@ function objectLabel(o: EditorObject): string {
     link: 'Link',
     poly: 'Shape comment',
     attachment: 'File attachment',
+    measure: 'Measurement',
     note: 'Note',
     markup: 'Text markup',
   };
@@ -273,6 +276,8 @@ function TypeSpecific({ obj, update }: { obj: EditorObject; update: (p: Partial<
           </Field>
         </Section>
       );
+    case 'measure':
+      return <MeasureProps obj={obj} update={update} />;
     case 'attachment':
       return (
         <Section title="File attachment">
@@ -309,6 +314,28 @@ function TypeSpecific({ obj, update }: { obj: EditorObject; update: (p: Partial<
         </Section>
       );
   }
+}
+
+function MeasureProps({ obj, update }: { obj: MeasureObject; update: (p: Partial<MeasureObject>) => void }) {
+  const { label } = measureValue(obj.kind, obj.points, obj.scale);
+  return (
+    <Section title={obj.kind === 'distance' ? 'Distance' : obj.kind === 'perimeter' ? 'Perimeter' : 'Area'}>
+      <p className="mb-2 text-[15px] font-semibold" data-testid="measure-value">
+        {label}
+      </p>
+      <Field label="Scale">
+        <ScaleEditor value={obj.scale} onChange={(scale) => update({ scale, modifiedAt: new Date().toISOString() })} />
+      </Field>
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <span className="text-xs">Colour</span>
+        <ColorSwatch label="Measurement colour" value={obj.stroke} onChange={(stroke) => update({ stroke: stroke ?? '#dc2626' })} />
+      </div>
+      <Field label="Comment">
+        <Textarea rows={2} value={obj.text} onChange={(e) => update({ text: e.target.value, modifiedAt: new Date().toISOString() })} />
+      </Field>
+      <p className="text-[11px] text-muted">Saved as a PDF measurement: Acrobat and Foxit show the value and the scale.</p>
+    </Section>
+  );
 }
 
 function LinkProps({ obj, update }: { obj: LinkObject; update: (p: Partial<LinkObject>) => void }) {

@@ -6,6 +6,7 @@ import { getAnnotations, getPdfPage, type PageAnnotation } from '@/lib/pdf/pdfSe
 import { totalRotation } from '@/lib/geometry';
 import { usePageLabels } from '@/hooks/usePageLabels';
 import { cn } from '@/lib/cn';
+import { measureValue } from '@/lib/measure';
 
 const COMMENT_SUBTYPES = new Set(['Text', 'FreeText', 'Highlight', 'Underline', 'StrikeOut', 'Squiggly', 'Ink', 'Square', 'Circle', 'Line', 'Polygon', 'PolyLine', 'Stamp', 'Caret', 'FileAttachment']);
 
@@ -40,6 +41,9 @@ const KIND_LABEL: Record<string, string> = {
   Callout: 'Callout',
   TextBox: 'Text box',
   Cloud: 'Cloud',
+  Distance: 'Distance',
+  Perimeter: 'Perimeter',
+  Area: 'Area',
 };
 
 function icon(kind: string) {
@@ -114,6 +118,7 @@ export function CommentsPanel() {
         if (o.type === 'text' && o.annotation) return [{ key: o.id, pageId: o.pageId, y: o.y, kind: o.callout ? 'Callout' : o.border ? 'TextBox' : 'FreeText', author: o.author ?? '', date: null, text: o.text, objectId: o.id }];
         if (o.type === 'stamp') return [{ key: o.id, pageId: o.pageId, y: o.y, kind: 'Stamp', author: o.author, date: o.modifiedAt, text: o.text || [o.label, o.subtitle].filter(Boolean).join(' – ') || 'Picture stamp', objectId: o.id }];
         if (o.type === 'poly') return [{ key: o.id, pageId: o.pageId, y: o.y, kind: o.kind === 'cloud' ? 'Cloud' : o.kind === 'polygon' ? 'Polygon' : 'PolyLine', author: o.author, date: o.modifiedAt, text: o.text, objectId: o.id }];
+        if (o.type === 'measure') return [{ key: o.id, pageId: o.pageId, y: o.y, kind: o.kind === 'distance' ? 'Distance' : o.kind === 'perimeter' ? 'Perimeter' : 'Area', author: o.author, date: o.modifiedAt, text: [measureValue(o.kind, o.points, o.scale).label, o.text].filter(Boolean).join(' · '), objectId: o.id }];
         if (o.type === 'attachment') return [{ key: o.id, pageId: o.pageId, y: o.y, kind: 'FileAttachment', author: o.author, date: o.modifiedAt, text: o.text || o.fileName, objectId: o.id }];
         return [];
       }),

@@ -45,7 +45,10 @@ export type ToolId =
   | 'polygon'
   | 'polyline'
   | 'attach'
-  | 'snapshot';
+  | 'snapshot'
+  | 'measure-distance'
+  | 'measure-perimeter'
+  | 'measure-area';
 
 export type RibbonTab = 'home' | 'view' | 'edit' | 'comment' | 'sign' | 'organize' | 'forms' | 'security' | 'convert';
 
@@ -188,6 +191,22 @@ export interface PolyObject extends BaseObject, CommentMeta {
   text: string;
 }
 
+/** Measurement (PDF /Line, /PolyLine or /Polygon with a /Measure dictionary, like Acrobat's Measure tool). */
+export interface MeasureObject extends BaseObject, CommentMeta {
+  type: 'measure';
+  kind: 'distance' | 'perimeter' | 'area';
+  /** Local vertices [x0, y0, x1, y1, …] relative to (x, y). */
+  points: number[];
+  width: number;
+  height: number;
+  stroke: string;
+  strokeWidth: number;
+  /** Drawing scale used for the value. */
+  scale: import('@/lib/measure').MeasureScale;
+  /** Optional comment. */
+  text: string;
+}
+
 /** File attachment comment (PDF /FileAttachment annotation): a paperclip icon carrying a file. */
 export interface AttachmentObject extends BaseObject, CommentMeta {
   type: 'attachment';
@@ -293,7 +312,8 @@ export type EditorObject =
   | StampObject
   | LinkObject
   | PolyObject
-  | AttachmentObject;
+  | AttachmentObject
+  | MeasureObject;
 
 export type EditorObjectType = EditorObject['type'];
 

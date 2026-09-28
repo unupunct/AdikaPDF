@@ -56,6 +56,7 @@ import {
   Minus,
   ArrowUpRight,
   MessagesSquare,
+  ChevronsDown,
   MessageSquareQuote,
   SquareDashedText,
   Cloud,
@@ -64,6 +65,8 @@ import {
 } from 'lucide-react';
 import { CommentFileMenu, StampMenu } from './CommentTools';
 import { ReadAloudGroup, ReadingToolsGroup } from './ReadingTools';
+import { MeasureGroup } from './MeasureTools';
+import { useAutoScroll } from '@/components/viewer/AutoScroll';
 import { getAuthor, setAuthor } from '@/lib/author';
 import { usePDFStore } from '@/store/usePDFStore';
 import { closeDocumentAction, openDialog, openPdfPath, saveDocument } from '@/actions/document';
@@ -342,6 +345,21 @@ export function rotateView(delta: 90 | -90): void {
   s.setView({ viewRotation: normalizeRotation(s.viewRotation + delta) });
 }
 
+function AutoScrollButton({ disabled }: { disabled: boolean }) {
+  const on = useAutoScroll((s) => s.on);
+  return (
+    <Big
+      icon={<ChevronsDown size={I} />}
+      label="Auto-scroll"
+      active={on}
+      disabled={disabled}
+      onClick={() => useAutoScroll.getState().toggle()}
+      tip="Scroll automatically (Ctrl+Shift+H) · ↑/↓ speed · − reverse · Esc stop"
+      testId="btn-autoscroll"
+    />
+  );
+}
+
 export function ViewTab() {
   const s = usePDFStore();
   const hasDoc = s.pages.length > 0;
@@ -365,6 +383,7 @@ export function ViewTab() {
         <Big icon={<Moon size={I} />} label="Night mode" active={s.nightMode} disabled={!hasDoc} onClick={() => s.setView({ nightMode: !s.nightMode })} tip="Dark pages for reading at night" testId="btn-night" />
         <Big icon={s.fullscreen ? <Minimize size={I} /> : <Maximize size={I} />} label="Full screen" active={s.fullscreen} onClick={() => void toggleFullscreen()} tip="Full screen (F11)" testId="btn-fullscreen" />
         <Big icon={<MonitorPlay size={I} />} label="Present" disabled={!hasDoc} onClick={startPresentation} tip="Presentation mode (F5)" testId="btn-present" />
+        <AutoScrollButton disabled={!hasDoc} />
       </Group>
       <ReadAloudGroup />
       <ReadingToolsGroup />
@@ -394,7 +413,7 @@ export function CommentTab() {
     window.addEventListener('adika:author', update);
     return () => window.removeEventListener('adika:author', update);
   }, []);
-  const count = s.objects.filter((o) => o.type === 'note' || o.type === 'markup' || o.type === 'stamp' || o.type === 'poly' || o.type === 'attachment' || (o.type === 'text' && o.annotation)).length;
+  const count = s.objects.filter((o) => o.type === 'note' || o.type === 'markup' || o.type === 'stamp' || o.type === 'poly' || o.type === 'attachment' || o.type === 'measure' || (o.type === 'text' && o.annotation)).length;
   return (
     <>
       <Group label="Tools">
@@ -437,6 +456,7 @@ export function CommentTab() {
           <ToolBtn big={false} tool="polyline" icon={<Spline size={i} />} label="Polyline" tip="Click the points; double-click or Enter to finish" />
         </Stack>
       </Group>
+      <MeasureGroup />
       <Group label="Manage">
         <Big icon={<MessagesSquare size={I} />} label={count ? `Comments (${count})` : 'Comments'} disabled={!hasDoc} onClick={() => usePDFStore.setState({ sidebarOpen: true, sidebarTab: 'comments' })} tip="List all comments" testId="btn-comments" />
         <CommentFileMenu />

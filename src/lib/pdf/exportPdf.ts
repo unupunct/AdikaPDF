@@ -73,7 +73,7 @@ import { loadFontBytes, type FontVariant } from '@/lib/fonts';
 import { layoutText, canvasMeasure, type Measure } from '@/lib/textLayout';
 import { embedFontForText } from './fontEmbed';
 import { writeFreeText, writeMarkup, writeNote } from './annotations';
-import { writeAttachment, writeLink, writePoly, writeStamp } from './commentAnnots';
+import { writeAttachment, writeLink, writeMeasure, writePoly, writeStamp } from './commentAnnots';
 import { writeOutline } from './outline';
 import type { FieldValue } from '@/store/usePDFStore';
 
@@ -268,6 +268,7 @@ function collectFontTexts(objects: EditorObject[]): Map<string, string[]> {
   for (const o of objects) {
     if (o.type === 'text') add({ family: o.fontFamily, bold: o.bold, italic: o.italic }, o.text);
     if (o.type === 'signature' && o.showCaption) add({ family: 'sans', bold: false, italic: false }, `${signatureCaption(o)}…`);
+    if (o.type === 'measure') add({ family: 'sans', bold: false, italic: false }, `0123456789.,- ${o.scale.realUnit}²`);
     if (o.type === 'stamp' && !o.src) {
       add({ family: 'sans', bold: true, italic: false }, o.label);
       add({ family: 'sans', bold: false, italic: false }, o.subtitle);
@@ -766,6 +767,9 @@ export async function buildPdf(input: ExportInput, options: ExportOptions = {}):
           break;
         case 'attachment':
           writeAttachment(ctx.doc, page, pm, o);
+          break;
+        case 'measure':
+          writeMeasure(ctx.doc, page, pm, o, await fontFor(ctx, { family: 'sans', bold: false, italic: false }));
           break;
         case 'link':
           writeLink(ctx.doc, page, pm, o, o.target.kind === 'page' ? (pageById.get(o.target.pageId) ?? null) : null);
