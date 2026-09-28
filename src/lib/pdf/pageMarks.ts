@@ -44,6 +44,7 @@ import {
   type PDFFont,
   type PDFImage,
 } from 'pdf-lib';
+import { dropUnreachableObjects } from './prune';
 import fontkit from '@pdf-lib/fontkit';
 import { embedFontForText } from './fontEmbed';
 
@@ -591,6 +592,7 @@ export async function removePageMarks(pdfBytes: Uint8Array): Promise<{ bytes: Ui
     page.node.set(PDFName.Contents, doc.context.obj(keep));
   }
   if (!removed) return { bytes: pdfBytes, removed: 0 };
+  dropUnreachableObjects(doc);
   return { bytes: await doc.save({ useObjectStreams: true }), removed };
 }
 

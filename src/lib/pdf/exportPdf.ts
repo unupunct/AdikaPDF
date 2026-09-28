@@ -75,6 +75,7 @@ import { embedFontForText } from './fontEmbed';
 import { writeFreeText, writeMarkup, writeNote } from './annotations';
 import { writeAttachment, writeLink, writeMeasure, writePoly, writeStamp } from './commentAnnots';
 import { writeOutline } from './outline';
+import { dropUnreachableObjects } from './prune';
 import type { FieldValue } from '@/store/usePDFStore';
 
 export interface ExportInput {
@@ -809,6 +810,9 @@ export async function buildPdf(input: ExportInput, options: ExportOptions = {}):
   doc.setProducer('Adika PDF Editor');
   doc.setModificationDate(new Date());
   progress('Writing file', 0.95);
+  // Embed fonts/images first, then drop orphans (replaced or deleted pages).
+  await doc.flush();
+  dropUnreachableObjects(doc);
   return doc.save({ useObjectStreams: true });
 }
 

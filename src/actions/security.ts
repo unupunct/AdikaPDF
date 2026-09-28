@@ -26,6 +26,8 @@ export async function sanitizeDocument(): Promise<void> {
     doc.setKeywords([]);
     doc.setCreator('');
     doc.setProducer('Adika PDF Editor');
+    const { dropUnreachableObjects } = await import('@/lib/pdf/prune');
+    dropUnreachableObjects(doc);
     return doc.save();
   });
   if (out) await saveDerived(out, '-sanitized', true);

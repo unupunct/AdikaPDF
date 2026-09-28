@@ -22,6 +22,25 @@ function loadFont(v: FontVariant): Promise<Uint8Array> {
 const measure = (_v: FontVariant, size: number) => (s: string) => s.length * size * 0.5;
 const opts = { loadFont, measure };
 
+/** Inflate every stream in the file and look for `needle`. */
+async function anyStreamContains(bytes: Uint8Array, needle: string): Promise<boolean> {
+  const { PDFRawStream, decodePDFRawStream } = await import('pdf-lib');
+  const doc = await PDFDocument.load(bytes);
+  for (const [, obj] of doc.context.enumerateIndirectObjects()) {
+    if (!(obj instanceof PDFRawStream)) continue;
+    let data: Uint8Array;
+    try {
+      data = decodePDFRawStream(obj).decode();
+    } catch {
+      data = obj.contents;
+    }
+    const s = Buffer.from(data).toString('latin1');
+    const hex = Buffer.from(needle, 'latin1').toString('hex');
+    if (s.includes(needle) || s.toLowerCase().includes(hex)) return true;
+  }
+  return false;
+}
+
 async function makeSource(pages: Array<{ w: number; h: number; rotate?: number; label: string }>): Promise<SourceDoc> {
   const doc = await PDFDocument.create();
   const font = await doc.embedFont(StandardFonts.Helvetica);
@@ -316,6 +335,8 @@ describe('buildPdf', () => {
     const result = await pageTexts(out);
     expect(result[0].items.map((i) => i.str).join('')).toBe('');
     expect(Buffer.from(out).includes(Buffer.from('SECRET'))).toBe(false);
+    // Not even in a compressed stream left over from the original page.
+    expect(await anyStreamContains(out, 'SECRET')).toBe(false);
   });
 
   it('flattens form fields into page content', async () => {
