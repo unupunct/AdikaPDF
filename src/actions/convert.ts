@@ -15,7 +15,6 @@ import {
   exportAllSvgZip,
   exportPagesAsImages,
   exportPlainText,
-  exportToDocx,
   exportToHtml,
   exportToMarkdown,
   exportToPptx,
@@ -312,6 +311,8 @@ export interface ExportRequest {
   dpi: number;
   pageNumbers?: number[];
   quality?: number;
+  /** Word only: editable flowing text (default) or paragraphs pinned to their PDF position. */
+  docxLayout?: 'flow' | 'exact';
 }
 
 const FORMAT_INFO: Record<ExportFormat, { ext: string; label: string }> = {
@@ -340,8 +341,11 @@ export async function exportAs(req: ExportRequest): Promise<void> {
       const needsText = ['docx', 'odt', 'rtf', 'xlsx', 'csv', 'pptx', 'html', 'epub', 'md', 'txt', 'json'].includes(req.format);
       const text = needsText ? await extractStructuredText(pdf, tick('Reading text'), { detectBold: true, pageNumbers: req.pageNumbers }) : [];
       switch (req.format) {
-        case 'docx':
-          return exportToDocx(text, baseName());
+        case 'docx': {
+          const { collectDocxGraphics, exportToDocx } = await import('@/lib/pdf/docx');
+          const graphics = await collectDocxGraphics(pdf, text, tick('Reading images and colours'));
+          return exportToDocx(text, baseName(), { layout: req.docxLayout, graphics });
+        }
         case 'odt':
           return (await import('@/lib/pdf/exportFormats')).exportToOdt(text, baseName());
         case 'rtf':

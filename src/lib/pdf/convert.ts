@@ -1,4 +1,4 @@
-// PDF -> other formats (images, TIFF, text, DOCX, XLSX, PPTX, SVG, HTML,
+// PDF -> other formats (images, TIFF, text, XLSX, PPTX, SVG, HTML,
 // Markdown). Everything runs locally; nothing is fetched at runtime.
 //
 // Pure helpers (text grouping, table columns, SpreadsheetML, TIFF encoding,
@@ -7,16 +7,6 @@
 import type { PDFDocumentProxy, PDFPageProxy, PageViewport } from 'pdfjs-dist';
 import type { TextItem, TextStyle } from 'pdfjs-dist/types/src/display/api';
 import JSZip from 'jszip';
-import {
-  AlignmentType,
-  Document,
-  HeadingLevel,
-  Packer,
-  Paragraph,
-  Tab,
-  TextRun,
-  type ISectionOptions,
-} from 'docx';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -32,6 +22,24 @@ export interface RawTextItem {
   width: number;
   fontSize: number;
   bold?: boolean;
+  italic?: boolean;
+  /** Word-friendly font family name ("Times New Roman"), when known. */
+  family?: string;
+}
+
+/** A styled piece of a cell (one or more text items with the same font). */
+export interface TextSpan {
+  text: string;
+  x: number;
+  width: number;
+  fontSize: number;
+  bold: boolean;
+  italic: boolean;
+  family?: string;
+  /** RRGGBB, set by the DOCX exporter from the rendered page; undefined = black/auto. */
+  color?: string;
+  /** Set by the DOCX exporter when a thin rule runs under the span. */
+  underline?: boolean;
 }
 
 export interface TextCell {
@@ -40,6 +48,8 @@ export interface TextCell {
   width?: number;
   /** Table column index, set by `assignTableColumns` for tabular blocks. */
   col?: number;
+  /** Styled pieces of `text` (same characters, in order). */
+  spans?: TextSpan[];
 }
 
 export interface TextLine {
@@ -85,6 +95,51 @@ export function xmlEscape(s: string): string {
 // Text grouping (pure)
 // ---------------------------------------------------------------------------
 
+/** Trims a cell's spans like `text.trim()` trims its text and drops empty ones. */
+function trimSpans(spans: TextSpan[]): TextSpan[] {
+  const out = spans.map((s) => ({ ...s }));
+  if (out.length) {
+    out[0].text = out[0].text.replace(/^\s+/, '');
+    out[out.length - 1].text = out[out.length - 1].text.replace(/\s+$/, '');
+  }
+  return out.filter((s) => s.text.length > 0);
+}
+
+const FONT_ALIASES: Record<string, string> = {
+  helvetica: 'Arial',
+  helveticaneue: 'Helvetica Neue',
+  arial: 'Arial',
+  times: 'Times New Roman',
+  timesroman: 'Times New Roman',
+  timesnewroman: 'Times New Roman',
+  courier: 'Courier New',
+  couriernew: 'Courier New',
+  dejavusans: 'DejaVu Sans',
+  dejavuserif: 'DejaVu Serif',
+  dejavusansmono: 'DejaVu Sans Mono',
+  liberationsans: 'Liberation Sans',
+  liberationserif: 'Liberation Serif',
+};
+
+const FONT_STYLE_SUFFIX = /(Bold|Italic|Oblique|Regular|Roman|Book|Medium|Light|Semibold|SemiBold|Demi|Black|Heavy)+$/;
+
+/**
+ * Word font family from a PDF font name: drops the subset tag and style
+ * suffixes and spaces out camel case ("ABCDEF+TimesNewRomanPS-BoldMT" ->
+ * "Times New Roman"). Undefined for synthetic names ("F1", "g_d0_f3").
+ */
+export function fontFamilyFromName(name: string | undefined): string | undefined {
+  if (!name) return undefined;
+  let n = name.replace(/^[A-Z]{6}\+/, '').split(/[-,+_]/)[0].replace(/(PSMT|PS|MT)$/, '');
+  const alias = (s: string) => FONT_ALIASES[s.toLowerCase()];
+  if (alias(n)) return alias(n);
+  const stripped = n.replace(FONT_STYLE_SUFFIX, '');
+  if (stripped.length >= 3) n = stripped;
+  if (alias(n)) return alias(n);
+  if (n.length < 3 || !/^[A-Za-z][A-Za-z0-9 ]*$/.test(n) || /^[A-Z]{1,3}\d+$/.test(n) || !/[a-z]/.test(n)) return undefined;
+  return n.replace(/([a-z])([A-Z])/g, '$1 $2').replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2');
+}
+
 /**
  * Groups positioned text items into lines (baseline tolerance ~0.5 * font
  * size), orders each line by x, inserts spaces for gaps > 0.25em and splits
@@ -122,10 +177,29 @@ export function groupTextItems(items: RawTextItem[]): TextLine[] {
   for (const b of buckets) {
     const its = b.items.sort((a, c) => a.x - c.x);
     const cells: TextCell[] = [];
-    let cur: { x: number; text: string; end: number } | undefined;
+    let cur: { x: number; text: string; end: number; spans: TextSpan[] } | undefined;
     let boldChars = 0;
     let chars = 0;
     let maxSize = 0;
+    const span = (it: RawTextItem, fs: number): TextSpan => ({
+      text: it.str,
+      x: it.x,
+      width: it.width,
+      fontSize: fs,
+      bold: !!it.bold,
+      italic: !!it.italic,
+      family: it.family,
+    });
+    const space = (c: NonNullable<typeof cur>) => {
+      c.text += ' ';
+      c.spans[c.spans.length - 1].text += ' ';
+    };
+    const finish = (c: NonNullable<typeof cur>) => cells.push({ x: c.x, text: c.text.trim(), width: c.end - c.x, spans: trimSpans(c.spans) });
+    // Where the ink of an item ends: some producers (Word) pad words with trailing spaces.
+    const inkEnd = (it: RawTextItem) => {
+      const kept = it.str.replace(/\s+$/, '').length;
+      return it.x + (it.str.length && kept < it.str.length ? (it.width * kept) / it.str.length : it.width);
+    };
     for (const it of its) {
       const fs = it.fontSize > 0 ? it.fontSize : 10;
       maxSize = Math.max(maxSize, fs);
@@ -134,26 +208,27 @@ export function groupTextItems(items: RawTextItem[]): TextLine[] {
       if (it.bold) boldChars += n;
       if (!cur) {
         if (!it.str.trim()) continue;
-        cur = { x: it.x, text: it.str, end: it.x + it.width };
+        cur = { x: it.x, text: it.str, end: inkEnd(it), spans: [span(it, fs)] };
         continue;
       }
       if (!it.str.trim()) {
         // Whitespace-only runs (pdf.js emits one spanning each gap) do not
         // advance the text end, so the real gap can still split cells.
-        if (!/\s$/.test(cur.text)) cur.text += ' ';
+        if (!/\s$/.test(cur.text)) space(cur);
         continue;
       }
       const gap = it.x - cur.end;
       if (gap > 2 * fs) {
-        cells.push({ x: cur.x, text: cur.text.trim(), width: cur.end - cur.x });
-        cur = { x: it.x, text: it.str, end: it.x + it.width };
+        finish(cur);
+        cur = { x: it.x, text: it.str, end: inkEnd(it), spans: [span(it, fs)] };
         continue;
       }
-      if (gap > 0.25 * fs && !/\s$/.test(cur.text) && !/^\s/.test(it.str)) cur.text += ' ';
+      if (gap > 0.25 * fs && !/\s$/.test(cur.text) && !/^\s/.test(it.str)) space(cur);
       cur.text += it.str;
-      cur.end = Math.max(cur.end, it.x + it.width);
+      cur.spans.push(span(it, fs));
+      cur.end = Math.max(cur.end, inkEnd(it));
     }
-    if (cur && cur.text.trim()) cells.push({ x: cur.x, text: cur.text.trim(), width: cur.end - cur.x });
+    if (cur && cur.text.trim()) finish(cur);
     if (!cells.length) continue;
     const last = cells[cells.length - 1];
     lines.push({
@@ -169,7 +244,7 @@ export function groupTextItems(items: RawTextItem[]): TextLine[] {
   return lines;
 }
 
-function median(values: number[]): number {
+export function median(values: number[]): number {
   if (!values.length) return 0;
   const s = [...values].sort((a, b) => a - b);
   const m = s.length >> 1;
@@ -245,9 +320,9 @@ export function assignTableColumns(lines: TextLine[]): TextLine[] {
 // Rendering helpers (browser)
 // ---------------------------------------------------------------------------
 
-type AnyCanvas = HTMLCanvasElement | OffscreenCanvas;
+export type AnyCanvas = HTMLCanvasElement | OffscreenCanvas;
 
-function makeCanvas(w: number, h: number): AnyCanvas {
+export function makeCanvas(w: number, h: number): AnyCanvas {
   if (typeof document !== 'undefined') {
     const c = document.createElement('canvas');
     c.width = w;
@@ -264,7 +339,7 @@ export async function canvasToBlob(c: AnyCanvas, type: string, quality?: number)
   return blob;
 }
 
-function releaseCanvas(c: AnyCanvas): void {
+export function releaseCanvas(c: AnyCanvas): void {
   c.width = 0;
   c.height = 0;
 }
@@ -476,7 +551,7 @@ export async function exportPagesAsImages(
 // ---------------------------------------------------------------------------
 
 type Mat = number[];
-function mulMat(m1: Mat, m2: Mat): Mat {
+export function mulMat(m1: Mat, m2: Mat): Mat {
   return [
     m1[0] * m2[0] + m1[2] * m2[1],
     m1[1] * m2[0] + m1[3] * m2[1],
@@ -493,8 +568,14 @@ interface PositionedItem extends RawTextItem {
   ascent: number;
 }
 
-async function fontFlags(page: PDFPageProxy, names: Set<string>): Promise<Map<string, boolean>> {
-  const out = new Map<string, boolean>();
+interface FontStyle {
+  bold: boolean;
+  italic: boolean;
+  family?: string;
+}
+
+async function fontStyles(page: PDFPageProxy, names: Set<string>): Promise<Map<string, FontStyle>> {
+  const out = new Map<string, FontStyle>();
   try {
     await page.getOperatorList(); // makes the worker ship fonts to commonObjs
   } catch {
@@ -503,9 +584,16 @@ async function fontFlags(page: PDFPageProxy, names: Set<string>): Promise<Map<st
   for (const n of names) {
     try {
       if (!page.commonObjs.has(n)) continue;
-      const f = page.commonObjs.get(n) as { name?: string; bold?: boolean; black?: boolean } | null;
+      const f = page.commonObjs.get(n) as { name?: string; bold?: boolean; black?: boolean; italic?: boolean; fallbackName?: string } | null;
       const name = f?.name ?? '';
-      out.set(n, !!(f?.bold || f?.black || /bold|black|heavy|semibold|demi/i.test(name)));
+      let family = fontFamilyFromName(name);
+      if (!family && f?.fallbackName === 'serif') family = 'Times New Roman';
+      if (!family && f?.fallbackName === 'monospace') family = 'Courier New';
+      out.set(n, {
+        bold: !!(f?.bold || f?.black || /bold|black|heavy|semibold|demi/i.test(name)),
+        italic: !!(f?.italic || /italic|oblique/i.test(name)),
+        family,
+      });
     } catch {
       // ignore
     }
@@ -518,7 +606,7 @@ async function positionedItems(page: PDFPageProxy, detectBold: boolean): Promise
   const content = await page.getTextContent();
   const styles = content.styles as Record<string, TextStyle>;
   const textItems = content.items.filter((it): it is TextItem => 'str' in it);
-  const bold = detectBold ? await fontFlags(page, new Set(textItems.map((t) => t.fontName))) : new Map();
+  const fonts = detectBold ? await fontStyles(page, new Set(textItems.map((t) => t.fontName))) : new Map<string, FontStyle>();
   const items: PositionedItem[] = [];
   for (const it of textItems) {
     if (!it.str) continue;
@@ -537,7 +625,9 @@ async function positionedItems(page: PDFPageProxy, detectBold: boolean): Promise
       y: tx[5],
       width: Math.abs(width),
       fontSize,
-      bold: bold.get(it.fontName) ?? false,
+      bold: fonts.get(it.fontName)?.bold ?? false,
+      italic: fonts.get(it.fontName)?.italic ?? false,
+      family: fonts.get(it.fontName)?.family,
       angle,
       fontFamily,
       ascent: style?.ascent && style.ascent > 0 ? style.ascent : 0.8,
@@ -577,13 +667,13 @@ export function exportPlainText(pages: PageText[]): string {
     .join('\n\n\f\n');
 }
 
-function bodyFontSize(pages: PageText[]): number {
+export function bodyFontSize(pages: PageText[]): number {
   const sizes: number[] = [];
   for (const p of pages) for (const l of p.lines) for (let k = 0; k < Math.min(40, l.text.length); k++) sizes.push(l.fontSize);
   return median(sizes) || 11;
 }
 
-function headingLevel(size: number, body: number, textLen: number): 0 | 1 | 2 | 3 {
+export function headingLevel(size: number, body: number, textLen: number): 0 | 1 | 2 | 3 {
   if (textLen > 200) return 0;
   const r = size / body;
   if (r >= 1.6) return 1;
@@ -630,50 +720,6 @@ export function exportToMarkdown(pages: PageText[]): string {
     parts.push(out.join('\n').replace(/\n{3,}/g, '\n\n').trim());
   }
   return parts.join('\n\n---\n\n') + '\n';
-}
-
-// ---------------------------------------------------------------------------
-// DOCX
-// ---------------------------------------------------------------------------
-
-export async function exportToDocx(pages: PageText[], title: string): Promise<Blob> {
-  const body = bodyFontSize(pages);
-  const sections: ISectionOptions[] = pages.map((p) => {
-    const w = Math.round(p.width * 20);
-    const h = Math.round(p.height * 20);
-    const margin = Math.min(720, Math.round(Math.min(w, h) / 10));
-    const children: Paragraph[] = p.lines.map((l) => {
-      const runChildren: (string | Tab)[] = [];
-      l.cells.forEach((c, idx) => {
-        if (idx) runChildren.push(new Tab());
-        runChildren.push(stripInvalidXmlChars(c.text));
-      });
-      const level = headingLevel(l.fontSize, body, l.text.length);
-      const size = Math.max(2, Math.round(l.fontSize * 2));
-      return new Paragraph({
-        heading: level === 1 ? HeadingLevel.HEADING_1 : level === 2 ? HeadingLevel.HEADING_2 : level === 3 ? HeadingLevel.HEADING_3 : undefined,
-        alignment: AlignmentType.LEFT,
-        children: [new TextRun({ children: runChildren, bold: l.bold || undefined, size })],
-      });
-    });
-    if (!children.length) children.push(new Paragraph({ children: [] }));
-    return {
-      properties: {
-        page: {
-          size: { width: w, height: h },
-          margin: { top: margin, bottom: margin, left: margin, right: margin },
-        },
-      },
-      children,
-    };
-  });
-  if (!sections.length) sections.push({ children: [new Paragraph({ children: [] })] });
-  const doc = new Document({
-    title: stripInvalidXmlChars(title),
-    creator: 'Adika PDF Editor',
-    sections,
-  });
-  return Packer.toBlob(doc);
 }
 
 // ---------------------------------------------------------------------------

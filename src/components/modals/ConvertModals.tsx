@@ -311,7 +311,7 @@ function ScanPanel({ append, imgOpts, setImgOpts, run }: { append: boolean; imgO
 // ================================================================ export
 
 const FORMATS: Array<{ value: ExportFormat; label: string; hint: string }> = [
-  { value: 'docx', label: 'Word (.docx)', hint: 'Editable paragraphs rebuilt from the text layout; headings and bold are detected.' },
+  { value: 'docx', label: 'Word (.docx)', hint: 'Keeps fonts, bold/italic, colours, alignment, indents, spacing, lists, tables, columns and images.' },
   { value: 'odt', label: 'OpenDocument (.odt)', hint: 'For LibreOffice / OpenOffice; headings, bold, tables and page sizes kept.' },
   { value: 'rtf', label: 'Rich Text (.rtf)', hint: 'Opens in any word processor, including WordPad.' },
   { value: 'xlsx', label: 'Excel (.xlsx)', hint: 'Table columns are detected from text alignment; numbers become numeric cells. One sheet per page.' },
@@ -334,6 +334,7 @@ export function ExportModal() {
   const format = useModalArgs((s) => s.exportFormat);
   const [tab, setTab] = useState<'convert' | 'forms'>('convert');
   const [dpi, setDpi] = useState(150);
+  const [docxLayout, setDocxLayout] = useState<'flow' | 'exact'>('flow');
   const [scope, setScope] = useState<'all' | 'range'>('all');
   const [range, setRange] = useState('1-');
   const [error, setError] = useState<string | null>(null);
@@ -351,7 +352,7 @@ export function ExportModal() {
     try {
       const pageNumbers = scope === 'all' ? undefined : [...new Set(parseRanges(range, count).flat())];
       close();
-      await exportAs({ format, dpi, pageNumbers, quality: 0.88 });
+      await exportAs({ format, dpi, pageNumbers, quality: 0.88, docxLayout });
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
@@ -395,7 +396,23 @@ export function ExportModal() {
                 />
               </Field>
             ) : null}
+            {format === 'docx' ? (
+              <Field label="Layout">
+                <Select
+                  value={docxLayout}
+                  onChange={setDocxLayout}
+                  ariaLabel="Word layout"
+                  options={[
+                    { value: 'flow', label: 'Flowing text (easy to edit)' },
+                    { value: 'exact', label: 'Exact layout (looks like the PDF)' },
+                  ]}
+                />
+              </Field>
+            ) : null}
           </div>
+          {format === 'docx' && docxLayout === 'exact' ? (
+            <p className="mb-3 text-xs text-muted">Every paragraph, table and picture stays where it is on the PDF page, in text frames. Best for forms and designed pages; for longer edits choose Flowing text.</p>
+          ) : null}
           {scope === 'range' ? (
             <Field label="Range" hint="e.g. 1-3, 7">
               <Input value={range} onChange={(e) => setRange(e.target.value)} />
