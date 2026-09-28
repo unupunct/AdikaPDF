@@ -16,7 +16,7 @@
 
   ; Virtual printer "Adika PDF Editor" (needs administrator rights: per-machine install).
   ; printer.ps1 is installed next to the exe as a bundle resource.
-  nsExec::ExecToLog 'powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$INSTDIR\printer.ps1" -Action install'
+  nsExec::ExecToLog 'powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$INSTDIR\printer.ps1" -Action install -EnableSpooler'
   Pop $0
   ; Start the print helper at every log-on (all users when possible).
   ClearErrors

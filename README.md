@@ -30,8 +30,9 @@ installed automatically if missing).
 
 Installing for all users (per machine) also adds the **Adika PDF Editor** printer. It uses
 Windows' own "Microsoft Print To PDF" driver, so no extra driver is installed. The Windows Print
-Spooler service must be running; if it is off, the installer skips the printer. Start the spooler,
-then run `printer.ps1` from the install folder as administrator to add the printer later.
+Spooler service is needed; if it is stopped, the installer starts it and sets it to start
+automatically. To re-create the printer later, run `printer.ps1 -EnableSpooler` from the install
+folder as administrator.
 
 **Logs.** Diagnostic logs and crash reports are written to the `logs` folder in the install
 folder (for example `C:Program FilesAdika PDF Editorlogs`). The installer makes it writable
