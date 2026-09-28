@@ -37,6 +37,7 @@ import {
   RotateCcw,
   RotateCw,
   ScanLine,
+  ScanSearch,
   ScanText,
   Scissors,
   ShieldCheck,
@@ -423,6 +424,7 @@ function SecurityTab() {
     <>
       <Group label="Redaction">
         <ToolBtn tool="redact" icon={<Eraser size={I} />} label="Mark redaction" tip="Draw boxes over content to remove permanently" />
+        <Big icon={<ScanSearch size={I} />} label="Find & redact" disabled={!hasDoc} onClick={() => s.openModal('find-redact')} tip="Mark every e-mail, phone, IBAN, CNP, card number, date or chosen word" testId="btn-find-redact" />
         <Big
           icon={<ScanLine size={I} />}
           label="Apply & save"

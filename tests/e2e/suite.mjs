@@ -20,6 +20,7 @@ import { makeCommentFixture, registerCommentTests } from './comments.part.mjs';
 import { registerToolTests } from './tools.part.mjs';
 import { registerReadingTests } from './reading.part.mjs';
 import { registerMeasureTests } from './measure.part.mjs';
+import { registerReplaceTests } from './replace.part.mjs';
 
 const only = process.argv.slice(2).filter((a) => !a.startsWith('--'));
 const shots = process.argv.includes('--shots');
@@ -388,6 +389,8 @@ test('save as: every edit lands in the PDF', async () => {
   const texts = await pdfText(path);
   assert(texts[0].includes('Semnat în Cluj-Napoca: ăâîșț'), 'typed text with diacritics in output');
   assert(texts[0].includes('Edited sentence by Adika.'), 'edited text in output');
+  assert(!texts[0].includes('quick brown'), 'the edited sentence is deleted from the page, not just covered');
+  assert(texts[1].includes('quick brown'), 'other pages keep theirs');
   assert(texts[0].includes('Maria Ștefănescu'), 'signature caption in output');
   const doc = await PDFDocument.load(readFileSync(path));
   assert(doc.getPageCount() === 3, '3 pages kept');
@@ -776,6 +779,7 @@ registerFormatTests(test, { S, page, dir, open, idle, savedFile, assert, pdfText
 registerToolTests(test, { S, page, dir, open, idle, savedFile, assert, pdfText, join, writeFileSync, PDFDocument, F, pdfjs, FONT_DATA, at });
 registerReadingTests(test, { S, page, open, idle, savedFile, assert, F, at });
 registerMeasureTests(test, { S, page, open, idle, savedFile, assert, F, pdfjs, FONT_DATA, at });
+registerReplaceTests(test, { S, page, dir, open, idle, savedFile, assert, pdfText, join, writeFileSync, F });
 
 test('dark mode toggle and welcome after close', async () => {
   await page.click('[data-testid="theme-toggle"]');

@@ -69,7 +69,8 @@ export type ModalId =
   | 'link'
   | 'crop'
   | 'pageMarks'
-  | 'compare';
+  | 'compare'
+  | 'find-redact';
 
 export interface Toast {
   id: string;
@@ -125,7 +126,8 @@ interface PDFState extends UndoableState {
   modal: ModalId;
   busy: BusyState | null;
   toasts: Toast[];
-  search: { query: string; hits: SearchHit[]; active: number; open: boolean; running: boolean };
+  /** `replace`: the search bar shows its Replace row. */
+  search: { query: string; hits: SearchHit[]; active: number; open: boolean; running: boolean; replace?: boolean };
   savedSignatures: SavedSignature[];
   pendingSignature: SavedSignature | null;
   pendingImage: { src: string; width: number; height: number } | null;

@@ -3,7 +3,8 @@
  * "Edit text" (click an existing run to replace it).
  */
 import type { PageRef } from '@/types';
-import { getPdfPage, getTextItems, type TextItem } from './pdfService';
+// pdfService needs the DOM: loaded on first use so the pure helpers work anywhere.
+import type { TextItem } from './pdfService';
 import { totalRotation } from '@/lib/geometry';
 
 export interface TextRun {
@@ -24,6 +25,7 @@ export interface TextRun {
 
 export async function pageTextRuns(page: PageRef): Promise<TextRun[]> {
   if (page.kind !== 'source' || !page.sourceId) return [];
+  const { getPdfPage, getTextItems } = await import('./pdfService');
   const [pdfPage, items, styles] = await Promise.all([
     getPdfPage(page.sourceId, page.sourceIndex),
     getTextItems(page.sourceId, page.sourceIndex),

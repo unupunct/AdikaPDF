@@ -8,6 +8,7 @@ import { ExportModal, ImportModal } from './ConvertModals';
 import { PropertiesModal } from './PropertiesModal';
 import { ToolsModal } from './ToolsModal';
 import { CropModal, LinkModal, PageMarksModal } from './PageToolModals';
+import { FindRedactModal } from './FindRedactModal';
 
 export function Modals() {
   return (
@@ -30,6 +31,7 @@ export function Modals() {
       <LinkModal />
       <CropModal />
       <PageMarksModal />
+      <FindRedactModal />
       <PasswordPrompt />
       <ConfirmPrompt />
     </>

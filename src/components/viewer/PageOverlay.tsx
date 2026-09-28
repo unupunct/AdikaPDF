@@ -333,8 +333,9 @@ export function PageOverlay({ page, zoom }: { page: PageRef; zoom: number }) {
         bold: run.bold,
         italic: run.italic,
         color: '#000000',
-        background: '#ffffff',
+        background: null,
         width: run.width + TEXT_PADDING * 2 + run.size * 0.6,
+        replaces: [runRect(run)],
       });
       const baseline = layoutText(base).lines[0]?.baseline ?? run.size;
       const [dx, dy] = run.dir;
@@ -696,6 +697,11 @@ export function PageOverlay({ page, zoom }: { page: PageRef; zoom: number }) {
               listening={false}
             />
           ))}
+          {objects.flatMap((o) =>
+            o.type === 'text' && o.replaces?.length
+              ? o.replaces.map((r, i) => <Rect key={`cover-${o.id}-${i}`} x={r.x} y={r.y} width={r.width} height={r.height} fill="#ffffff" listening={false} />)
+              : [],
+          )}
           {objects.map((o) => (
             <ObjectNode
               key={o.id}

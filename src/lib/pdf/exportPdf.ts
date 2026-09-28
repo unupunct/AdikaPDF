@@ -76,6 +76,7 @@ import { writeFreeText, writeMarkup, writeNote } from './annotations';
 import { writeAttachment, writeLink, writeMeasure, writePoly, writeStamp } from './commentAnnots';
 import { writeOutline } from './outline';
 import { dropUnreachableObjects } from './prune';
+import { removeGlyphs, type Box, type LineEdit } from './textRemoval';
 import type { FieldValue } from '@/store/usePDFStore';
 
 export interface ExportInput {
@@ -304,12 +305,20 @@ function boxFrame(m: Matrix, h: number): Matrix {
   return multiply(m, [1, 0, 0, -1, 0, h]);
 }
 
-async function drawText(ctx: DrawContext, page: PDFPage, pm: Matrix, o: TextObject): Promise<void> {
+/** Width of a one-line text object's text (NaN when it wraps: no line reflow then). */
+function singleLineWidth(o: TextObject, measure: (v: FontVariant, size: number) => Measure): number {
+  const m = measure({ family: o.fontFamily, bold: o.bold, italic: o.italic }, o.fontSize);
+  if (o.text.includes('\n') || layoutText(o, m).lines.length > 1) return Number.NaN;
+  return m(o.text);
+}
+
+async function drawText(ctx: DrawContext, page: PDFPage, pm: Matrix, o: TextObject, hScale = 1): Promise<void> {
   const variant: FontVariant = { family: o.fontFamily, bold: o.bold, italic: o.italic };
   const font = await fontFor(ctx, variant);
   const layout = layoutText(o, ctx.opts.measure(variant, o.fontSize));
   const height = Math.max(o.height, layout.contentHeight);
-  withMatrix(page, boxFrame(objectMatrix(pm, o), height), () => {
+  // hScale < 1: a replacement condensed horizontally to fit its line.
+  withMatrix(page, multiply(boxFrame(objectMatrix(pm, o), height), [hScale, 0, 0, 1, 0, 0]), () => {
     if (o.background) {
       page.drawRectangle({ x: 0, y: 0, width: o.width, height, color: hexToRgb(o.background), opacity: o.opacity });
     }
@@ -644,18 +653,6 @@ export async function buildPdf(input: ExportInput, options: ExportOptions = {}):
   for (let i = 0; i < pages.length; i++) {
     const ref = pages[i];
     progress('Assembling pages', (i / pages.length) * 0.4);
-    const redactions = redactsByPage.get(ref.id);
-    if (redactions && redactions.length > 0) {
-      if (!options.rasterizeRedactedPage) throw new ExportError('Redaction needs a page rasterizer.');
-      const raster = await options.rasterizeRedactedPage(ref, redactions);
-      const size = displaySize(ref);
-      const page = PDFPage.create(doc);
-      page.setSize(size.width, size.height);
-      const img = raster.format === 'jpeg' ? await doc.embedJpg(raster.bytes) : await doc.embedPng(raster.bytes);
-      page.drawImage(img, { x: 0, y: 0, width: size.width, height: size.height });
-      planned.push({ ref, page, rasterized: true });
-      continue;
-    }
     if (ref.kind === 'blank' || !ref.sourceId) {
       const page = PDFPage.create(doc);
       page.setSize(ref.width, ref.height);
@@ -681,6 +678,67 @@ export async function buildPdf(input: ExportInput, options: ExportOptions = {}):
     }
     const [copy] = await doc.copyPages(foreign, [ref.sourceIndex]);
     planned.push({ ref, page: copy, rasterized: false });
+  }
+
+  // 2b. Delete the letters under redactions and replaced text from the page
+  // content itself (the rest of the page stays real, selectable text). A
+  // redacted page whose area holds anything the engine cannot clean safely
+  // (images, drawings, form XObjects, form fields…) is rebuilt from a raster.
+  const replacersByPage = new Map<string, TextObject[]>();
+  for (const o of objects) {
+    if (o.type === 'text' && o.replaces?.length) replacersByPage.set(o.pageId, [...(replacersByPage.get(o.pageId) ?? []), o]);
+  }
+  // Pages where replaced text could not be removed: draw a white cover under the new text.
+  const coverReplaced = new Set<string>();
+  // Replacement text moved along its line by other replacements before it (points).
+  const replacerShift = new Map<string, number>();
+  // Replacement text condensed to fit before the next column / the page margin.
+  const replacerScale = new Map<string, number>();
+  // Replacements the engine wrote into the page in the document's own font.
+  const replacerNative = new Set<string>();
+  for (let k = 0; k < planned.length; k++) {
+    const { ref, page } = planned[k];
+    const redactions = redactsByPage.get(ref.id);
+    const replacers = replacersByPage.get(ref.id);
+    if (!redactions?.length && !replacers?.length) continue;
+    const pm = displayToPdfMatrix(totalRotation(ref), visibleBox(page));
+    const toPdf = (r: Rect): Box => {
+      const b = transformRectBounds(pm, r);
+      return { x0: b.x, y0: b.y, x1: b.x + b.width, y1: b.y + b.height };
+    };
+    const editable = ref.kind === 'source' && !!ref.sourceId;
+    if (redactions?.length) {
+      const res = editable ? removeGlyphs(doc, page, redactions.map(toPdf), 'redact') : null;
+      if (!res?.ok) {
+        if (!options.rasterizeRedactedPage) throw new ExportError('Redaction needs a page rasterizer.');
+        const raster = await options.rasterizeRedactedPage(ref, redactions);
+        const size = displaySize(ref);
+        const rp = PDFPage.create(doc);
+        rp.setSize(size.width, size.height);
+        const img = raster.format === 'jpeg' ? await doc.embedJpg(raster.bytes) : await doc.embedPng(raster.bytes);
+        rp.drawImage(img, { x: 0, y: 0, width: size.width, height: size.height });
+        planned[k] = { ref, page: rp, rasterized: true };
+        if (replacers?.length) coverReplaced.add(ref.id);
+        continue;
+      }
+    }
+    if (replacers?.length) {
+      // Single-line replacements tell the engine their width so the rest of the line makes room.
+      const edits: LineEdit[] = replacers.map((o) => {
+        const newWidth = singleLineWidth(o, opts.measure);
+        // Plain one-line text in the default colour of the run can be written in the original font.
+        return { boxes: o.replaces!.map(toPdf), newWidth, text: Number.isFinite(newWidth) && o.opacity >= 1 && !o.background ? o.text : undefined };
+      });
+      const res = editable ? removeGlyphs(doc, page, edits.flatMap((e) => e.boxes), 'replace', edits) : null;
+      if (!res?.ok || res.coversImage) coverReplaced.add(ref.id);
+      else {
+        replacers.forEach((o, i) => {
+          if (res.editShifts[i]) replacerShift.set(o.id, res.editShifts[i]);
+          if (res.editScales[i] < 1) replacerScale.set(o.id, res.editScales[i]);
+          if (res.editNative[i]) replacerNative.add(o.id);
+        });
+      }
+    }
   }
 
   // 3. Replace the page tree contents with the planned order.
@@ -722,10 +780,21 @@ export async function buildPdf(input: ExportInput, options: ExportOptions = {}):
     for (const o of list) {
       switch (o.type) {
         case 'text':
+          if (replacerNative.has(o.id)) break; // already written into the page content
+          if (o.replaces?.length && coverReplaced.has(ref.id)) {
+            // The old letters are still there (or burned into a raster): cover them.
+            withMatrix(page, pm, () => {
+              for (const r of o.replaces!) page.drawRectangle({ x: r.x, y: r.y, width: r.width, height: r.height, color: rgb(1, 1, 1) });
+            });
+          }
           if (o.annotation) {
             const v = { family: o.fontFamily, bold: o.bold, italic: o.italic };
             writeFreeText(ctx.doc, page, pm, o, await fontFor(ctx, v), ctx.opts.measure(v, o.fontSize));
-          } else await drawText(ctx, page, pm, o);
+          } else {
+            const sh = replacerShift.get(o.id);
+            const a = (o.rotation * Math.PI) / 180;
+            await drawText(ctx, page, pm, sh ? { ...o, x: o.x + Math.cos(a) * sh, y: o.y + Math.sin(a) * sh } : o, replacerScale.get(o.id) ?? 1);
+          }
           break;
         case 'note':
           writeNote(ctx.doc, page, pm, o);
@@ -776,7 +845,13 @@ export async function buildPdf(input: ExportInput, options: ExportOptions = {}):
           writeLink(ctx.doc, page, pm, o, o.target.kind === 'page' ? (pageById.get(o.target.pageId) ?? null) : null);
           break;
         case 'redact':
-          break; // already burned into the raster
+          // Rasterised pages have the box burned in; otherwise the letters are gone, draw the box.
+          if (!rasterized) {
+            withMatrix(page, boxFrame(objectMatrix(pm, o), o.height), () => {
+              page.drawRectangle({ x: 0, y: 0, width: o.width, height: o.height, color: hexToRgb(o.fill) });
+            });
+          }
+          break;
       }
     }
   }
