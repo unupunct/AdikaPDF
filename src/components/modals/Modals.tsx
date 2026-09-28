@@ -9,6 +9,7 @@ import { PropertiesModal } from './PropertiesModal';
 import { ToolsModal } from './ToolsModal';
 import { CropModal, LinkModal, PageMarksModal } from './PageToolModals';
 import { FindRedactModal } from './FindRedactModal';
+import { BatchModal } from './BatchModal';
 
 export function Modals() {
   return (
@@ -32,6 +33,7 @@ export function Modals() {
       <CropModal />
       <PageMarksModal />
       <FindRedactModal />
+      <BatchModal />
       <PasswordPrompt />
       <ConfirmPrompt />
     </>

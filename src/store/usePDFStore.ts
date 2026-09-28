@@ -70,7 +70,8 @@ export type ModalId =
   | 'crop'
   | 'pageMarks'
   | 'compare'
-  | 'find-redact';
+  | 'find-redact'
+  | 'batch';
 
 export interface Toast {
   id: string;
