@@ -155,6 +155,46 @@ function mimeFor(name: string): string {
   return (ext && map[ext]) || 'application/octet-stream';
 }
 
+/** Opens an http(s)/mailto URL in the default browser / mail app. */
+export async function openExternal(url: string): Promise<void> {
+  if (!/^(https?:|mailto:)/i.test(url)) throw new Error('Only web and e-mail links can be opened.');
+  if (!isDesktop) {
+    window.open(url, '_blank', 'noopener');
+    return;
+  }
+  const { openUrl } = await import('@tauri-apps/plugin-opener');
+  await openUrl(url);
+}
+
+/** "size:mtime" of a file on disk (desktop only), or null. */
+export async function fileStamp(path: string): Promise<string | null> {
+  if (!isDesktop) return null;
+  return invoke<string>('file_stamp', { path }).catch(() => null);
+}
+
+export async function setFullscreen(on: boolean): Promise<void> {
+  if (!isDesktop) {
+    if (on) await document.documentElement.requestFullscreen().catch(() => undefined);
+    else if (document.fullscreenElement) await document.exitFullscreen().catch(() => undefined);
+    return;
+  }
+  const { getCurrentWindow } = await import('@tauri-apps/api/window');
+  await getCurrentWindow().setFullscreen(on);
+}
+
+/** PDFs handed over by a second launch of the app (single instance). */
+export async function onForwardedFiles(handler: (paths: string[]) => void): Promise<() => void> {
+  if (!isDesktop) return () => undefined;
+  const { listen } = await import('@tauri-apps/api/event');
+  return listen<string[]>('adika://open-files', (e) => handler(e.payload));
+}
+
+/** Starts the virtual-printer helper when the printer is installed. */
+export async function ensurePrintWatcher(): Promise<boolean> {
+  if (!isDesktop) return false;
+  return invoke<boolean>('ensure_print_watcher').catch(() => false);
+}
+
 export async function initialFiles(): Promise<string[]> {
   if (!isDesktop) return [];
   return invoke<string[]>('initial_files');

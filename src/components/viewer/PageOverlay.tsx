@@ -9,7 +9,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Circle, Layer, Line, Rect, Stage, Transformer } from 'react-konva';
 import type Konva from 'konva';
-import type { EditorObject, FieldKind, LineObject, PageRef, TextObject, ToolId } from '@/types';
+import type { EditorObject, FieldKind, LineObject, NoteObject, PageRef, TextObject, ToolId } from '@/types';
+import { NotePopup } from './NotePopup';
+import { getAuthor } from '@/lib/author';
+import { isTextTool } from '@/lib/tools';
 import { usePDFStore } from '@/store/usePDFStore';
 import { displaySize, normalizeAngle, normalizeRect, objectDisplayBounds, type Rect as R } from '@/lib/geometry';
 import {
@@ -17,6 +20,7 @@ import {
   makeField,
   makeImage,
   makeLine,
+  makeNote,
   makePen,
   makeRedaction,
   makeShape,
@@ -61,6 +65,7 @@ export function PageOverlay({ page, zoom }: { page: PageRef; zoom: number }) {
   const [draft, setDraft] = useState<Draft | null>(null);
   const [guides, setGuides] = useState<Array<{ vertical: boolean; pos: number }>>([]);
   const editing = objects.find((o): o is TextObject => o.id === editingTextId && o.type === 'text');
+  const editingNote = objects.find((o): o is NoteObject => o.id === editingTextId && o.type === 'note');
 
   const pageHits = useMemo(() => {
     const out: Array<{ rect: R; active: boolean }> = [];
@@ -86,11 +91,12 @@ export function PageOverlay({ page, zoom }: { page: PageRef; zoom: number }) {
           .filter((n): n is Konva.Node => !!n);
     tr.nodes(nodes);
     const only = selectedHere.length === 1 ? selectedHere[0] : null;
-    if (only?.type === 'text') tr.enabledAnchors(['middle-left', 'middle-right']);
+    if (only?.type === 'note' || only?.type === 'markup') tr.enabledAnchors([]);
+    else if (only?.type === 'text') tr.enabledAnchors(['middle-left', 'middle-right']);
     else if (only?.type === 'field' && (only.fieldKind === 'checkbox' || only.fieldKind === 'radio'))
       tr.enabledAnchors(['top-left', 'top-right', 'bottom-left', 'bottom-right']);
     else tr.enabledAnchors(['top-left', 'top-center', 'top-right', 'middle-left', 'middle-right', 'bottom-left', 'bottom-center', 'bottom-right']);
-    tr.rotateEnabled(!selectedHere.some((o) => o.type === 'field'));
+    tr.rotateEnabled(!selectedHere.some((o) => o.type === 'field' || o.type === 'note' || o.type === 'markup'));
     tr.keepRatio(only?.type === 'image' || only?.type === 'signature');
     tr.getLayer()?.batchDraw();
   }, [selectedHere, editingTextId, singleLine, objects]);
@@ -243,6 +249,23 @@ export function PageOverlay({ page, zoom }: { page: PageRef; zoom: number }) {
       case 'editText':
         void editExistingText(p.x, p.y);
         return;
+      case 'note': {
+        e.evt.preventDefault(); // keep focus for the popup we are about to open
+        const note = makeNote(page.id, p.x, p.y, getAuthor());
+        store.setTool('select');
+        store.addObject(note);
+        store.setEditingText(note.id);
+        return;
+      }
+      case 'typewriter': {
+        // Typewriter: a FreeText comment typed straight onto the page.
+        e.evt.preventDefault();
+        const obj = makeText(page.id, p.x, p.y - store.style.fontSize * 0.7, store.style, { annotation: true, author: getAuthor(), width: 260 });
+        store.setTool('select');
+        store.addObject(obj);
+        store.setEditingText(obj.id);
+        return;
+      }
       case 'image': {
         const img = store.pendingImage;
         if (!img) return;
@@ -322,7 +345,7 @@ export function PageOverlay({ page, zoom }: { page: PageRef; zoom: number }) {
   const onDoubleClick = useCallback((id: string) => {
     const store = usePDFStore.getState();
     const o = store.objects.find((x) => x.id === id);
-    if (o?.type === 'text' && !o.locked) {
+    if ((o?.type === 'text' || o?.type === 'note') && !o.locked) {
       store.select([id]);
       store.setEditingText(id);
     }
@@ -450,12 +473,12 @@ export function PageOverlay({ page, zoom }: { page: PageRef; zoom: number }) {
       ? undefined
       : tool === 'select'
         ? 'default'
-        : tool === 'text' || tool === 'editText'
+        : tool === 'text' || tool === 'editText' || tool === 'typewriter'
           ? 'text'
           : 'crosshair';
 
   return (
-    <div className="absolute inset-0" style={{ cursor, pointerEvents: tool === 'pan' ? 'none' : 'auto' }}>
+    <div className="absolute inset-0" style={{ cursor, pointerEvents: tool === 'pan' || isTextTool(tool) ? 'none' : 'auto', zIndex: 10 }}>
       <Stage
         ref={stageRef}
         width={size.width * zoom}
@@ -483,9 +506,9 @@ export function PageOverlay({ page, zoom }: { page: PageRef; zoom: number }) {
             <ObjectNode
               key={o.id}
               obj={o}
-              draggable={interactive && !o.locked && o.id !== editingTextId}
+              draggable={interactive && !o.locked && o.id !== editingTextId && o.type !== 'markup'}
               listening={interactive}
-              hidden={o.id === editingTextId}
+              hidden={o.id === editingTextId && o.type === 'text'}
               onSelect={onSelect}
               onDoubleClick={onDoubleClick}
               onDragMove={onDragMove}
@@ -555,6 +578,7 @@ export function PageOverlay({ page, zoom }: { page: PageRef; zoom: number }) {
         </Layer>
       </Stage>
       {editing ? <TextEditor key={editing.id} obj={editing} zoom={zoom} /> : null}
+      {editingNote ? <NotePopup key={editingNote.id} note={editingNote} zoom={zoom} pageWidth={size.width} /> : null}
     </div>
   );
 }

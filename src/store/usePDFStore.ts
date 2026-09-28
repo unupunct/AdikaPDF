@@ -58,12 +58,30 @@ export type ModalId =
   | 'pdfa'
   | 'about'
   | 'split'
-  | 'unlock';
+  | 'unlock'
+  | 'properties'
+  | 'print'
+  | 'tools';
 
 export interface Toast {
   id: string;
   kind: 'info' | 'success' | 'error';
   message: string;
+}
+
+export type SidebarTab = 'pages' | 'bookmarks' | 'comments' | 'attachments' | 'layers' | 'search';
+
+export interface NavPoint {
+  pageId: string;
+  y?: number;
+}
+
+/** Document metadata edited in Properties; applied when the file is saved. */
+export interface DocMeta {
+  title?: string;
+  author?: string;
+  subject?: string;
+  keywords?: string;
 }
 
 export interface BusyState {
@@ -109,6 +127,30 @@ interface PDFState extends UndoableState {
   /** Bumped when page rasters must be redrawn (e.g. form values changed). */
   renderEpoch: number;
   bumpRenderEpoch: () => void;
+
+  // Reader view
+  viewScroll: 'continuous' | 'single';
+  viewSpread: 'none' | 'odd' | 'even';
+  /** Rotation of the view only (the file is not changed). */
+  viewRotation: Rotation;
+  nightMode: boolean;
+  presentation: boolean;
+  /** Window full screen with the toolbars hidden (F11). */
+  fullscreen: boolean;
+  sidebarTab: SidebarTab;
+  navBack: NavPoint[];
+  navForward: NavPoint[];
+  searchOptions: { caseSensitive: boolean; wholeWord: boolean };
+  docMeta: DocMeta | null;
+  /** Size + mtime of the file on disk when opened/saved, for auto-reload. */
+  fileStamp: string | null;
+  setView: (patch: Partial<Pick<PDFState, 'viewScroll' | 'viewSpread' | 'viewRotation' | 'nightMode' | 'presentation' | 'fullscreen' | 'sidebarTab'>>) => void;
+  /** Jumps to a page (and optional y), remembering where we came from. */
+  navigateTo: (pageId: string, y?: number) => void;
+  goBack: () => void;
+  goForward: () => void;
+  setSearchOptions: (patch: Partial<PDFState['searchOptions']>) => void;
+  setDocMeta: (meta: DocMeta) => void;
 
   // Document actions
   loadDocument: (bytes: Uint8Array, name: string, path?: string | null, password?: string) => Promise<void>;
@@ -227,7 +269,7 @@ export const usePDFStore = create<PDFState>()((set, get) => ({
   future: [],
   signatureStatus: [],
 
-  tool: 'select',
+  tool: 'selectText',
   ribbonTab: 'home',
   style: DEFAULT_STYLE,
   zoom: 1,
@@ -249,6 +291,42 @@ export const usePDFStore = create<PDFState>()((set, get) => ({
   scrollRequest: null,
   renderEpoch: 0,
   bumpRenderEpoch: () => set((s) => ({ renderEpoch: s.renderEpoch + 1 })),
+
+  viewScroll: 'continuous',
+  viewSpread: 'none',
+  viewRotation: 0,
+  nightMode: false,
+  presentation: false,
+  fullscreen: false,
+  sidebarTab: 'pages',
+  navBack: [],
+  navForward: [],
+  searchOptions: { caseSensitive: false, wholeWord: false },
+  docMeta: null,
+  fileStamp: null,
+  setView: (patch) => set(patch),
+  navigateTo: (pageId, y) => {
+    const s = get();
+    const here: NavPoint | null = s.currentPageId ? { pageId: s.currentPageId } : null;
+    set({ navBack: here ? [...s.navBack.slice(-49), here] : s.navBack, navForward: [] });
+    get().scrollToPage(pageId, y);
+  },
+  goBack: () => {
+    const s = get();
+    const target = s.navBack[s.navBack.length - 1];
+    if (!target || !s.pages.some((p) => p.id === target.pageId)) return;
+    set({ navBack: s.navBack.slice(0, -1), navForward: s.currentPageId ? [{ pageId: s.currentPageId }, ...s.navForward] : s.navForward });
+    get().scrollToPage(target.pageId, target.y);
+  },
+  goForward: () => {
+    const s = get();
+    const target = s.navForward[0];
+    if (!target || !s.pages.some((p) => p.id === target.pageId)) return;
+    set({ navForward: s.navForward.slice(1), navBack: s.currentPageId ? [...s.navBack, { pageId: s.currentPageId }] : s.navBack });
+    get().scrollToPage(target.pageId, target.y);
+  },
+  setSearchOptions: (patch) => set((s) => ({ searchOptions: { ...s.searchOptions, ...patch } })),
+  setDocMeta: (docMeta) => set({ docMeta, dirty: true }),
 
   // ------------------------------------------------------------ document
 
@@ -300,7 +378,12 @@ export const usePDFStore = create<PDFState>()((set, get) => ({
       signatureStatus: [],
       search: { query: '', hits: [], active: 0, open: false, running: false },
       fitMode: 'width',
-      tool: 'select',
+      tool: 'selectText',
+      navBack: [],
+      navForward: [],
+      viewRotation: 0,
+      docMeta: null,
+      fileStamp: null,
     }));
   },
 
@@ -548,7 +631,14 @@ export const usePDFStore = create<PDFState>()((set, get) => ({
 
   // ------------------------------------------------------------ UI
 
-  setTool: (tool) => set({ tool, editingTextId: null, ...(tool !== 'select' ? { selectedIds: [] } : {}) }),
+  setTool: (tool) => {
+    // Editing works in page coordinates; a rotated *view* only supports reading.
+    if (get().viewRotation !== 0 && !['selectText', 'pan', 'select'].includes(tool)) {
+      get().toast('Reset the view rotation (View → Rotate view) to edit.', 'info');
+      return;
+    }
+    set({ tool, editingTextId: null, ...(tool !== 'select' ? { selectedIds: [] } : {}) });
+  },
   setRibbonTab: (ribbonTab) => set({ ribbonTab }),
   setStyle: (patch) => set((s) => ({ style: { ...s.style, ...patch } })),
   setZoom: (zoom, fitMode = null) =>

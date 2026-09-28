@@ -1,5 +1,8 @@
 /** Default-valued constructors for editor objects. */
 import type {
+  MarkupKind,
+  MarkupObject,
+  NoteObject,
   FieldKind,
   FieldObject,
   ImageObject,
@@ -36,6 +39,53 @@ export function makeText(pageId: string, x: number, y: number, style: ToolStyle,
     lineHeight: 1.25,
     background: null,
     ...patch,
+  };
+}
+
+export const MARKUP_COLORS: Record<MarkupKind, string> = {
+  highlight: '#facc15',
+  underline: '#16a34a',
+  strikeout: '#dc2626',
+  squiggly: '#2563eb',
+};
+
+export function makeNote(pageId: string, x: number, y: number, author: string, color = '#facc15'): NoteObject {
+  const now = new Date().toISOString();
+  return { id: uid('obj'), type: 'note', pageId, x: x - 10, y: y - 10, width: 20, height: 20, rotation: 0, opacity: 1, text: '', color, author, createdAt: now, modifiedAt: now };
+}
+
+/** Markup over line boxes given in page display coordinates. */
+export function makeMarkup(
+  pageId: string,
+  kind: MarkupKind,
+  boxes: Array<{ x: number; y: number; width: number; height: number }>,
+  selectedText: string,
+  author: string,
+  color = MARKUP_COLORS[kind],
+): MarkupObject {
+  const minX = Math.min(...boxes.map((b) => b.x));
+  const minY = Math.min(...boxes.map((b) => b.y));
+  const maxX = Math.max(...boxes.map((b) => b.x + b.width));
+  const maxY = Math.max(...boxes.map((b) => b.y + b.height));
+  const now = new Date().toISOString();
+  return {
+    id: uid('obj'),
+    type: 'markup',
+    kind,
+    pageId,
+    x: minX,
+    y: minY,
+    width: maxX - minX,
+    height: maxY - minY,
+    rotation: 0,
+    opacity: 1,
+    quads: boxes.map((b) => ({ x: b.x - minX, y: b.y - minY, width: b.width, height: b.height })),
+    color,
+    selectedText,
+    text: '',
+    author,
+    createdAt: now,
+    modifiedAt: now,
   };
 }
 

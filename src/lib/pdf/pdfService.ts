@@ -5,7 +5,8 @@
  */
 import * as pdfjs from 'pdfjs-dist';
 import type { PDFDocumentProxy, PDFPageProxy } from 'pdfjs-dist';
-import type { TextItem } from 'pdfjs-dist/types/src/display/api';
+import type { TextContent, TextItem } from 'pdfjs-dist/types/src/display/api';
+import type { OptionalContentConfig } from 'pdfjs-dist/types/src/display/optional_content_config';
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import type { PageRef } from '@/types';
 import { totalRotation } from '@/lib/geometry';
@@ -17,6 +18,16 @@ const assetBase = new URL(`${import.meta.env.BASE_URL}pdfjs/`, document.baseURI)
 const docs = new Map<string, Promise<PDFDocumentProxy>>();
 const pages = new Map<string, Promise<PDFPageProxy>>();
 const texts = new Map<string, Promise<TextItem[]>>();
+const textContents = new Map<string, Promise<TextContent>>();
+const annotations = new Map<string, Promise<PageAnnotation[]>>();
+const layerConfigs = new Map<string, Promise<OptionalContentConfig>>();
+
+export class SourceClosedError extends Error {
+  constructor(sourceId: string) {
+    super(`Source ${sourceId} is not loaded`);
+    this.name = 'SourceClosedError';
+  }
+}
 
 export class PasswordRequiredError extends Error {
   constructor(public readonly incorrect: boolean) {
@@ -53,7 +64,9 @@ export function registerSource(sourceId: string, doc: PDFDocumentProxy): void {
 
 export function getSourceDoc(sourceId: string): Promise<PDFDocumentProxy> {
   const d = docs.get(sourceId);
-  if (!d) throw new Error(`Source ${sourceId} is not loaded`);
+  // A rejected promise (not a throw): late async work for a closed document
+  // then fails quietly inside its own promise chain.
+  if (!d) return Promise.reject(new SourceClosedError(sourceId));
   return d;
 }
 
@@ -62,6 +75,9 @@ export async function releaseSource(sourceId: string): Promise<void> {
   docs.delete(sourceId);
   for (const key of [...pages.keys()]) if (key.startsWith(`${sourceId}:`)) pages.delete(key);
   for (const key of [...texts.keys()]) if (key.startsWith(`${sourceId}:`)) texts.delete(key);
+  for (const key of [...textContents.keys()]) if (key.startsWith(`${sourceId}:`)) textContents.delete(key);
+  for (const key of [...annotations.keys()]) if (key.startsWith(`${sourceId}:`)) annotations.delete(key);
+  layerConfigs.delete(sourceId);
   if (d) await (await d).loadingTask.destroy().catch(() => undefined);
 }
 
@@ -85,6 +101,105 @@ export function getTextItems(sourceId: string, index: number): Promise<TextItem[
     texts.set(key, t);
   }
   return t;
+}
+
+/** Full text content (for the selectable text layer). */
+export function getTextContent(sourceId: string, index: number): Promise<TextContent> {
+  const key = `${sourceId}:${index}`;
+  let t = textContents.get(key);
+  if (!t) {
+    t = getPdfPage(sourceId, index).then((p) => p.getTextContent());
+    textContents.set(key, t);
+  }
+  return t;
+}
+
+/** Subset of pdf.js annotation data the reader uses (links, attachments). */
+export interface PageAnnotation {
+  subtype: string;
+  rect: [number, number, number, number];
+  url?: string;
+  unsafeUrl?: string;
+  dest?: string | unknown[] | null;
+  action?: string;
+  attachment?: { filename: string; content?: Uint8Array };
+}
+
+export function getAnnotations(sourceId: string, index: number): Promise<PageAnnotation[]> {
+  const key = `${sourceId}:${index}`;
+  let a = annotations.get(key);
+  if (!a) {
+    a = getPdfPage(sourceId, index).then((p) => p.getAnnotations({ intent: 'display' }) as Promise<PageAnnotation[]>);
+    annotations.set(key, a);
+  }
+  return a;
+}
+
+export interface OutlineNode {
+  title: string;
+  bold: boolean;
+  italic: boolean;
+  dest: string | unknown[] | null;
+  url: string | null;
+  items: OutlineNode[];
+}
+
+export async function getOutline(sourceId: string): Promise<OutlineNode[]> {
+  const doc = await getSourceDoc(sourceId);
+  return ((await doc.getOutline()) ?? []) as unknown as OutlineNode[];
+}
+
+export async function getPageLabels(sourceId: string): Promise<string[] | null> {
+  const doc = await getSourceDoc(sourceId);
+  return doc.getPageLabels();
+}
+
+/** Resolves a PDF destination to a 0-based page index and optional top y (PDF units). */
+export async function resolveDestination(sourceId: string, dest: string | unknown[] | null | undefined): Promise<{ index: number; left: number | null; top: number | null } | null> {
+  if (!dest) return null;
+  const doc = await getSourceDoc(sourceId);
+  const explicit = typeof dest === 'string' ? await doc.getDestination(dest) : dest;
+  if (!Array.isArray(explicit) || explicit.length === 0) return null;
+  const target = explicit[0] as unknown;
+  let index: number;
+  if (typeof target === 'number') index = target;
+  else if (target && typeof target === 'object') index = await doc.getPageIndex(target as Parameters<typeof doc.getPageIndex>[0]);
+  else return null;
+  const kind = (explicit[1] as { name?: string } | undefined)?.name;
+  const num = (v: unknown) => (typeof v === 'number' ? v : null);
+  if (kind === 'XYZ') return { index, left: num(explicit[2]), top: num(explicit[3]) };
+  if (kind === 'FitH' || kind === 'FitBH') return { index, left: null, top: num(explicit[2]) };
+  if (kind === 'FitR') return { index, left: num(explicit[2]), top: num(explicit[5]) };
+  return { index, left: null, top: null };
+}
+
+export interface EmbeddedFile {
+  filename: string;
+  description: string | null;
+  content: Uint8Array;
+}
+
+export async function getEmbeddedFiles(sourceId: string): Promise<EmbeddedFile[]> {
+  const doc = await getSourceDoc(sourceId);
+  const raw = await doc.getAttachments();
+  if (!raw) return [];
+  // pdf.js 6 lists attachments lazily: content is fetched per id when absent.
+  const out: EmbeddedFile[] = [];
+  for (const [id, a] of raw) {
+    const content = a.content ?? (await doc.getAttachmentContent(id).catch(() => null)) ?? new Uint8Array(0);
+    out.push({ filename: a.filename, description: a.description || null, content });
+  }
+  return out;
+}
+
+/** Per-source optional content (layers) state shared by the viewer and the Layers panel. */
+export function getLayerConfig(sourceId: string): Promise<OptionalContentConfig> {
+  let c = layerConfigs.get(sourceId);
+  if (!c) {
+    c = getSourceDoc(sourceId).then((d) => d.getOptionalContentConfig());
+    layerConfigs.set(sourceId, c);
+  }
+  return c;
 }
 
 /** Page viewport at `scale` with the PageRef's total rotation. */
@@ -131,7 +246,13 @@ export function renderPageToCanvas(
     if (!offCtx) throw new Error('Canvas unavailable');
     offCtx.fillStyle = '#ffffff';
     offCtx.fillRect(0, 0, off.width, off.height);
-    task = p.render({ canvas: off, canvasContext: offCtx, viewport, annotationMode: pdfjs.AnnotationMode.ENABLE_STORAGE });
+    task = p.render({
+      canvas: off,
+      canvasContext: offCtx,
+      viewport,
+      annotationMode: pdfjs.AnnotationMode.ENABLE_STORAGE,
+      optionalContentConfigPromise: getLayerConfig(page.sourceId),
+    });
     try {
       await task.promise;
     } catch (e) {
@@ -191,4 +312,4 @@ export async function setViewerFieldValue(sourceId: string, name: string, value:
 }
 
 export { pdfjs };
-export type { PDFDocumentProxy, PDFPageProxy, TextItem };
+export type { PDFDocumentProxy, PDFPageProxy, TextItem, TextContent, OptionalContentConfig };

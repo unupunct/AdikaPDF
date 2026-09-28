@@ -5,6 +5,7 @@ import { usePDFStore } from '@/store/usePDFStore';
 import { PageThumbnail } from './PageThumbnail';
 import { Tooltip } from '@/components/ui/primitives';
 import { cn } from '@/lib/cn';
+import { usePageLabels } from '@/hooks/usePageLabels';
 
 const THUMB_WIDTH = 132;
 
@@ -12,6 +13,7 @@ export function ThumbnailSidebar() {
   const pages = usePDFStore((s) => s.pages);
   const currentPageId = usePDFStore((s) => s.currentPageId);
   const readOnly = usePDFStore((s) => s.readOnlyReason !== null);
+  const labels = usePageLabels();
   const [dragId, setDragId] = useState<string | null>(null);
   const [dropIndex, setDropIndex] = useState<number | null>(null);
 
@@ -29,7 +31,7 @@ export function ThumbnailSidebar() {
   };
 
   return (
-    <aside data-testid="thumbnail-sidebar" className="flex h-full w-[184px] shrink-0 flex-col border-r border-app bg-panel">
+    <div data-testid="thumbnail-sidebar" className="flex h-full min-h-0 flex-1 flex-col">
       <div className="flex h-9 items-center justify-between border-b border-app px-3 text-[11px] font-semibold uppercase tracking-wide text-muted">
         <span>Pages</span>
         <span className="font-normal normal-case">{pages.length}</span>
@@ -77,7 +79,7 @@ export function ThumbnailSidebar() {
               )}
             >
               <PageThumbnail page={page} width={THUMB_WIDTH} />
-              <span className="text-[11px] text-muted">{i + 1}</span>
+              <span className="text-[11px] text-muted" data-testid={`thumb-label-${i + 1}`}>{labels[page.id] ?? i + 1}</span>
             </button>
             {!readOnly ? (
               <div className="absolute right-3 top-2 hidden flex-col gap-0.5 rounded-md bg-panel/95 p-0.5 shadow ring-1 ring-black/10 group-hover:flex">
@@ -102,7 +104,7 @@ export function ThumbnailSidebar() {
         ))}
         {dropIndex === pages.length && dragId ? <div className="mx-2 h-0.5 rounded bg-brand-500" /> : null}
       </div>
-    </aside>
+    </div>
   );
 }
 

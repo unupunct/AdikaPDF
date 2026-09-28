@@ -18,38 +18,27 @@ import {
   FileArchive,
   FileCheck2,
   FileCode2,
-  FileDown,
   FileImage,
   FileInput,
-  FileOutput,
   FilePlus2,
   FileSpreadsheet,
   FileText,
   FileType2,
-  FolderOpen,
-  Hand,
   Highlighter,
   ImagePlus,
   Layers,
   LayoutGrid,
   ListChecks,
   Lock,
-  Maximize,
   Minus,
-  MousePointer2,
-  MoveHorizontal,
   PenLine,
   PenTool,
   Presentation,
-  Redo2,
   RotateCcw,
   RotateCw,
-  Save,
-  SaveAll,
   ScanLine,
   ScanText,
   Scissors,
-  Search,
   ShieldCheck,
   ShieldOff,
   Signature,
@@ -60,10 +49,7 @@ import {
   Trash2,
   Type,
   TextCursorInput,
-  Undo2,
   Usb,
-  ZoomIn,
-  ZoomOut,
   Merge,
   BringToFront,
   SendToBack,
@@ -73,15 +59,18 @@ import { usePDFStore } from '@/store/usePDFStore';
 import type { RibbonTab, ToolId } from '@/types';
 import { Tooltip, DropdownMenu, DropdownTrigger, DropdownContent, DropdownItem } from '@/components/ui/primitives';
 import { cn } from '@/lib/cn';
-import { closeDocumentAction, mergeDialog, openDialog, saveDocument } from '@/actions/document';
+import { mergeDialog, saveDocument } from '@/actions/document';
 import { exportFormCsv } from '@/actions/security';
 import { flattenCurrent, pickImagesAsDataUrls } from '@/actions/convert';
 import { useModalArgs, type ImportKind } from '@/store/useModalArgs';
+import { CommentTab, HomeTab, ViewTab } from './ReaderTabs';
 import type { ExportFormat } from '@/actions/convert';
 
 const TABS: Array<{ id: RibbonTab; label: string }> = [
   { id: 'home', label: 'Home' },
+  { id: 'view', label: 'View' },
   { id: 'edit', label: 'Edit' },
+  { id: 'comment', label: 'Comment' },
   { id: 'sign', label: 'Sign' },
   { id: 'organize', label: 'Organize' },
   { id: 'forms', label: 'Forms' },
@@ -114,8 +103,10 @@ export function Ribbon() {
           </button>
         ))}
       </div>
-      <div className={cn('flex h-[84px] items-stretch gap-0 overflow-x-auto border-t border-app px-1.5 py-1.5', !hasDoc && tab !== 'home' && tab !== 'convert' && 'opacity-60')}>
+      <div className={cn('flex h-[84px] items-stretch gap-0 overflow-x-auto border-t border-app px-1.5 py-1.5', !hasDoc && tab !== 'home' && tab !== 'convert' && tab !== 'view' && 'opacity-60')}>
         {tab === 'home' && <HomeTab />}
+        {tab === 'view' && <ViewTab />}
+        {tab === 'comment' && <CommentTab />}
         {tab === 'edit' && <EditTab />}
         {tab === 'sign' && <SignTab />}
         {tab === 'organize' && <OrganizeTab />}
@@ -213,52 +204,6 @@ const I = 22;
 const i = 14;
 
 // ------------------------------------------------------------------ tabs
-
-function HomeTab() {
-  const { hasDoc, editable, s } = useDoc();
-  const zoomPct = Math.round(s.zoom * 100);
-  return (
-    <>
-      <Group label="File">
-        <Big icon={<FolderOpen size={I} />} label="Open" onClick={() => void openDialog()} tip="Open a PDF (Ctrl+O)" testId="btn-open" />
-        <Big icon={<Save size={I} />} label="Save" disabled={!editable} onClick={() => void saveDocument(false)} tip="Save (Ctrl+S)" testId="btn-save" />
-        <Stack>
-          <Small icon={<SaveAll size={i} />} label="Save as…" disabled={!editable} onClick={() => void saveDocument(true)} tip="Save a copy (Ctrl+Shift+S)" testId="btn-save-as" />
-          <Small icon={<FilePlus2 size={i} />} label="Create PDF" onClick={() => s.openModal('import')} testId="btn-create" />
-          <Small icon={<FileDown size={i} />} label="Close" disabled={!hasDoc} onClick={() => void closeDocumentAction()} />
-        </Stack>
-      </Group>
-      <Group label="History">
-        <Stack>
-          <Small icon={<Undo2 size={i} />} label="Undo" disabled={s.past.length === 0} onClick={s.undo} tip="Undo (Ctrl+Z)" testId="btn-undo" />
-          <Small icon={<Redo2 size={i} />} label="Redo" disabled={s.future.length === 0} onClick={s.redo} tip="Redo (Ctrl+Y)" testId="btn-redo" />
-        </Stack>
-      </Group>
-      <Group label="Tools">
-        <ToolBtn tool="select" icon={<MousePointer2 size={I} />} label="Select" tip="Select and move (V)" />
-        <ToolBtn tool="pan" icon={<Hand size={I} />} label="Hand" tip="Pan the page (H, or hold the middle mouse button)" />
-        <ToolBtn tool="editText" icon={<TextCursorInput size={I} />} label="Edit text" tip="Click existing text to edit it" />
-      </Group>
-      <Group label="View">
-        <Stack>
-          <div className="flex items-center gap-0.5">
-            <Small icon={<ZoomOut size={i} />} label="" tip="Zoom out (Ctrl+-)" disabled={!hasDoc} onClick={() => s.setZoom(s.zoom / 1.2)} testId="btn-zoom-out" />
-            <span data-testid="zoom-level" className="w-12 text-center text-[11.5px] tabular-nums">{zoomPct}%</span>
-            <Small icon={<ZoomIn size={i} />} label="" tip="Zoom in (Ctrl+=)" disabled={!hasDoc} onClick={() => s.setZoom(s.zoom * 1.2)} testId="btn-zoom-in" />
-          </div>
-          <Small icon={<MoveHorizontal size={i} />} label="Fit width" active={s.fitMode === 'width'} disabled={!hasDoc} onClick={() => s.setZoom(s.zoom, 'width')} />
-          <Small icon={<Maximize size={i} />} label="Fit page" active={s.fitMode === 'page'} disabled={!hasDoc} onClick={() => s.setZoom(s.zoom, 'page')} />
-        </Stack>
-        <Big icon={<Search size={I} />} label="Find" disabled={!hasDoc} onClick={() => s.setSearch({ open: true })} tip="Search the document (Ctrl+F)" testId="btn-find" />
-      </Group>
-      <Group label="Quick actions">
-        <Big icon={<Signature size={I} />} label="Fill & Sign" disabled={!editable} onClick={() => s.openModal('signature')} />
-        <Big icon={<LayoutGrid size={I} />} label="Organize" disabled={!editable} onClick={() => s.openModal('organizer')} />
-        <Big icon={<FileOutput size={I} />} label="Export" disabled={!hasDoc} onClick={() => s.openModal('export')} />
-      </Group>
-    </>
-  );
-}
 
 function StyleQuick() {
   const style = usePDFStore((s) => s.style);

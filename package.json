@@ -1,7 +1,7 @@
 {
   "name": "adika-pdf-editor",
   "private": true,
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Adika PDF Editor - privacy-first, offline PDF editor with e-signatures",
   "type": "module",
   "license": "MIT",
@@ -33,6 +33,7 @@
     "@radix-ui/react-tooltip": "^1.2.8",
     "@tauri-apps/api": "^2.11.1",
     "@tauri-apps/plugin-dialog": "^2.7.3",
+    "@tauri-apps/plugin-opener": "^2.6.0",
     "@tesseract.js-data/deu": "^1.0.0",
     "@tesseract.js-data/eng": "^1.0.0",
     "@tesseract.js-data/fra": "^1.0.0",

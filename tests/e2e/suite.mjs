@@ -15,6 +15,8 @@ import { Document, Packer, Paragraph, HeadingLevel, Table, TableRow, TableCell, 
 import JSZip from 'jszip';
 import { launchApp, tempDir } from './harness.mjs';
 import { registerFormatTests } from './formats.part.mjs';
+import { makeReaderFixture, registerReaderTests } from './reader.part.mjs';
+import { makeCommentFixture, registerCommentTests } from './comments.part.mjs';
 
 const only = process.argv.slice(2).filter((a) => !a.startsWith('--'));
 const shots = process.argv.includes('--shots');
@@ -92,7 +94,11 @@ const F = {
   docx: join(dir, 'report.docx'),
   md: join(dir, 'notes.md'),
   html: join(dir, 'page.html'),
+  reader: join(dir, 'reader.pdf'),
+  comments: join(dir, 'comments.pdf'),
 };
+writeFileSync(F.comments, await makeCommentFixture());
+writeFileSync(F.reader, await makeReaderFixture());
 writeFileSync(F.sample, await makeSample());
 writeFileSync(F.form, await makeForm());
 writeFileSync(F.second, await makeSecond());
@@ -136,7 +142,7 @@ function assert(cond, msg) {
 const app = await launchApp();
 const { page } = app;
 page.on('console', (m) => {
-  if (m.type() === 'error') console.log(`   [console.error] ${m.text().slice(0, 300)}`);
+  if (m.type() === 'error') console.log(`   [console.error] ${m.text().slice(0, process.env.ADIKA_FULL_ERRORS ? 4000 : 300)}`);
 });
 page.on('pageerror', (e) => console.log(`   [pageerror] ${e.message}`));
 await page.evaluate((d) => window.__adika.platform.e2eSetSaveDir(d), out);
@@ -152,7 +158,11 @@ async function idle(timeout = 120000) {
 }
 
 async function open(path) {
-  await S(() => window.__adika.store.setState({ dirty: false }));
+  await S(() => {
+    const t = window.__adika.tabs;
+    window.__adika.store.setState({ dirty: false });
+    for (const tab of [...t.useTabs.getState().tabs]) t.removeTab(tab.id);
+  });
   await S((p) => window.__adika.document.openPdfPath(p), path);
   await idle();
   await page.waitForSelector('[data-testid="page-1"] canvas', { timeout: 15000 });
@@ -755,6 +765,8 @@ test('scanner reports a clear message when no scanner is attached', async () => 
   console.log(`   scan → ${res.slice(0, 120)}`);
 });
 
+registerReaderTests(test, { S, page, dir, open, idle, savedFile, assert, pdfText, join, writeFileSync, readFileSync, JSZip, PDFDocument, F, pdfjs, FONT_DATA });
+registerCommentTests(test, { S, page, dir, open, idle, savedFile, assert, join, writeFileSync, F, pdfjs, FONT_DATA });
 registerFormatTests(test, { S, page, dir, open, idle, savedFile, assert, pdfText, join, writeFileSync, readFileSync, JSZip, PDFDocument, F, pdfjs, FONT_DATA });
 
 test('dark mode toggle and welcome after close', async () => {
@@ -782,6 +794,11 @@ for (const t of tests) {
     failed.push(t.name);
     console.log(`  ✗ ${t.name}\n      ${String(e?.message ?? e).split('\n').slice(0, 4).join('\n      ')}`);
     await page.screenshot({ path: join(dir, `FAIL-${failed.length}.png`) }).catch(() => {});
+    const crash = await S(() => window.__adikaLastCrash ?? null).catch(() => null);
+    if (crash) {
+      const top = (text, n) => String(text).split('\n').slice(0, n).join('\n        ');
+      console.log(`      CRASH: ${crash.message}\n        ${top(crash.stack, 8)}\n      components:${top(crash.componentStack, 10)}`);
+    }
     // Recover: close modals, clear busy state.
     await page.keyboard.press('Escape').catch(() => {});
     await S(() => window.__adika.store.setState({ modal: null, busy: null, editingTextId: null, tool: 'select' })).catch(() => {});

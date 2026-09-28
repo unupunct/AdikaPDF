@@ -5,12 +5,15 @@
 //! JSON number arrays), so opening or saving a 100 MB PDF stays fast.
 
 mod convert;
+mod logging;
+mod print_watcher;
 mod net;
 mod pkcs11;
 
 use percent_encoding::percent_decode_str;
 use std::path::PathBuf;
 use tauri::ipc::{InvokeBody, Request, Response};
+use tauri::{Emitter, Manager};
 
 /// Reads a file chosen by the user and returns its bytes as a raw response.
 #[tauri::command]
@@ -48,6 +51,25 @@ fn write_file(request: Request<'_>) -> Result<(), String> {
     })
 }
 
+/// "size:mtime" fingerprint of a file, used to notice outside changes (auto-reload).
+#[tauri::command]
+fn file_stamp(path: String) -> Result<String, String> {
+    let meta = std::fs::metadata(&path).map_err(|e| format!("{path}: {e}"))?;
+    let modified = meta
+        .modified()
+        .ok()
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_millis())
+        .unwrap_or(0);
+    Ok(format!("{}:{}", meta.len(), modified))
+}
+
+/// Windows account name, the default author for comments.
+#[tauri::command]
+fn os_user_name() -> String {
+    std::env::var("USERNAME").unwrap_or_default()
+}
+
 /// PDF paths passed on the command line (Explorer "Open with" / file association).
 #[tauri::command]
 fn initial_files() -> Vec<String> {
@@ -67,12 +89,44 @@ fn e2e_mode() -> bool {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    logging::init();
+    // Background helper for the virtual printer: no window, no WebView.
+    if std::env::args().any(|a| a == print_watcher::WATCH_FLAG) {
+        print_watcher::run();
+        return;
+    }
     tauri::Builder::default()
+        // A second launch (Explorer "Open with", the virtual printer) hands its
+        // files to the running window, which opens them as new tabs.
+        .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
+            let files: Vec<String> = argv
+                .iter()
+                .skip(1)
+                .filter(|a| a.to_ascii_lowercase().ends_with(".pdf") && std::path::Path::new(a).is_file())
+                .cloned()
+                .collect();
+            if let Some(w) = app.get_webview_window("main") {
+                let _ = w.unminimize();
+                let _ = w.set_focus();
+                if !files.is_empty() {
+                    let _ = w.emit("adika://open-files", files);
+                }
+            }
+        }))
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
             read_file,
             write_file,
             initial_files,
+            file_stamp,
+            os_user_name,
+            print_watcher::ensure_print_watcher,
+            print_watcher::virtual_printer_installed,
+            logging::log_write,
+            logging::log_crash,
+            logging::logs_path,
+            logging::open_logs_folder,
             e2e_mode,
             convert::converter_availability,
             convert::office_to_pdf,

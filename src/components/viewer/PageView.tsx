@@ -9,6 +9,8 @@ import type { PageRef } from '@/types';
 import { renderPageToCanvas } from '@/lib/pdf/pdfService';
 import { usePDFStore } from '@/store/usePDFStore';
 import { PageOverlay } from './PageOverlay';
+import { LinkLayer, TextSelectionLayer } from './ReaderLayers';
+import { isTextTool } from '@/lib/tools';
 import { cn } from '@/lib/cn';
 
 interface Props {
@@ -41,6 +43,9 @@ export const PageView = memo(function PageView({ page, index, zoom, scrollRoot }
   const [error, setError] = useState<string | null>(null);
   const isCurrent = usePDFStore((s) => s.currentPageId === page.id);
   const renderEpoch = usePDFStore((s) => s.renderEpoch);
+  const tool = usePDFStore((s) => s.tool);
+  const nightMode = usePDFStore((s) => s.nightMode);
+  const reading = tool === 'selectText' || tool === 'pan';
 
   useEffect(() => {
     if (!near) return;
@@ -83,13 +88,15 @@ export const PageView = memo(function PageView({ page, index, zoom, scrollRoot }
       ref={wrapRef}
       data-testid={`page-${index + 1}`}
       data-page-id={page.id}
-      className={cn('relative h-full w-full bg-white shadow-[0_1px_3px_rgba(15,23,42,0.18),0_8px_24px_rgba(15,23,42,0.10)]', isCurrent && 'ring-2 ring-brand-500/40')}
+      className={cn('relative h-full w-full', nightMode ? 'bg-[#1b1b1b]' : 'bg-white', 'shadow-[0_1px_3px_rgba(15,23,42,0.18),0_8px_24px_rgba(15,23,42,0.10)]', isCurrent && 'ring-2 ring-brand-500/40')}
     >
-      <canvas ref={canvasRef} className="absolute inset-0 h-full w-full" aria-hidden />
+      <canvas ref={canvasRef} className="absolute inset-0 h-full w-full" aria-hidden style={nightMode ? { filter: 'invert(0.92) hue-rotate(180deg)' } : undefined} />
       {renderedZoom === null && !error ? (
         <div className="absolute inset-0 flex items-center justify-center text-xs text-slate-400">Loading page {index + 1}…</div>
       ) : null}
       {error ? <div className="absolute inset-0 flex items-center justify-center p-4 text-center text-xs text-rose-600">Page {index + 1} could not be rendered: {error}</div> : null}
+      {near ? <TextSelectionLayer page={page} zoom={zoom} active={isTextTool(tool)} /> : null}
+      {near ? <LinkLayer page={page} zoom={zoom} active={reading} /> : null}
       {near ? <PageOverlay page={page} zoom={zoom} /> : null}
       <div className="pointer-events-none absolute -left-9 top-0 hidden text-[11px] font-medium text-muted xl:block">{index + 1}</div>
     </div>

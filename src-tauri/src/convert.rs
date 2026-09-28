@@ -89,8 +89,14 @@ switch ($Kind) {
     try {
       $app.Visible = $false; $app.DisplayAlerts = $false
       $wb = $app.Workbooks.Open($In, 0, $true)
-      # 0 = xlTypePDF; honours print areas, page breaks and gridline settings
-      $wb.ExportAsFixedFormat(0, $Out)
+      # 0 = xlTypePDF; honours print areas, page breaks and gridline settings.
+      # Excel refuses to export PDF when no printer is installed: fall back to
+      # a web page (44 = xlHtml) that Adika then prints to PDF with Edge.
+      try { $wb.ExportAsFixedFormat(0, $Out) }
+      catch {
+        if ($_.Exception.Message -match 'printer') { $wb.SaveAs(($Out -replace '[.]pdf$', '.htm'), 44) }
+        else { throw }
+      }
       $wb.Close($false); Release $wb
     } finally { $app.Quit(); Release $app }
   }
@@ -105,7 +111,7 @@ switch ($Kind) {
   }
 }
 [GC]::Collect(); [GC]::WaitForPendingFinalizers()
-if (-not (Test-Path -LiteralPath $Out)) { throw 'Office did not produce a PDF.' }
+if (-not (Test-Path -LiteralPath $Out) -and -not (Test-Path -LiteralPath ($Out -replace '[.]pdf$', '.htm'))) { throw 'Office did not produce a PDF.' }
 "#;
 
 fn office_kind(ext: &str) -> Option<&'static str> {
@@ -220,8 +226,14 @@ pub async fn office_to_pdf(path: String) -> Result<Response, String> {
                     .arg(&out),
                 Duration::from_secs(300),
             );
+            let html_fallback = out.with_extension("htm");
             match res {
                 Ok(()) if out.is_file() => return read_pdf(&out),
+                Ok(()) if html_fallback.is_file() => {
+                    // No printer installed: Excel saved HTML; Edge turns it into the PDF.
+                    let target = format!("file:///{}", html_fallback.to_string_lossy().replace('\\', "/"));
+                    return read_pdf(&edge_print_to_pdf(&scratch, target)?);
+                }
                 Ok(()) => office_err = Some("Office finished without producing a PDF.".to_string()),
                 Err(e) => office_err = Some(e),
             }
@@ -254,7 +266,6 @@ pub async fn office_to_pdf(path: String) -> Result<Response, String> {
 #[tauri::command]
 pub async fn html_to_pdf(html: Option<String>, url: Option<String>) -> Result<Response, String> {
     tauri::async_runtime::spawn_blocking(move || {
-        let edge = find_edge().ok_or("Microsoft Edge was not found; it is needed for HTML → PDF.")?;
         let scratch = Scratch::new()?;
         let target = match (html, url) {
             (Some(html), _) => {
@@ -271,27 +282,33 @@ pub async fn html_to_pdf(html: Option<String>, url: Option<String>) -> Result<Re
             }
             (None, None) => return Err("Nothing to convert.".into()),
         };
-        let out = scratch.path("page.pdf");
-        run_with_timeout(
-            Command::new(edge)
-                .args([
-                    "--headless=new",
-                    "--disable-gpu",
-                    "--no-first-run",
-                    "--no-default-browser-check",
-                    "--disable-extensions",
-                    "--no-pdf-header-footer",
-                    "--virtual-time-budget=8000",
-                ])
-                .arg(format!("--user-data-dir={}", scratch.path("edge-profile").to_string_lossy()))
-                .arg(format!("--print-to-pdf={}", out.to_string_lossy()))
-                .arg(target),
-            Duration::from_secs(120),
-        )?;
-        read_pdf(&out)
+        read_pdf(&edge_print_to_pdf(&scratch, target)?)
     })
     .await
     .map_err(|e| e.to_string())?
+}
+
+/// Prints a page (file:// or http(s)) to PDF with headless Edge.
+fn edge_print_to_pdf(scratch: &Scratch, target: String) -> Result<PathBuf, String> {
+    let edge = find_edge().ok_or("Microsoft Edge was not found; it is needed to render this document to PDF.")?;
+    let out = scratch.path("page.pdf");
+    run_with_timeout(
+        Command::new(edge)
+            .args([
+                "--headless=new",
+                "--disable-gpu",
+                "--no-first-run",
+                "--no-default-browser-check",
+                "--disable-extensions",
+                "--no-pdf-header-footer",
+                "--virtual-time-budget=8000",
+            ])
+            .arg(format!("--user-data-dir={}", scratch.path("edge-profile").to_string_lossy()))
+            .arg(format!("--print-to-pdf={}", out.to_string_lossy()))
+            .arg(target),
+        Duration::from_secs(120),
+    )?;
+    Ok(out)
 }
 
 const SCAN_PS1: &str = r#"

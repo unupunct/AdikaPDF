@@ -4,7 +4,7 @@
  * the same local frame the PDF exporter uses.
  */
 import { memo, useEffect, useState } from 'react';
-import { Arrow, Ellipse, Group, Image as KImage, Line, Rect, Shape, Text } from 'react-konva';
+import { Arrow, Ellipse, Group, Image as KImage, Line, Path, Rect, Shape, Text } from 'react-konva';
 import type Konva from 'konva';
 import type { EditorObject, SignatureObject, TextObject } from '@/types';
 import { layoutText } from '@/lib/textLayout';
@@ -87,6 +87,51 @@ export const ObjectNode = memo(function ObjectNode({ obj, draggable, listening, 
 
 function Content({ obj }: { obj: EditorObject }) {
   switch (obj.type) {
+    case 'note':
+      return (
+        <>
+          <Rect width={20} height={20} fill="transparent" />
+          <Path
+            data="M2 2 H18 V14 H9 L5 18 V14 H2 Z"
+            fill={obj.color}
+            stroke="#3f3f46"
+            strokeWidth={0.8}
+            shadowColor="black"
+            shadowOpacity={0.25}
+            shadowBlur={2}
+            shadowOffsetY={1}
+          />
+          <Line points={[5, 6, 15, 6]} stroke="#27272a" strokeWidth={1} listening={false} />
+          <Line points={[5, 10, 13, 10]} stroke="#27272a" strokeWidth={1} listening={false} />
+        </>
+      );
+    case 'markup':
+      return (
+        <>
+          {obj.quads.map((q, i) => {
+            if (obj.kind === 'highlight') return <Rect key={i} {...q} fill={obj.color} opacity={0.4 * obj.opacity} globalCompositeOperation="multiply" />;
+            const t = Math.max(0.6, q.height * 0.07);
+            if (obj.kind === 'squiggly') {
+              const waves = Math.max(2, Math.round(q.width / Math.max(2, q.height * 0.25)));
+              const pts: number[] = [q.x, q.y + q.height * 0.97];
+              for (let k = 1; k <= waves; k++) pts.push(q.x + (q.width * k) / waves, q.y + q.height * (k % 2 ? 0.86 : 0.97));
+              return (
+                <Group key={i}>
+                  <Rect {...q} fill="transparent" />
+                  <Line points={pts} stroke={obj.color} strokeWidth={t} opacity={obj.opacity} />
+                </Group>
+              );
+            }
+            const fy = obj.kind === 'underline' ? 0.93 : 0.55;
+            return (
+              <Group key={i}>
+                <Rect {...q} fill="transparent" />
+                <Line points={[q.x, q.y + q.height * fy, q.x + q.width, q.y + q.height * fy]} stroke={obj.color} strokeWidth={t} opacity={obj.opacity} />
+              </Group>
+            );
+          })}
+        </>
+      );
     case 'text':
       return <TextContent obj={obj} />;
     case 'image':

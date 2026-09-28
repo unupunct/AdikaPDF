@@ -1,16 +1,52 @@
 /**
- * Main document viewer: continuous vertical scroll of pages, fit-width /
- * fit-page zoom, Ctrl+wheel zoom anchored at the cursor, hand-tool panning,
- * current-page tracking and lazy mounting of page content.
+ * Main document viewer. Pages are laid out in rows (one page per row, or two
+ * for facing / book view), scrolled continuously or one row at a time, with
+ * fit-width / fit-page zoom, Ctrl+wheel zoom anchored at the cursor, hand-tool
+ * panning, current-page tracking, lazy page mounting and a view-only rotation.
  */
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { usePDFStore, MIN_ZOOM, MAX_ZOOM } from '@/store/usePDFStore';
 import { displaySize } from '@/lib/geometry';
+import type { PageRef } from '@/types';
 import { PageView } from './PageView';
 import { cn } from '@/lib/cn';
 
 export const PAGE_GAP = 20;
 const PADDING = 24;
+
+interface Slot {
+  index: number;
+  page: PageRef;
+  /** Unrotated (page display) size in points. */
+  w: number;
+  h: number;
+  /** Size of the slot after the view rotation, in points. */
+  sw: number;
+  sh: number;
+}
+
+interface Row {
+  slots: Slot[];
+  top: number;
+  width: number;
+  height: number;
+}
+
+/** Groups page indices into rows for the spread mode. */
+export function spreadRows(count: number, spread: 'none' | 'odd' | 'even'): number[][] {
+  const rows: number[][] = [];
+  if (spread === 'none') {
+    for (let i = 0; i < count; i++) rows.push([i]);
+    return rows;
+  }
+  let i = 0;
+  if (spread === 'even' && count > 0) {
+    rows.push([0]); // book view: the cover stands alone
+    i = 1;
+  }
+  for (; i < count; i += 2) rows.push(i + 1 < count ? [i, i + 1] : [i]);
+  return rows;
+}
 
 export function PDFCanvas() {
   const pages = usePDFStore((s) => s.pages);
@@ -18,41 +54,66 @@ export function PDFCanvas() {
   const fitMode = usePDFStore((s) => s.fitMode);
   const tool = usePDFStore((s) => s.tool);
   const scrollRequest = usePDFStore((s) => s.scrollRequest);
+  const viewScroll = usePDFStore((s) => s.viewScroll);
+  const viewSpread = usePDFStore((s) => s.viewSpread);
+  const viewRotation = usePDFStore((s) => s.viewRotation);
+  const nightMode = usePDFStore((s) => s.nightMode);
+  const currentPageId = usePDFStore((s) => s.currentPageId);
   const setZoom = usePDFStore((s) => s.setZoom);
   const setCurrentPage = usePDFStore((s) => s.setCurrentPage);
   const containerRef = useRef<HTMLDivElement>(null);
   const zoomAnchor = useRef<{ docX: number; docY: number; clientX: number; clientY: number; zoom: number } | null>(null);
 
-  const sizes = useMemo(() => pages.map((p) => displaySize(p)), [pages]);
-  const maxWidth = useMemo(() => Math.max(1, ...sizes.map((s) => s.width)), [sizes]);
+  const swapped = viewRotation % 180 !== 0;
+  const allRows = useMemo(() => {
+    const groups = spreadRows(pages.length, viewSpread);
+    return groups.map((g) =>
+      g.map((index): Slot => {
+        const { width: w, height: h } = displaySize(pages[index]);
+        return { index, page: pages[index], w, h, sw: swapped ? h : w, sh: swapped ? w : h };
+      }),
+    );
+  }, [pages, viewSpread, swapped]);
 
-  // Page top offsets (in CSS px at the current zoom).
-  const offsets = useMemo(() => {
-    const out: number[] = [];
+  const currentRow = useMemo(() => {
+    const i = allRows.findIndex((r) => r.some((s) => s.page.id === currentPageId));
+    return i < 0 ? 0 : i;
+  }, [allRows, currentPageId]);
+
+  // Rows actually laid out (all, or the current one in single-page mode).
+  const rows = useMemo((): Row[] => {
+    const source = viewScroll === 'single' ? allRows.slice(currentRow, currentRow + 1) : allRows;
+    const out: Row[] = [];
     let y = PADDING;
-    for (const s of sizes) {
-      out.push(y);
-      y += s.height * zoom + PAGE_GAP;
+    for (const slots of source) {
+      const width = slots.reduce((n, s) => n + s.sw * zoom, 0) + PAGE_GAP * (slots.length - 1);
+      const height = Math.max(...slots.map((s) => s.sh * zoom));
+      out.push({ slots, top: y, width, height });
+      y += height + PAGE_GAP;
     }
     return out;
-  }, [sizes, zoom]);
+  }, [allRows, currentRow, viewScroll, zoom]);
 
   // Fit modes follow the container size.
   const applyFit = useCallback(() => {
     const el = containerRef.current;
     const mode = usePDFStore.getState().fitMode;
-    if (!el || !mode || sizes.length === 0) return;
+    if (!el || !mode || allRows.length === 0) return;
     const availW = el.clientWidth - PADDING * 2 - 12;
-    let z = availW / maxWidth;
-    if (mode === 'page') {
-      const current = usePDFStore.getState().currentPageId;
-      const idx = Math.max(0, usePDFStore.getState().pages.findIndex((p) => p.id === current));
-      const s = sizes[idx] ?? sizes[0];
-      z = Math.min(availW / s.width, (el.clientHeight - PADDING * 2) / s.height);
+    const rowWidth = (r: Slot[]) => r.reduce((n, s) => n + s.sw, 0);
+    let z: number;
+    if (mode === 'width') {
+      // Fit the widest row (points) plus its fixed pixel gaps.
+      const widest = allRows.reduce((best, r) => (rowWidth(r) > rowWidth(best) ? r : best), allRows[0]);
+      z = (availW - PAGE_GAP * (widest.length - 1)) / rowWidth(widest);
+    } else {
+      const row = allRows[currentRow] ?? allRows[0];
+      const rowH = Math.max(...row.map((s) => s.sh));
+      z = Math.min((availW - PAGE_GAP * (row.length - 1)) / rowWidth(row), (el.clientHeight - PADDING * 2) / rowH);
     }
     z = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, z));
     if (Math.abs(z - usePDFStore.getState().zoom) > 0.001) setZoom(z, mode);
-  }, [maxWidth, sizes, setZoom]);
+  }, [allRows, currentRow, setZoom]);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -64,7 +125,7 @@ export function PDFCanvas() {
 
   useEffect(() => {
     applyFit();
-  }, [fitMode, applyFit]);
+  }, [fitMode, viewSpread, viewRotation, applyFit]);
 
   // Keep the point under the cursor fixed while zooming.
   useLayoutEffect(() => {
@@ -77,45 +138,76 @@ export function PDFCanvas() {
     el.scrollTop = a.docY * (zoom / a.zoom) - (a.clientY - rect.top);
   }, [zoom]);
 
+  const stepRow = useCallback(
+    (d: number) => {
+      const next = allRows[Math.max(0, Math.min(allRows.length - 1, currentRow + d))];
+      if (next && next[0].page.id !== currentPageId) setCurrentPage(next[0].page.id);
+      return !!next;
+    },
+    [allRows, currentRow, currentPageId, setCurrentPage],
+  );
+
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
     const onWheel = (e: WheelEvent) => {
-      if (!e.ctrlKey && !e.metaKey) return;
-      e.preventDefault();
-      const rect = el.getBoundingClientRect();
-      const current = usePDFStore.getState().zoom;
-      const next = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, current * Math.exp(-e.deltaY * 0.0015)));
-      zoomAnchor.current = {
-        docX: el.scrollLeft + (e.clientX - rect.left),
-        docY: el.scrollTop + (e.clientY - rect.top),
-        clientX: e.clientX,
-        clientY: e.clientY,
-        zoom: current,
-      };
-      setZoom(next, null);
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault();
+        const rect = el.getBoundingClientRect();
+        const current = usePDFStore.getState().zoom;
+        const next = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, current * Math.exp(-e.deltaY * 0.0015)));
+        zoomAnchor.current = {
+          docX: el.scrollLeft + (e.clientX - rect.left),
+          docY: el.scrollTop + (e.clientY - rect.top),
+          clientX: e.clientX,
+          clientY: e.clientY,
+          zoom: current,
+        };
+        setZoom(next, null);
+        return;
+      }
+      // Single-page mode: scrolling past the page edge turns the page.
+      if (usePDFStore.getState().viewScroll !== 'single') return;
+      const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 2;
+      const atTop = el.scrollTop <= 1;
+      if (e.deltaY > 0 && atBottom) {
+        e.preventDefault();
+        if (stepRow(1)) el.scrollTop = 0;
+      } else if (e.deltaY < 0 && atTop) {
+        e.preventDefault();
+        if (stepRow(-1)) requestAnimationFrame(() => (el.scrollTop = el.scrollHeight));
+      }
     };
     el.addEventListener('wheel', onWheel, { passive: false });
     return () => el.removeEventListener('wheel', onWheel);
-  }, [setZoom]);
+  }, [setZoom, stepRow]);
 
-  // Track the page in the middle of the viewport.
+  // Track the page in the middle of the viewport (continuous mode).
   const onScroll = useCallback(() => {
     const el = containerRef.current;
-    if (!el || offsets.length === 0) return;
+    if (!el || rows.length === 0 || viewScroll === 'single') return;
     const mid = el.scrollTop + el.clientHeight * 0.4;
-    let idx = 0;
-    for (let i = 0; i < offsets.length; i++) if (offsets[i] <= mid) idx = i;
-    const id = usePDFStore.getState().pages[idx]?.id;
-    if (id) setCurrentPage(id);
-  }, [offsets, setCurrentPage]);
+    let r = 0;
+    for (let i = 0; i < rows.length; i++) if (rows[i].top <= mid) r = i;
+    const row = rows[r];
+    if (!row.slots.some((s) => s.page.id === usePDFStore.getState().currentPageId)) setCurrentPage(row.slots[0].page.id);
+  }, [rows, viewScroll, setCurrentPage]);
 
   useEffect(() => {
     if (!scrollRequest) return;
     const el = containerRef.current;
-    const idx = pages.findIndex((p) => p.id === scrollRequest.pageId);
-    if (!el || idx < 0) return;
-    const y = offsets[idx] + (scrollRequest.y !== undefined ? scrollRequest.y * zoom - el.clientHeight / 3 : -12);
+    if (!el) return;
+    if (viewScroll === 'single') {
+      // The current page changed already (scrollToPage sets it); show its top or y.
+      requestAnimationFrame(() => {
+        const y = scrollRequest.y !== undefined && viewRotation === 0 ? scrollRequest.y * zoom - el.clientHeight / 3 : 0;
+        el.scrollTo({ top: Math.max(0, y) });
+      });
+      return;
+    }
+    const r = rows.findIndex((row) => row.slots.some((s) => s.page.id === scrollRequest.pageId));
+    if (r < 0) return;
+    const y = rows[r].top + (scrollRequest.y !== undefined && viewRotation === 0 ? scrollRequest.y * zoom - el.clientHeight / 3 : -12);
     el.scrollTo({ top: Math.max(0, y), behavior: 'auto' });
     // Only react to new requests, not to zoom/offset changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -142,8 +234,9 @@ export function PDFCanvas() {
     pan.current = null;
   };
 
-  const totalHeight = offsets.length ? offsets[offsets.length - 1] + sizes[sizes.length - 1].height * zoom + PADDING : 0;
-  const contentWidth = maxWidth * zoom + PADDING * 2;
+  const last = rows[rows.length - 1];
+  const totalHeight = last ? last.top + last.height + PADDING : 0;
+  const contentWidth = Math.max(...rows.map((r) => r.width), 0) + PADDING * 2;
 
   return (
     <div
@@ -154,18 +247,40 @@ export function PDFCanvas() {
       onPointerMove={onPointerMove}
       onPointerUp={endPan}
       onPointerCancel={endPan}
-      className={cn('relative h-full w-full overflow-auto bg-canvas', tool === 'pan' && 'cursor-grab active:cursor-grabbing')}
+      className={cn('relative h-full w-full overflow-auto', nightMode ? 'bg-[#0b0b0b]' : 'bg-canvas', tool === 'pan' && 'cursor-grab active:cursor-grabbing')}
     >
       <div className="relative mx-auto" style={{ width: contentWidth, height: totalHeight, minWidth: '100%' }}>
-        {pages.map((page, i) => (
-          <div
-            key={page.id}
-            className="absolute left-1/2 -translate-x-1/2"
-            style={{ top: offsets[i], width: sizes[i].width * zoom, height: sizes[i].height * zoom }}
-          >
-            <PageView page={page} index={i} zoom={zoom} scrollRoot={containerRef} />
-          </div>
-        ))}
+        {rows.map((row) => {
+          let x = 0;
+          return row.slots.map((s) => {
+            const left = x;
+            x += s.sw * zoom + PAGE_GAP;
+            const w = s.w * zoom;
+            const h = s.h * zoom;
+            const sw = s.sw * zoom;
+            const sh = s.sh * zoom;
+            return (
+              <div
+                key={s.page.id}
+                className="absolute"
+                style={{ top: row.top + (row.height - sh) / 2, left: `calc(50% - ${row.width / 2}px + ${left}px)`, width: sw, height: sh }}
+              >
+                <div
+                  className="absolute"
+                  style={{
+                    width: w,
+                    height: h,
+                    left: (sw - w) / 2,
+                    top: (sh - h) / 2,
+                    transform: viewRotation ? `rotate(${viewRotation}deg)` : undefined,
+                  }}
+                >
+                  <PageView page={s.page} index={s.index} zoom={zoom} scrollRoot={containerRef} />
+                </div>
+              </div>
+            );
+          });
+        })}
       </div>
     </div>
   );

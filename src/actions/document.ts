@@ -6,7 +6,10 @@ import { currentDoc, usePDFStore } from '@/store/usePDFStore';
 import { askConfirm, askPassword } from '@/store/useDialogs';
 import { buildPdf, ExportError, type ExportOptions, type RasterResult } from '@/lib/pdf/exportPdf';
 import { PasswordRequiredError, canvasToBytes, rasterizePage } from '@/lib/pdf/pdfService';
-import { pickFiles, saveBytes, readFile, type FileFilter } from '@/lib/platform';
+import { fileStamp, pickFiles, saveBytes, readFile, type FileFilter } from '@/lib/platform';
+import { activeTabIsEmpty, newTab, removeTab, switchTab, useTabs } from '@/store/tabs';
+import { addRecent } from '@/lib/recent';
+import { errorText, log } from '@/lib/log';
 import { verifyPdfSignatures } from '@/lib/crypto/digitalSignature';
 import { isPdfEncrypted } from '@/lib/crypto/encrypt';
 import type { PageRef } from '@/types';
@@ -27,6 +30,7 @@ export async function withBusy<T>(message: string, fn: (progress: (msg: string, 
     return await fn((msg, fraction) => usePDFStore.getState().setBusy({ message: msg, progress: fraction }));
   } catch (e) {
     console.error(e);
+    log('error', `${message} failed: ${errorText(e)}`);
     usePDFStore.getState().toast(errorMessage(e), 'error');
     return undefined;
   } finally {
@@ -46,8 +50,26 @@ async function confirmDiscard(): Promise<boolean> {
 }
 
 /** Opens PDF bytes, asking for a password as many times as needed. */
-export async function openPdfBytes(bytes: Uint8Array, name: string, path: string | null = null, skipDiscardCheck = false): Promise<boolean> {
-  if (!skipDiscardCheck && !(await confirmDiscard())) return false;
+/**
+ * Opens PDF bytes. With a document already open it goes into a new tab;
+ * `replaceCurrent` reuses the current tab (e.g. reopening a just-signed copy).
+ */
+export async function openPdfBytes(bytes: Uint8Array, name: string, path: string | null = null, replaceCurrent = false): Promise<boolean> {
+  const previousTab = useTabs.getState().activeId;
+  const createdTab = !replaceCurrent && !activeTabIsEmpty() ? newTab() : null;
+  const ok = await openIntoCurrentTab(bytes, name, path);
+  if (!ok && createdTab) {
+    removeTab(createdTab);
+    switchTab(previousTab);
+  }
+  if (ok && path) {
+    addRecent(path, name, usePDFStore.getState().pages.length);
+    usePDFStore.setState({ fileStamp: await fileStamp(path) });
+  }
+  return ok;
+}
+
+async function openIntoCurrentTab(bytes: Uint8Array, name: string, path: string | null): Promise<boolean> {
   let password: string | undefined;
   let incorrect = false;
   for (;;) {
@@ -63,6 +85,22 @@ export async function openPdfBytes(bytes: Uint8Array, name: string, path: string
         incorrect = true;
         continue;
       }
+      // Damaged file: rebuild it from whatever objects survived (like MuPDF/Foxit repair).
+      const { looksLikePdf, repairPdf } = await import('@/lib/pdf/repair');
+      if (password === undefined && looksLikePdf(bytes)) {
+        try {
+          const repaired = await withBusyThrow(`Repairing ${name}…`, () => repairPdf(bytes));
+          await withBusyThrow(`Opening ${name}…`, () => usePDFStore.getState().loadDocument(repaired.bytes, name, path));
+          // Not saved yet: the file on disk is still the damaged one.
+          usePDFStore.setState({ dirty: true });
+          usePDFStore.getState().toast(`${name} was damaged and has been repaired. ${repaired.notes.slice(0, 2).join(' ')} Save to keep the repaired copy.`, 'info');
+          return true;
+        } catch (re) {
+          usePDFStore.getState().toast(`Could not open ${name}: ${errorMessage(e)} Repair failed: ${errorMessage(re)}`, 'error');
+          return false;
+        }
+      }
+      log('error', `Could not open ${name}: ${errorText(e)}`);
       usePDFStore.getState().toast(`Could not open ${name}: ${errorMessage(e)}`, 'error');
       return false;
     }
@@ -138,6 +176,7 @@ export async function exportCurrentPdf(
   const doc = currentDoc();
   const input = excludeObjectIds.length ? { ...doc, objects: doc.objects.filter((o) => !excludeObjectIds.includes(o.id)) } : doc;
   return buildPdf(input, {
+    meta: usePDFStore.getState().docMeta,
     rasterizeRedactedPage: rasterizeWithRedactions,
     onProgress: (m, f) => progress?.(m, f),
     ...extra,
@@ -176,6 +215,10 @@ export async function saveDocument(saveAs = false): Promise<boolean> {
   if (!result?.path) return false;
   const name = result.path === 'downloaded' ? suggestedName() : result.path.split(/[\\/]/).pop();
   usePDFStore.getState().markSaved(result.path === 'downloaded' ? null : result.path, name);
+  if (result.path !== 'downloaded') {
+    addRecent(result.path, name ?? suggestedName(), usePDFStore.getState().pages.length);
+    usePDFStore.setState({ fileStamp: await fileStamp(result.path) });
+  }
   usePDFStore.getState().toast(result.path === 'downloaded' ? 'Downloaded.' : `Saved to ${result.path}`, 'success');
   return true;
 }
@@ -207,8 +250,21 @@ export async function refreshSignatureStatus(): Promise<void> {
 }
 
 export async function closeDocumentAction(): Promise<void> {
-  if (!(await confirmDiscard())) return;
-  await usePDFStore.getState().closeDocument();
+  await closeTabAction(useTabs.getState().activeId);
+}
+
+/** Closes a document tab, asking first if it has unsaved changes. */
+export async function closeTabAction(tabId: string): Promise<void> {
+  const { tabs, activeId } = useTabs.getState();
+  const tab = tabs.find((t) => t.id === tabId);
+  if (!tab) return;
+  if (tabId !== activeId) switchTab(tabId);
+  if (!(await confirmDiscard())) {
+    if (tabId !== activeId) switchTab(activeId);
+    return;
+  }
+  removeTab(tabId);
+  if (tabId !== activeId && useTabs.getState().tabs.some((t) => t.id === activeId)) switchTab(activeId);
 }
 
 /** Primary (first page's) source bytes, i.e. the file as last opened/saved. */

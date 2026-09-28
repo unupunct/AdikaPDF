@@ -45,6 +45,8 @@ function objectLabel(o: EditorObject): string {
     redact: 'Redaction',
     signature: 'Signature',
     field: 'Form field',
+    note: 'Note',
+    markup: 'Text markup',
   };
   return map[o.type];
 }
@@ -207,6 +209,41 @@ function TypeSpecific({ obj, update }: { obj: EditorObject; update: (p: Partial<
       );
     case 'field':
       return <FieldProps obj={obj} update={update} />;
+    case 'note':
+      return (
+        <Section title="Note">
+          <Field label="Comment">
+            <Textarea rows={4} value={obj.text} data-testid="inspector-note-text" onChange={(e) => update({ text: e.target.value, modifiedAt: new Date().toISOString() })} />
+          </Field>
+          <Field label="Author">
+            <Input value={obj.author} onChange={(e) => update({ author: e.target.value })} />
+          </Field>
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-xs">Colour</span>
+            <ColorSwatch label="Note colour" value={obj.color} onChange={(color) => update({ color: color ?? '#facc15' })} />
+          </div>
+          <p className="mt-2 text-[11px] text-muted">Saved as a real PDF comment: Acrobat, Foxit and other readers can open, reply to or delete it.</p>
+        </Section>
+      );
+    case 'markup':
+      return (
+        <Section title="Text markup">
+          <Field label="Type">
+            <Select value={obj.kind} ariaLabel="Markup type" onChange={(kind) => update({ kind } as Partial<EditorObject>)} options={[{ value: 'highlight', label: 'Highlight' }, { value: 'underline', label: 'Underline' }, { value: 'strikeout', label: 'Strikeout' }, { value: 'squiggly', label: 'Squiggly' }]} />
+          </Field>
+          <div className="mb-3 flex items-center justify-between gap-2">
+            <span className="text-xs">Colour</span>
+            <ColorSwatch label="Markup colour" value={obj.color} onChange={(color) => update({ color: color ?? '#facc15' })} />
+          </div>
+          <Field label="Comment">
+            <Textarea rows={3} value={obj.text} placeholder={obj.selectedText} onChange={(e) => update({ text: e.target.value, modifiedAt: new Date().toISOString() })} />
+          </Field>
+          <p className="text-[11px] text-muted">
+            {obj.author} · “{obj.selectedText.slice(0, 80)}
+            {obj.selectedText.length > 80 ? '…' : ''}”
+          </p>
+        </Section>
+      );
   }
 }
 

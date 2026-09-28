@@ -11,6 +11,7 @@
 export type Rotation = 0 | 90 | 180 | 270;
 
 export type ToolId =
+  | 'selectText'
   | 'select'
   | 'pan'
   | 'text'
@@ -28,9 +29,15 @@ export type ToolId =
   | 'field-checkbox'
   | 'field-radio'
   | 'field-dropdown'
-  | 'field-signature';
+  | 'field-signature'
+  | 'note'
+  | 'typewriter'
+  | 'markup-highlight'
+  | 'markup-underline'
+  | 'markup-strikeout'
+  | 'markup-squiggly';
 
-export type RibbonTab = 'home' | 'edit' | 'sign' | 'organize' | 'forms' | 'security' | 'convert';
+export type RibbonTab = 'home' | 'view' | 'edit' | 'comment' | 'sign' | 'organize' | 'forms' | 'security' | 'convert';
 
 export type FontFamily = 'sans' | 'serif' | 'mono';
 export type TextAlign = 'left' | 'center' | 'right';
@@ -85,6 +92,45 @@ export interface TextObject extends BaseObject {
   lineHeight: number;
   /** Optional box fill, used by "edit existing text" to cover the original run. */
   background: string | null;
+  /** Saved as a FreeText annotation (typewriter) instead of page content, so other PDF apps can edit it. */
+  annotation?: boolean;
+  /** Author of a typewriter comment. */
+  author?: string;
+}
+
+/** Comment metadata shared by annotation-type objects. */
+export interface CommentMeta {
+  author: string;
+  /** ISO timestamps. */
+  createdAt: string;
+  modifiedAt: string;
+}
+
+/** Sticky note (PDF /Text annotation): an icon on the page with a popup text. */
+export interface NoteObject extends BaseObject, CommentMeta {
+  type: 'note';
+  width: number;
+  height: number;
+  text: string;
+  color: string;
+}
+
+export type MarkupKind = 'highlight' | 'underline' | 'strikeout' | 'squiggly';
+
+/** Text markup over selected text (PDF /Highlight, /Underline, /StrikeOut, /Squiggly). */
+export interface MarkupObject extends BaseObject, CommentMeta {
+  type: 'markup';
+  kind: MarkupKind;
+  /** Bounding box of all quads (x, y are its top-left). */
+  width: number;
+  height: number;
+  /** Line boxes relative to (x, y), display points. */
+  quads: Array<{ x: number; y: number; width: number; height: number }>;
+  color: string;
+  /** The marked-up text (for the comments list). */
+  selectedText: string;
+  /** Optional comment on the markup. */
+  text: string;
 }
 
 export interface ImageObject extends BaseObject {
@@ -171,7 +217,9 @@ export type EditorObject =
   | PenObject
   | RedactObject
   | SignatureObject
-  | FieldObject;
+  | FieldObject
+  | NoteObject
+  | MarkupObject;
 
 export type EditorObjectType = EditorObject['type'];
 
@@ -183,6 +231,8 @@ export interface DocSnapshot {
 
 export interface SearchHit {
   pageId: string;
+  /** Surrounding text with the match wrapped in [[ ]]. */
+  snippet?: string;
   /** Rect in display space at scale 1. */
   rects: Array<{ x: number; y: number; width: number; height: number }>;
 }

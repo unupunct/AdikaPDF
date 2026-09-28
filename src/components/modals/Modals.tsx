@@ -5,6 +5,8 @@ import { SignatureModal } from './SignatureModal';
 import { CertificateModal, TokenModal, VerifyModal } from './DigitalSignModals';
 import { AboutModal, CompressModal, OcrModal, OrganizerModal, PasswordModal, PdfaModal, SplitModal } from './DocumentModals';
 import { ExportModal, ImportModal } from './ConvertModals';
+import { PropertiesModal } from './PropertiesModal';
+import { ToolsModal } from './ToolsModal';
 
 export function Modals() {
   return (
@@ -22,6 +24,8 @@ export function Modals() {
       <ExportModal />
       <ImportModal />
       <AboutModal />
+      <PropertiesModal />
+      <ToolsModal />
       <PasswordPrompt />
       <ConfirmPrompt />
     </>

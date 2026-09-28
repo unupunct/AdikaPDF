@@ -71,6 +71,7 @@ import {
 import { loadFontBytes, type FontVariant } from '@/lib/fonts';
 import { layoutText, canvasMeasure, type Measure } from '@/lib/textLayout';
 import { embedFontForText } from './fontEmbed';
+import { writeFreeText, writeMarkup, writeNote } from './annotations';
 import type { FieldValue } from '@/store/usePDFStore';
 
 export interface ExportInput {
@@ -93,6 +94,8 @@ export interface ExportOptions {
   /** Flatten every form field and annotation into page content. */
   flatten?: boolean;
   title?: string;
+  /** Document properties edited by the user (Properties dialog). */
+  meta?: { title?: string; author?: string; subject?: string; keywords?: string } | null;
   onProgress?: (message: string, fraction: number) => void;
 }
 
@@ -707,7 +710,16 @@ export async function buildPdf(input: ExportInput, options: ExportOptions = {}):
     for (const o of list) {
       switch (o.type) {
         case 'text':
-          await drawText(ctx, page, pm, o);
+          if (o.annotation) {
+            const v = { family: o.fontFamily, bold: o.bold, italic: o.italic };
+            writeFreeText(ctx.doc, page, pm, o, await fontFor(ctx, v), ctx.opts.measure(v, o.fontSize));
+          } else await drawText(ctx, page, pm, o);
+          break;
+        case 'note':
+          writeNote(ctx.doc, page, pm, o);
+          break;
+        case 'markup':
+          writeMarkup(ctx.doc, page, pm, o);
           break;
         case 'image':
         case 'signature':
@@ -750,6 +762,13 @@ export async function buildPdf(input: ExportInput, options: ExportOptions = {}):
   if (options.flatten) flattenDocument(doc, ctx.fieldFont);
 
   if (options.title) doc.setTitle(options.title);
+  if (options.meta) {
+    const m = options.meta;
+    if (m.title !== undefined) doc.setTitle(m.title);
+    if (m.author !== undefined) doc.setAuthor(m.author);
+    if (m.subject !== undefined) doc.setSubject(m.subject);
+    if (m.keywords !== undefined) doc.setKeywords(m.keywords.split(/[,;]\s*/).filter(Boolean));
+  }
   doc.setProducer('Adika PDF Editor');
   doc.setModificationDate(new Date());
   progress('Writing file', 0.95);

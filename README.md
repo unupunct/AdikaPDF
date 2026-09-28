@@ -7,7 +7,11 @@ OCR and convert PDFs entirely on your computer. Nothing is uploaded.
 
 | Area | What you can do |
 | --- | --- |
-| View | Continuous scroll, zoom (Ctrl+wheel, fit width/page), thumbnails, diacritic-insensitive search |
+| Read | Tabs for several documents, continuous / single-page / two-page (facing, cover) layouts, rotate view, night mode, full screen (F11), presentation mode (F5), clickable links and bookmarks (outline), page labels, Back/Forward history, text selection and copy, attachments and layers (optional content) panels, search with case / whole-word options and a results list, document properties, printing, recent files, auto-reload when the file changes on disk, repair of damaged files |
+| View | Zoom (Ctrl+wheel, fit width/page), thumbnails, diacritic-insensitive search |
+| Comment | Foxit-style Comment tab: Hand, Select, Select text, sticky **Notes**, **Typewriter**, Highlight / Underline / Strikeout / Squiggly on selected text, drawing tools, comments list, author name. Saved as standard PDF annotations that Acrobat and other readers show and edit |
+| Tools | One-click hub (ribbon and start screen): PDF to Word, PDF to JPG, Word to PDF, JPG to PDF, Merge PDF, PDF to PPT, Compress PDF, PPT to PDF, PDF to Excel, Excel to PDF |
+| Print to PDF | A **"Adika PDF Editor" virtual printer**: print from a browser or any program and the pages open in Adika as a PDF (saved in `%LOCALAPPDATA%Adika PDF EditorPrinted`) |
 | Edit | Click-to-edit existing text, text boxes (Noto fonts, full Unicode incl. ă â î ș ț), images with crop, rectangles, ellipses, lines, arrows, freehand ink, highlights, snapping guides, undo/redo |
 | Sign | Draw / type / upload signatures and initials; digital signatures (PAdES-style `adbe.pkcs7.detached`, SHA-256) with a `.pfx/.p12` ID, a self-signed ID, or a **USB token / smart card over PKCS#11**; optional RFC 3161 timestamp |
 | Verify | Integrity, whole-file coverage, certificate chain against the Windows trust store, OCSP/CRL revocation |
@@ -23,6 +27,17 @@ OCR and convert PDFs entirely on your computer. Nothing is uploaded.
 Download `Adika PDF Editor_x.y.z_x64-setup.exe` from Releases and run it. It adds Start-menu
 and desktop shortcuts and an "Open with" entry for PDF files. Requires Windows 10/11 (WebView2,
 installed automatically if missing).
+
+Installing for all users (per machine) also adds the **Adika PDF Editor** printer. It uses
+Windows' own "Microsoft Print To PDF" driver, so no extra driver is installed. The Windows Print
+Spooler service must be running; if it is off, the installer skips the printer. Start the spooler,
+then run `printer.ps1` from the install folder as administrator to add the printer later.
+
+**Logs.** Diagnostic logs and crash reports are written to the `logs` folder in the install
+folder (for example `C:Program FilesAdika PDF Editorlogs`). The installer makes it writable
+for users. If that folder cannot be written, logs go to `%LOCALAPPDATA%Adika PDF Editorlogs`.
+Open the folder from the About dialog (*Open logs folder*). Attach `crash-*.log` files when
+reporting a problem.
 
 ## Build from source
 

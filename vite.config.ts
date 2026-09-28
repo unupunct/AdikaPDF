@@ -17,6 +17,8 @@ export default defineConfig({
   build: {
     target: 'es2022',
     chunkSizeWarningLimit: 4000,
+    // ADIKA_NO_MINIFY=1 keeps readable stacks for debugging builds.
+    minify: process.env.ADIKA_NO_MINIFY ? false : 'esbuild',
   },
   test: {
     environment: 'node',

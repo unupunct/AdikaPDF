@@ -1,10 +1,26 @@
 /** Global keyboard shortcuts. Ignored while typing in inputs. */
 import { useEffect } from 'react';
 import { usePDFStore } from '@/store/usePDFStore';
-import { openDialog, saveDocument } from '@/actions/document';
+import { closeDocumentAction, openDialog, saveDocument } from '@/actions/document';
+import { printDocument } from '@/actions/print';
+import { cycleTab } from '@/store/tabs';
+import { rotateView, startPresentation, toggleFullscreen } from '@/components/ribbon/ReaderTabs';
+
+/** Selects all text on a page's text layer (Ctrl+A in the Select text tool). */
+function selectPageText(pageId: string | null): void {
+  const layer = document.querySelector(`[data-page-id="${pageId}"] .textLayer`);
+  if (!layer) return;
+  const range = document.createRange();
+  range.selectNodeContents(layer);
+  const sel = window.getSelection();
+  sel?.removeAllRanges();
+  sel?.addRange(range);
+}
 import type { ToolId } from '@/types';
 
 const TOOL_KEYS: Record<string, ToolId> = {
+  s: 'selectText',
+  n: 'note',
   v: 'select',
   h: 'pan',
   t: 'text',
@@ -27,7 +43,27 @@ export function useShortcuts(): void {
       const s = usePDFStore.getState();
       const mod = e.ctrlKey || e.metaKey;
       const key = e.key.toLowerCase();
-      if (s.modal || s.busy) return;
+      if (s.modal || s.busy || s.presentation) return;
+
+      if (key === 'f11') {
+        e.preventDefault();
+        void toggleFullscreen();
+        return;
+      }
+      if (key === 'escape' && s.fullscreen) {
+        void toggleFullscreen();
+        return;
+      }
+      if (mod && key === 'tab') {
+        e.preventDefault();
+        cycleTab(e.shiftKey ? -1 : 1);
+        return;
+      }
+      if (mod && key === 'w') {
+        e.preventDefault();
+        void closeDocumentAction();
+        return;
+      }
 
       if (mod && key === 'o') {
         e.preventDefault();
@@ -40,6 +76,38 @@ export function useShortcuts(): void {
         return;
       }
       if (s.pages.length === 0) return;
+      if (key === 'f5') {
+        e.preventDefault();
+        startPresentation();
+        return;
+      }
+      if (mod && key === 'p') {
+        e.preventDefault();
+        void printDocument();
+        return;
+      }
+      if (mod && key === 'g') {
+        e.preventDefault();
+        usePDFStore.setState({ ribbonTab: 'home' });
+        requestAnimationFrame(() => document.querySelector<HTMLInputElement>('[data-testid="page-input"]')?.focus());
+        return;
+      }
+      if (mod && !e.shiftKey && key === 'd') {
+        e.preventDefault();
+        s.openModal('properties');
+        return;
+      }
+      if (e.altKey && (key === 'arrowleft' || key === 'arrowright')) {
+        e.preventDefault();
+        if (key === 'arrowleft') s.goBack();
+        else s.goForward();
+        return;
+      }
+      if (mod && e.shiftKey && (key === '-' || key === '_' || key === '+' || key === '=')) {
+        e.preventDefault();
+        rotateView(key === '-' || key === '_' ? -90 : 90);
+        return;
+      }
       if (mod && key === 'f') {
         e.preventDefault();
         s.setSearch({ open: true });
@@ -80,14 +148,15 @@ export function useShortcuts(): void {
         s.paste();
         return;
       }
-      if (mod && key === 'd') {
+      if (mod && e.shiftKey && key === 'd') {
         e.preventDefault();
         s.duplicateObjects(s.selectedIds);
         return;
       }
       if (mod && key === 'a') {
         e.preventDefault();
-        s.select(s.objects.filter((o) => o.pageId === s.currentPageId && !o.locked).map((o) => o.id));
+        if (s.tool === 'selectText') selectPageText(s.currentPageId);
+        else s.select(s.objects.filter((o) => o.pageId === s.currentPageId && !o.locked).map((o) => o.id));
         return;
       }
       if (key === 'delete' || key === 'backspace') {
@@ -125,6 +194,14 @@ export function useShortcuts(): void {
       }
       if (!mod && !e.altKey && TOOL_KEYS[key] && !s.readOnlyReason) {
         s.setTool(TOOL_KEYS[key]);
+        return;
+      }
+      if (key === 'home' || key === 'end') {
+        const target = key === 'home' ? s.pages[0] : s.pages[s.pages.length - 1];
+        if (target) {
+          e.preventDefault();
+          s.navigateTo(target.id);
+        }
         return;
       }
       if (key === 'pagedown' || key === 'pageup') {

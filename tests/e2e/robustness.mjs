@@ -166,9 +166,12 @@ for (const [label, file] of [['truncated (55%) PDF', F.truncated], ['empty .pdf 
 // 4. Reader basics the UI offers today
 {
   await openPath(F.rich);
+  await page.click('[data-testid="sidebar-bookmarks"]').catch(() => {});
+  await page.waitForSelector('[data-page-id] .textLayer span', { timeout: 10000 }).catch(() => {});
+  await page.waitForSelector('[data-testid="pdf-link"]', { timeout: 10000 }).catch(() => {});
   const ui = await S(() => ({
-    textLayer: !!document.querySelector('.textLayer, [data-testid="text-layer"]'),
-    links: !!document.querySelector('.annotationLayer a, [data-testid="link-layer"] a'),
+    textLayer: !!document.querySelector('.textLayer span'),
+    links: !!document.querySelector('[data-testid="pdf-link"]'),
     outlinePanel: !!document.querySelector('[data-testid="outline-panel"]'),
     print: [...document.querySelectorAll('button')].some((b) => /print/i.test(b.getAttribute('aria-label') ?? b.textContent ?? '')),
   }));

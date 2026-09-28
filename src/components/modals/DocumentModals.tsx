@@ -9,6 +9,28 @@ import { mergeDialog } from '@/actions/document';
 import { protectDocument } from '@/actions/security';
 import type { PdfPermissions } from '@/lib/crypto/encrypt';
 import { AdikaLogo } from '@/components/shell/AdikaLogo';
+import { logsFolder, openLogsFolder } from '@/lib/log';
+
+function LogsInfo() {
+  const [path, setPath] = useState<string | null>(null);
+  useEffect(() => {
+    void logsFolder().then(setPath);
+  }, []);
+  if (!path) return null;
+  return (
+    <div className="mt-4 flex items-center gap-2 rounded-lg border border-app px-3 py-2 text-[11.5px]" data-testid="logs-info">
+      <span className="min-w-0 flex-1">
+        <span className="block font-semibold">Logs</span>
+        <span className="block break-all text-muted" data-testid="logs-path">
+          {path}
+        </span>
+      </span>
+      <Button size="sm" onClick={() => void openLogsFolder()} data-testid="open-logs">
+        Open logs folder
+      </Button>
+    </div>
+  );
+}
 import { cn } from '@/lib/cn';
 import { OCR_LANGUAGES } from '@/lib/pdf/ocr';
 import type { PdfALevel } from '@/lib/pdf/pdfa';
@@ -618,6 +640,7 @@ export function AboutModal() {
           ))}
         </tbody>
       </table>
+      <LogsInfo />
       <p className="mt-4 text-[11px] text-muted">
         Built with pdf.js (Mozilla), pdf-lib, Konva, node-forge, Tesseract.js, libheif (LGPL-3.0), postal-mime, msgreader, dxf-parser, Noto fonts (SIL OFL) and Tauri.
       </p>
