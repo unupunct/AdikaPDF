@@ -118,9 +118,9 @@ export function BookmarksPanel() {
 
   return (
     <>
-      <div className="flex h-9 shrink-0 items-center justify-between border-b border-app px-2">
-        <span className="px-1 text-[11px] font-semibold uppercase tracking-wide text-muted">Bookmarks</span>
-        <div className="flex items-center">
+      <div className="flex h-9 shrink-0 items-center border-b border-app px-3 text-[11px] font-semibold uppercase tracking-wide text-muted">Bookmarks</div>
+      <div className="flex shrink-0 flex-wrap items-center gap-0.5 border-b border-app px-1.5 py-1" role="toolbar" aria-label="Bookmark tools">
+        <div className="contents">
           {btn('Add a bookmark for the current page', <BookmarkPlus size={14} />, add, pages.length === 0, 'bm-add')}
           {btn('Rename', <Pencil size={13} />, () => sel && setRenaming(sel), !sel, 'bm-rename')}
           {btn('Delete', <Trash2 size={13} />, () => sel && edit((t) => removeBookmark(t, sel)), !sel, 'bm-delete')}

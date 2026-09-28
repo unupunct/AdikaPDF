@@ -15,10 +15,18 @@ import { log } from '@/lib/log';
 import type { PageMarksOptions } from '@/lib/pdf/pageMarks';
 import type { CropMargins } from '@/lib/pdf/crop';
 
+/** Shows the busy state at once, before the engine module loads, so nothing (e.g. Save) runs in between. */
+function busyNow(message: string): void {
+  usePDFStore.getState().setBusy({ message: `${message}…`, progress: null });
+}
+
 /** Applies `transform` to the current document (with edits) and reopens the result in place, unsaved. */
 async function applyInPlace(label: string, transform: (bytes: Uint8Array, progress: (m: string, f: number | null) => void) => Promise<{ bytes: Uint8Array; summary: string } | null>): Promise<boolean> {
   const s = usePDFStore.getState();
-  if (!s.pages.length) return false;
+  if (!s.pages.length) {
+    s.setBusy(null);
+    return false;
+  }
   const name = s.fileName ?? 'Untitled.pdf';
   const path = s.filePath;
   const out = await withBusy(`${label}…`, async (progress) => transform(await exportCurrentPdf({}, progress), progress));
@@ -33,6 +41,7 @@ async function applyInPlace(label: string, transform: (bytes: Uint8Array, progre
 // ------------------------------------------------------------------ page marks
 
 export async function applyPageMarks(opts: PageMarksOptions): Promise<boolean> {
+  busyNow('Adding page marks');
   const { addPageMarks } = await import('@/lib/pdf/pageMarks');
   const parts = [opts.watermark ? 'watermark' : '', opts.headerFooter ? 'header/footer' : '', opts.background ? 'background' : ''].filter(Boolean);
   return applyInPlace('Adding page marks', async (bytes) => {
@@ -43,6 +52,7 @@ export async function applyPageMarks(opts: PageMarksOptions): Promise<boolean> {
 }
 
 export async function removeAllPageMarks(): Promise<boolean> {
+  busyNow('Removing page marks');
   const { removePageMarks } = await import('@/lib/pdf/pageMarks');
   return applyInPlace('Removing page marks', async (bytes) => {
     const out = await removePageMarks(bytes);
@@ -57,6 +67,7 @@ export async function removeAllPageMarks(): Promise<boolean> {
 // ------------------------------------------------------------------ crop
 
 export async function applyCrop(margins: CropMargins, pageNumbers?: number[]): Promise<boolean> {
+  busyNow('Cropping pages');
   const { cropPages } = await import('@/lib/pdf/crop');
   return applyInPlace('Cropping pages', async (bytes) => {
     const out = await cropPages(bytes, margins, pageNumbers);
@@ -94,6 +105,7 @@ export async function exportComments(format: 'xfdf' | 'fdf'): Promise<void> {
 export async function importComments(): Promise<boolean> {
   const [f] = await pickFiles([{ name: 'Comments (XFDF, FDF)', extensions: ['xfdf', 'fdf', 'xml'] }]);
   if (!f) return false;
+  busyNow('Importing comments');
   const { importXfdf, importFdf } = await import('@/lib/pdf/xfdf');
   const isFdf = /\.fdf$/i.test(f.name) || new TextDecoder().decode(f.bytes.subarray(0, 8)).startsWith('%FDF');
   return applyInPlace('Importing comments', async (bytes) => {

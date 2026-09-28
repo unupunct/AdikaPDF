@@ -76,7 +76,15 @@ export function PageOverlay({ page, zoom }: { page: PageRef; zoom: number }) {
   const stageRef = useRef<Konva.Stage>(null);
   const trRef = useRef<Konva.Transformer>(null);
   const [draft, setDraft] = useState<Draft | null>(null);
-  const [polyDraft, setPolyDraft] = useState<PolyDraft | null>(null);
+  const [polyDraft, setPolyDraftState] = useState<PolyDraft | null>(null);
+  // Pointer events can arrive before React re-renders, so the draft also lives in a ref.
+  const polyRef = useRef<PolyDraft | null>(null);
+  /** The last click repeated the previous point (the second click of a double-click). */
+  const polyRepeat = useRef(false);
+  const setPolyDraft = useCallback((pd: PolyDraft | null) => {
+    polyRef.current = pd;
+    setPolyDraftState(pd);
+  }, []);
   const [guides, setGuides] = useState<Array<{ vertical: boolean; pos: number }>>([]);
   const editing = objects.find((o): o is TextObject => o.id === editingTextId && o.type === 'text');
   const editingNote = objects.find((o): o is NoteObject => o.id === editingTextId && o.type === 'note');
@@ -261,20 +269,22 @@ export function PageOverlay({ page, zoom }: { page: PageRef; zoom: number }) {
   useEffect(() => {
     if (!polyDraft) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Enter') finishPoly(polyDraft);
+      const pd = polyRef.current;
+      if (!pd) return;
+      if (e.key === 'Enter') finishPoly(pd);
       else if (e.key === 'Escape') setPolyDraft(null);
-      else if (e.key === 'Backspace') setPolyDraft({ ...polyDraft, points: polyDraft.points.slice(0, -2) });
+      else if (e.key === 'Backspace') setPolyDraft({ ...pd, points: pd.points.slice(0, -2) });
       else return;
       e.preventDefault();
       e.stopPropagation();
     };
     window.addEventListener('keydown', onKey, true);
     return () => window.removeEventListener('keydown', onKey, true);
-  }, [polyDraft, finishPoly]);
+  }, [polyDraft !== null, finishPoly, setPolyDraft]);
 
   useEffect(() => {
     if (tool !== 'polygon' && tool !== 'polyline') setPolyDraft(null);
-  }, [tool]);
+  }, [tool, setPolyDraft]);
 
   const editExistingText = useCallback(
     async (x: number, y: number) => {
@@ -407,7 +417,7 @@ export function PageOverlay({ page, zoom }: { page: PageRef; zoom: number }) {
         return;
       case 'polygon':
       case 'polyline': {
-        const pd = polyDraft;
+        const pd = polyRef.current;
         if (!pd) {
           setPolyDraft({ tool, points: [p.x, p.y], cursor: p });
           return;
@@ -418,7 +428,8 @@ export function PageOverlay({ page, zoom }: { page: PageRef; zoom: number }) {
           return;
         }
         const [lx, ly] = pd.points.slice(-2);
-        if (Math.hypot(p.x - lx, p.y - ly) < 1 / zoom) return; // second click of a double-click
+        polyRepeat.current = Math.hypot(p.x - lx, p.y - ly) < 3 / zoom;
+        if (polyRepeat.current) return; // second click of a double-click
         setPolyDraft({ ...pd, points: [...pd.points, p.x, p.y], cursor: p });
         return;
       }
@@ -632,10 +643,12 @@ export function PageOverlay({ page, zoom }: { page: PageRef; zoom: number }) {
         scaleY={zoom}
         onPointerDown={onStagePointerDown}
         onPointerMove={(e) => {
-          if (polyDraft) setPolyDraft({ ...polyDraft, cursor: clampPoint(pointFromClient(e.evt.clientX, e.evt.clientY)) });
+          const pd = polyRef.current;
+          if (pd) setPolyDraft({ ...pd, cursor: clampPoint(pointFromClient(e.evt.clientX, e.evt.clientY)) });
         }}
         onDblClick={() => {
-          if (polyDraft) finishPoly(polyDraft);
+          // Konva also reports two quick clicks in different places as a double-click: only a real one finishes.
+          if (polyRef.current && polyRepeat.current) finishPoly(polyRef.current);
         }}
       >
         <Layer>
