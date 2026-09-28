@@ -682,46 +682,6 @@ export function headingLevel(size: number, body: number, textLen: number): 0 | 1
   return 0;
 }
 
-function mdEscape(s: string): string {
-  return s.replace(/([\\`*_[\]])/g, '\\$1');
-}
-
-export function exportToMarkdown(pages: PageText[]): string {
-  const body = bodyFontSize(pages);
-  const parts: string[] = [];
-  for (const p of pages) {
-    const out: string[] = [];
-    const lines = p.lines;
-    let i = 0;
-    while (i < lines.length) {
-      const n = lines[i].cells.length;
-      if (n >= 2) {
-        let j = i + 1;
-        while (j < lines.length && lines[j].cells.length === n) j++;
-        if (j - i >= 2) {
-          const cell = (s: string) => mdEscape(s).replace(/\|/g, '\\|');
-          const row = (l: TextLine) => '| ' + l.cells.map((c) => cell(c.text)).join(' | ') + ' |';
-          out.push(row(lines[i]));
-          out.push('| ' + Array(n).fill('---').join(' | ') + ' |');
-          for (let k = i + 1; k < j; k++) out.push(row(lines[k]));
-          out.push('');
-          i = j;
-          continue;
-        }
-      }
-      const l = lines[i];
-      const text = mdEscape(l.cells.map((c) => c.text).join('  '));
-      const level = headingLevel(l.fontSize, body, text.length);
-      if (level) out.push('', '#'.repeat(level) + ' ' + text, '');
-      else if (l.bold) out.push(`**${text}**`, '');
-      else out.push(text, '');
-      i++;
-    }
-    parts.push(out.join('\n').replace(/\n{3,}/g, '\n\n').trim());
-  }
-  return parts.join('\n\n---\n\n') + '\n';
-}
-
 // ---------------------------------------------------------------------------
 // XLSX (hand-written SpreadsheetML)
 // ---------------------------------------------------------------------------
@@ -795,7 +755,8 @@ const XLSX_STYLES =
   '<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>' +
   '</styleSheet>';
 
-export async function exportToXlsx(pages: PageText[]): Promise<Blob> {
+/** One sheet per page; `rows` (per page, e.g. from `layoutRows`) replaces the line-by-line rows. */
+export async function exportToXlsx(pages: PageText[], rows?: string[][][]): Promise<Blob> {
   const zip = new JSZip();
   const sheets = pages.length ? pages : [{ pageNumber: 1, width: 0, height: 0, lines: [] }];
   const XML = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
@@ -843,7 +804,7 @@ export async function exportToXlsx(pages: PageText[]): Promise<Blob> {
       '</Relationships>',
   );
   zip.file('xl/styles.xml', XLSX_STYLES);
-  sheets.forEach((p, i) => zip.file(`xl/worksheets/sheet${i + 1}.xml`, buildSheetXml(pageToRows(p))));
+  sheets.forEach((p, i) => zip.file(`xl/worksheets/sheet${i + 1}.xml`, buildSheetXml(rows?.[i] ?? pageToRows(p))));
   return zip.generateAsync({
     type: 'blob',
     mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',

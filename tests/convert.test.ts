@@ -12,7 +12,6 @@ import {
   detectTableColumns,
   encodeTiff,
   exportPlainText,
-  exportToMarkdown,
   exportToXlsx,
   extractStructuredText,
   groupTextItems,
@@ -23,6 +22,7 @@ import {
   type TextLine,
 } from '../src/lib/pdf/convert';
 import { exportToDocx } from '../src/lib/pdf/docx';
+import { exportToMarkdown } from '../src/lib/pdf/exportFormats';
 import { buildSrgbIccProfile, convertToPdfA, pdfaWarnings } from '../src/lib/pdf/pdfa';
 import { compressPdf, scanContentOps, targetImageSize } from '../src/lib/pdf/compress';
 import { blocksToWords, makeSearchable, sanitizeForFont, type OcrPageResult } from '../src/lib/pdf/ocr';

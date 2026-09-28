@@ -54,7 +54,7 @@ import {
   type TextLine,
   type TextSpan,
 } from './convert';
-import { blockBottom, blockTop, detectRunningLines, layoutPage, type Block, type Box, type ImageBlock, type PageLayout, type ParaBlock, type RunningLines, type TableBlock } from './wordLayout';
+import { blockBottom, blockTop, detectRunningLines, layoutPage, type Block, type FloatImage, type Box, type ImageBlock, type PageLayout, type ParaBlock, type RunningLines, type TableBlock } from './wordLayout';
 
 export interface DocxImage {
   box: Box;
@@ -714,7 +714,7 @@ export function markUnderlines(page: PageText, rules: Box[]): void {
 // Runs
 // ---------------------------------------------------------------------------
 
-interface RunStyle {
+export interface RunStyle {
   bold: boolean;
   italic: boolean;
   underline: boolean;
@@ -723,13 +723,13 @@ interface RunStyle {
   color?: string;
 }
 
-type Piece = { tab: true } | { tab?: false; text: string; style: RunStyle };
+export type Piece = { tab: true } | { tab?: false; text: string; style: RunStyle };
 
 function sameStyle(a: RunStyle, b: RunStyle): boolean {
   return a.bold === b.bold && a.italic === b.italic && a.underline === b.underline && a.size === b.size && a.font === b.font && a.color === b.color;
 }
 
-function cellPieces(c: TextCell, l: TextLine, paraSize: number, defaultFont: string | undefined): Piece[] {
+export function cellPieces(c: TextCell, l: TextLine, paraSize: number, defaultFont: string | undefined): Piece[] {
   const spans = c.spans?.length ? c.spans : [{ text: c.text, x: c.x, width: c.width ?? 0, fontSize: l.fontSize, bold: l.bold, italic: false }];
   return spans.flatMap((s): Piece[] => {
     const fs = Math.abs(s.fontSize - paraSize) <= 0.05 * paraSize ? paraSize : s.fontSize;
@@ -750,7 +750,7 @@ function cellPieces(c: TextCell, l: TextLine, paraSize: number, defaultFont: str
 }
 
 /** Joins neighbouring pieces with the same style (one run per styled stretch, not per PDF word). */
-function mergePieces(pieces: Piece[]): Piece[] {
+export function mergePieces(pieces: Piece[]): Piece[] {
   const merged: Piece[] = [];
   for (const p of pieces) {
     const last = merged[merged.length - 1];
@@ -782,7 +782,7 @@ function runProps(s: RunStyle) {
 }
 
 /** Pieces of a paragraph: lines joined with spaces (or de-hyphenated), cells with tabs. */
-function paraPieces(b: ParaBlock, defaultFont: string | undefined): Piece[] {
+export function paraPieces(b: ParaBlock, defaultFont: string | undefined): Piece[] {
   const pieces: Piece[] = [];
   b.lines.forEach((l, k) => {
     if (k > 0) {
@@ -970,7 +970,7 @@ function spacer(pt: number): Paragraph | null {
   return new Paragraph({ spacing: { before: 0, after: 0, line: tw(pt), lineRule: LineRuleType.EXACT }, children: [new TextRun({ text: '', size: 2 })] });
 }
 
-function refLefts(layout: PageLayout): number[][] {
+export function refLefts(layout: PageLayout): number[][] {
   // Word's text-area left edge per stream (indents in blocks are relative to it).
   const textWidth = layout.width - layout.margin.left - layout.margin.right;
   return layout.segments.map((s) => (s.columns === 1 ? [layout.margin.left] : [layout.margin.left, layout.margin.left + (textWidth - s.gap) / 2 + s.gap]));
@@ -1001,30 +1001,44 @@ interface HeaderFooter {
   footerDistance?: number;
 }
 
-/** Runs for running text, with the page number (and page count) as live Word fields. */
-function fieldRuns(pieces: Piece[], pageNumber: number, total: number): TextRun[] {
+export type FieldPiece = Piece | { field: 'page' | 'pages'; style: RunStyle };
+
+/** Running-text pieces with the page number (and "of N" page count) turned into fields. */
+export function fieldPieces(pieces: Piece[], pageNumber: number, total: number): FieldPiece[] {
   let seen = ''; // text of the earlier pieces ("Page 3 of" split into words)
-  return mergePieces(pieces).map((p) => {
-    if (p.tab) return new TextRun({ children: [new Tab()] });
-    const children: (string | (typeof PageNumber)[keyof typeof PageNumber])[] = [];
+  const out: FieldPiece[] = [];
+  for (const p of mergePieces(pieces)) {
+    if (p.tab) {
+      out.push(p);
+      continue;
+    }
     const re = /\d+/g;
     let last = 0;
     for (let m = re.exec(p.text); m; m = re.exec(p.text)) {
       const n = Number(m[0]);
       const before = seen + p.text.slice(0, m.index);
-      const field = n === pageNumber ? PageNumber.CURRENT : n === total && total !== pageNumber && /(of|din|von|de|\/)\s*$/i.test(before) ? PageNumber.TOTAL_PAGES : null;
+      const field = n === pageNumber ? 'page' : n === total && total !== pageNumber && /(of|din|von|de|\/)\s*$/i.test(before) ? 'pages' : null;
       if (!field) continue;
-      if (m.index > last) children.push(p.text.slice(last, m.index));
-      children.push(field);
+      if (m.index > last) out.push({ text: p.text.slice(last, m.index), style: p.style });
+      out.push({ field, style: p.style });
       last = m.index + m[0].length;
     }
-    if (last < p.text.length) children.push(p.text.slice(last));
+    if (last < p.text.length) out.push({ text: p.text.slice(last), style: p.style });
     seen += p.text;
-    return new TextRun({ children, ...runProps(p.style) });
-  });
+  }
+  return out;
 }
 
-function runningParagraphs(info: NonNullable<RunningLines['header']>, total: number, margin: PageLayout['margin'], defaultFont?: string): Paragraph[] {
+export interface RunningLine {
+  align: 'left' | 'center' | 'right';
+  /** Left indent (points from the left margin) for left-aligned lines. */
+  indent: number;
+  tabs: { pos: number; right: boolean }[];
+  pieces: FieldPiece[];
+}
+
+/** Header/footer lines as format-neutral paragraphs. */
+export function runningLines(info: NonNullable<RunningLines['header']>, total: number, margin: PageLayout['margin'], defaultFont?: string): RunningLine[] {
   const W = info.width;
   const left = margin.left;
   const right = W - margin.right;
@@ -1039,18 +1053,39 @@ function runningParagraphs(info: NonNullable<RunningLines['header']>, total: num
       });
       const tabs = l.cells.slice(1).map((c, k, all) => {
         const r = c.x + (c.width ?? 0);
-        return k === all.length - 1 && right - r < 12 ? { type: TabStopType.RIGHT, position: tw(r - left) } : { type: TabStopType.LEFT, position: tw(c.x - left) };
+        return k === all.length - 1 && right - r < 12 ? { pos: r - left, right: true } : { pos: c.x - left, right: false };
       });
       const single = l.cells.length === 1;
-      const align = single && Math.abs((l.x + x1) / 2 - W / 2) < 24 ? AlignmentType.CENTER : single && right - x1 < 12 ? AlignmentType.RIGHT : AlignmentType.LEFT;
-      return new Paragraph({
-        alignment: align,
-        indent: align === AlignmentType.LEFT ? { left: tw(Math.max(0, l.x - left)) } : undefined,
-        tabStops: tabs,
-        spacing: { before: 0, after: 0 },
-        children: fieldRuns(pieces, info.pageNumber, total),
-      });
+      const align = single && Math.abs((l.x + x1) / 2 - W / 2) < 24 ? 'center' : single && right - x1 < 12 ? 'right' : 'left';
+      return { align, indent: Math.max(0, l.x - left), tabs, pieces: fieldPieces(pieces, info.pageNumber, total) };
     });
+}
+
+/** Distance of the header from the page top / the footer from the page bottom (points). */
+export function headerDistance(info: NonNullable<RunningLines['header']>): number {
+  return Math.max(6, Math.min(...info.lines.map((l) => l.y - 0.92 * l.fontSize)));
+}
+export function footerDistance(info: NonNullable<RunningLines['footer']>): number {
+  return Math.max(6, info.height - Math.max(...info.lines.map((l) => l.y + 0.3 * l.fontSize)));
+}
+
+function runningParagraphs(info: NonNullable<RunningLines['header']>, total: number, margin: PageLayout['margin'], defaultFont?: string): Paragraph[] {
+  return runningLines(info, total, margin, defaultFont).map(
+    (r) =>
+      new Paragraph({
+        alignment: r.align === 'center' ? AlignmentType.CENTER : r.align === 'right' ? AlignmentType.RIGHT : AlignmentType.LEFT,
+        indent: r.align === 'left' ? { left: tw(r.indent) } : undefined,
+        tabStops: r.tabs.map((t) => ({ type: t.right ? TabStopType.RIGHT : TabStopType.LEFT, position: tw(t.pos) })),
+        spacing: { before: 0, after: 0 },
+        children: r.pieces.map((p) =>
+          'field' in p
+            ? new TextRun({ children: [p.field === 'page' ? PageNumber.CURRENT : PageNumber.TOTAL_PAGES], ...runProps(p.style) })
+            : p.tab
+              ? new TextRun({ children: [new Tab()] })
+              : new TextRun({ text: p.text, ...runProps(p.style) }),
+        ),
+      }),
+  );
 }
 
 function headerFooter(run: RunningLines, total: number, margin: PageLayout['margin'], defaultFont?: string): HeaderFooter | undefined {
@@ -1058,30 +1093,42 @@ function headerFooter(run: RunningLines, total: number, margin: PageLayout['marg
   const hf: HeaderFooter = {};
   if (run.header) {
     hf.header = new Header({ children: runningParagraphs(run.header, total, margin, defaultFont) });
-    hf.headerDistance = Math.max(6, Math.min(...run.header.lines.map((l) => l.y - 0.92 * l.fontSize)));
+    hf.headerDistance = headerDistance(run.header);
   }
   if (run.footer) {
     hf.footer = new Footer({ children: runningParagraphs(run.footer, total, margin, defaultFont) });
-    hf.footerDistance = Math.max(6, run.footer.height - Math.max(...run.footer.lines.map((l) => l.y + 0.3 * l.fontSize)));
+    hf.footerDistance = footerDistance(run.footer);
   }
   return hf;
 }
 
-function flowSections(layout: PageLayout, ctx: BuildCtx, firstType: (typeof SectionType)[keyof typeof SectionType] = SectionType.NEXT_PAGE, hf?: HeaderFooter): ISectionOptions[] {
-  const lefts = refLefts(layout);
-  const floats = layout.floats.filter((f) => ctx.images[f.index]);
-  // Floating pictures ride on the paragraph just above them, so they stay with their text when it flows on.
+export interface AnchoredFloat extends FloatImage {
+  /** Text wraps around it (tiny pictures and pictures under text do not push text aside). */
+  wrap: boolean;
+}
+
+/** Floating pictures ride on the paragraph just above them, so they stay with their text when it flows on. */
+export function floatAnchors(layout: PageLayout, images: DocxImage[]): { anchored: Map<ParaBlock, AnchoredFloat[]>; loose: AnchoredFloat[] } {
   const paras = layout.segments.flatMap((s) => s.streams.flat()).filter((b): b is ParaBlock => b.kind === 'para');
-  const anchored = new Map<ParaBlock, ImageRun[]>();
-  const loose: ImageRun[] = [];
-  for (const f of floats) {
+  const anchored = new Map<ParaBlock, AnchoredFloat[]>();
+  const loose: AnchoredFloat[] = [];
+  for (const f of layout.floats.filter((f) => images[f.index])) {
     const above = paras.filter((p) => blockTop(p) <= f.box.y0 + 1);
     const anchor = above.length ? above.reduce((a, b) => (blockTop(b) > blockTop(a) ? b : a)) : paras[0];
     const tiny = f.box.x1 - f.box.x0 < 40 && f.box.y1 - f.box.y0 < 40;
-    const run = imageRun(ctx.images[f.index], f.box, { behind: f.behind, wrap: !f.behind && !tiny, anchorTop: anchor ? blockTop(anchor) : undefined });
-    if (anchor) anchored.set(anchor, [...(anchored.get(anchor) ?? []), run]);
-    else loose.push(run);
+    const af = { ...f, wrap: !f.behind && !tiny };
+    if (anchor) anchored.set(anchor, [...(anchored.get(anchor) ?? []), af]);
+    else loose.push(af);
   }
+  return { anchored, loose };
+}
+
+function flowSections(layout: PageLayout, ctx: BuildCtx, firstType: (typeof SectionType)[keyof typeof SectionType] = SectionType.NEXT_PAGE, hf?: HeaderFooter): ISectionOptions[] {
+  const lefts = refLefts(layout);
+  const anchors = floatAnchors(layout, ctx.images);
+  const anchored = new Map<ParaBlock, ImageRun[]>();
+  for (const [p, fs] of anchors.anchored) anchored.set(p, fs.map((f) => imageRun(ctx.images[f.index], f.box, { behind: f.behind, wrap: f.wrap, anchorTop: blockTop(p) })));
+  const loose = anchors.loose.map((f) => imageRun(ctx.images[f.index], f.box, { behind: f.behind, wrap: f.wrap }));
   const sections: ISectionOptions[] = [];
   layout.segments.forEach((seg, si) => {
     const children: (Paragraph | Table)[] = [];
@@ -1164,7 +1211,7 @@ function exactSection(layout: PageLayout, ctx: BuildCtx): ISectionOptions {
 // Document
 // ---------------------------------------------------------------------------
 
-function dominantFamily(pages: PageText[]): string | undefined {
+export function dominantFamily(pages: PageText[]): string | undefined {
   const count = new Map<string, number>();
   for (const p of pages) for (const l of p.lines) for (const s of spansOfLine(l)) if (s.family) count.set(s.family, (count.get(s.family) ?? 0) + s.text.length);
   let best: string | undefined;
@@ -1173,29 +1220,54 @@ function dominantFamily(pages: PageText[]): string | undefined {
   return best;
 }
 
-export async function exportToDocx(pages: PageText[], title: string, opts: DocxOptions = {}): Promise<Blob> {
+export interface PagePlan {
+  layout: PageLayout;
+  images: DocxImage[];
+  /** Starts a new page in the word processor (otherwise the text runs on from the previous PDF page). */
+  newPage: boolean;
+}
+
+export interface DocumentPlan {
+  pages: PagePlan[];
+  body: number;
+  defaultFont: string;
+  running: RunningLines;
+  total: number;
+}
+
+/** Lays out every page for a word-processor export (shared by DOCX, ODT and RTF). */
+export function planDocument(pages: PageText[], graphics: DocxPageGraphics[] | undefined, exact = false): DocumentPlan {
   const body = bodyFontSize(pages);
   const defaultFont = dominantFamily(pages) ?? 'Arial';
-  const sections: ISectionOptions[] = [];
-  const exact = opts.layout === 'exact';
-  // Flowing text: page numbers and running titles go to Word's header/footer, so the text can run on across pages.
+  // Flowing text: page numbers and running titles go to the header/footer, so the text can run on across pages.
   const running = exact ? { running: new Set<TextLine>() } : detectRunningLines(pages);
+  const plans: PagePlan[] = [];
   let prev: PageLayout | undefined;
   pages.forEach((p, k) => {
-    const g = opts.graphics?.[k] ?? { images: [], rules: [] };
+    const g = graphics?.[k] ?? { images: [], rules: [] };
     const bodyPage = running.running.size ? { ...p, lines: p.lines.filter((l) => !running.running.has(l)) } : p;
     const layout = layoutPage(bodyPage, { images: g.images.map((i) => i.box), rules: g.rules, shades: g.shades }, body, defaultFont);
-    const ctx: BuildCtx = { defaultFont, images: g.images, pageWidth: p.width };
+    // A new PDF page continues the text unless it must start a new page: another page size, or a previous
+    // page that ended early (a chapter end).
+    const newPage = exact || !prev || prev.width !== layout.width || prev.height !== layout.height || prev.contentBottom < 0.7 * prev.height;
+    plans.push({ layout, images: g.images, newPage });
+    prev = layout;
+  });
+  return { pages: plans, body, defaultFont, running, total: pages.length };
+}
+
+export async function exportToDocx(pages: PageText[], title: string, opts: DocxOptions = {}): Promise<Blob> {
+  const exact = opts.layout === 'exact';
+  const plan = planDocument(pages, opts.graphics, exact);
+  const { body, defaultFont, running } = plan;
+  const sections: ISectionOptions[] = [];
+  plan.pages.forEach(({ layout, images, newPage }, k) => {
+    const ctx: BuildCtx = { defaultFont, images, pageWidth: layout.width };
     if (exact) sections.push(exactSection(layout, ctx));
     else {
-      // A new PDF page continues the text unless it must start a new Word page: another page size, or a
-      // previous page that ended early (a chapter end).
-      const hard =
-        !prev || prev.width !== layout.width || prev.height !== layout.height || prev.contentBottom < 0.7 * prev.height;
-      const hf = k === 0 ? headerFooter(running, pages.length, layout.margin, defaultFont) : undefined;
-      sections.push(...flowSections(layout, ctx, k === 0 || hard ? SectionType.NEXT_PAGE : SectionType.CONTINUOUS, hf));
+      const hf = k === 0 ? headerFooter(running, plan.total, layout.margin, defaultFont) : undefined;
+      sections.push(...flowSections(layout, ctx, newPage ? SectionType.NEXT_PAGE : SectionType.CONTINUOUS, hf));
     }
-    prev = layout;
   });
   if (!sections.length) sections.push({ children: [new Paragraph({ children: [] })] });
   // Headings keep the PDF's own look (the library's defaults are blue and resized). No keep-with-next:

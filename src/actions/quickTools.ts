@@ -13,6 +13,7 @@ import { openPdf, PasswordRequiredError, type PDFDocumentProxy } from '@/lib/pdf
 import { officeToPdf, pickFiles, pickPaths, saveBytes, type PickedFile } from '@/lib/platform';
 import { exportPagesAsImages, exportToPptx, exportToXlsx, extractStructuredText } from '@/lib/pdf/convert';
 import { collectDocxGraphics, exportToDocx } from '@/lib/pdf/docx';
+import { layoutRows } from '@/lib/pdf/exportFormats';
 import { compressPdf } from '@/lib/pdf/compress';
 import { isPdfEncrypted } from '@/lib/crypto/encrypt';
 import { log } from '@/lib/log';
@@ -93,7 +94,10 @@ async function fromPdf(kind: 'docx' | 'jpg' | 'pptx' | 'xlsx'): Promise<void> {
         } else {
           const text = await extractStructuredText(pdf, tick, { detectBold: true });
           if (kind === 'docx') out.push({ name: `${base}.docx`, data: await exportToDocx(text, base, { graphics: await collectDocxGraphics(pdf, text, tick) }) });
-          if (kind === 'xlsx') out.push({ name: `${base}.xlsx`, data: await exportToXlsx(text) });
+          if (kind === 'xlsx') {
+            const rows = layoutRows(text, await collectDocxGraphics(pdf, text, tick));
+            out.push({ name: `${base}.xlsx`, data: await exportToXlsx(text, text.map((p) => rows.filter((r) => r.pageNumber === p.pageNumber).map((r) => r.cells))) });
+          }
           if (kind === 'pptx') out.push({ name: `${base}.pptx`, data: await exportToPptx(pdf, text, { dpi: 150, title: base }, tick) });
         }
       } finally {
