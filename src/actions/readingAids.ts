@@ -9,6 +9,7 @@ import { pauseReading, read, resumeReading, speechAvailable, speechText, stopRea
 import { saveBytes } from '@/lib/platform';
 import { log } from '@/lib/log';
 import type { PageRef } from '@/types';
+import { useAutoScroll } from '@/components/viewer/AutoScroll';
 
 // ------------------------------------------------------------------ read aloud
 
@@ -95,6 +96,7 @@ usePDFStore.subscribe((s, prev) => {
   if (s.sources === prev.sources) return;
   if (useReadAloud.getState().status !== 'idle') stopReading();
   if (!s.pages.length) useMagnifier.setState({ on: false });
+  useAutoScroll.getState().stop();
 });
 
 // ------------------------------------------------------------------ snapshot

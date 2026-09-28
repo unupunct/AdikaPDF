@@ -19,6 +19,7 @@ import { makeReaderFixture, registerReaderTests } from './reader.part.mjs';
 import { makeCommentFixture, registerCommentTests } from './comments.part.mjs';
 import { registerToolTests } from './tools.part.mjs';
 import { registerReadingTests } from './reading.part.mjs';
+import { registerMeasureTests } from './measure.part.mjs';
 
 const only = process.argv.slice(2).filter((a) => !a.startsWith('--'));
 const shots = process.argv.includes('--shots');
@@ -774,6 +775,7 @@ registerCommentTests(test, { S, page, dir, open, idle, savedFile, assert, join, 
 registerFormatTests(test, { S, page, dir, open, idle, savedFile, assert, pdfText, join, writeFileSync, readFileSync, JSZip, PDFDocument, F, pdfjs, FONT_DATA });
 registerToolTests(test, { S, page, dir, open, idle, savedFile, assert, pdfText, join, writeFileSync, PDFDocument, F, pdfjs, FONT_DATA, at });
 registerReadingTests(test, { S, page, open, idle, savedFile, assert, F, at });
+registerMeasureTests(test, { S, page, open, idle, savedFile, assert, F, pdfjs, FONT_DATA, at });
 
 test('dark mode toggle and welcome after close', async () => {
   await page.click('[data-testid="theme-toggle"]');

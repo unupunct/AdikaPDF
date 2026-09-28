@@ -5,6 +5,7 @@
  *  - PolyObject       → /Polygon, /PolyLine, or /Square with a cloudy border (/BE /S /C)
  *  - AttachmentObject → /FileAttachment carrying an embedded file
  *  - LinkObject       → /Link to a URL or to a page of the document
+ *  - MeasureObject    → /Line, /PolyLine or /Polygon with a /Measure dictionary (Acrobat measurements)
  */
 import {
   PDFDocument,
@@ -19,12 +20,14 @@ import {
   closePath,
   drawObject,
   endText,
+  fill,
   fillAndStroke,
   lineTo,
   moveText,
   moveTo,
   popGraphicsState,
   pushGraphicsState,
+  rectangle,
   setFillingRgbColor,
   setFontAndSize,
   setGraphicsState,
@@ -37,7 +40,8 @@ import {
   concatTransformationMatrix,
   type PDFOperator,
 } from 'pdf-lib';
-import type { AttachmentObject, LinkObject, PolyObject, StampObject } from '@/types';
+import type { AttachmentObject, LinkObject, MeasureObject, PolyObject, StampObject } from '@/types';
+import { measureValue, realPerPoint, scaleText } from '@/lib/measure';
 import { applyMatrix, multiply, rotateCw, transformRectBounds, translate, type Matrix } from '@/lib/geometry';
 import { cloudScallops } from '@/lib/cloud';
 import { addToPage, appearance, hexToRgbTuple, linear, pdfDate, text, transparency } from './annotations';
@@ -280,6 +284,108 @@ export function writeLink(doc: PDFDocument, page: PDFPage, pm: Matrix, o: LinkOb
       F: 4,
       P: page.ref,
       ...action,
+    }),
+  );
+  addToPage(doc, page, ref);
+}
+
+// ------------------------------------------------------------------ measurement
+
+const MEASURE_INTENT = { distance: 'LineDimension', perimeter: 'PolyLineDimension', area: 'PolygonDimension' } as const;
+
+/** Where the value label goes (display-local): middle of a distance, end of a perimeter, centre of an area. */
+export function measureLabelAnchor(kind: MeasureObject['kind'], pts: number[]): { x: number; y: number } {
+  const n = Math.floor(pts.length / 2);
+  if (kind === 'distance') return { x: (pts[0] + pts[2]) / 2, y: (pts[1] + pts[3]) / 2 };
+  if (kind === 'perimeter') return { x: pts[(n - 1) * 2], y: pts[(n - 1) * 2 + 1] };
+  let x = 0;
+  let y = 0;
+  for (let i = 0; i < n; i++) {
+    x += pts[i * 2];
+    y += pts[i * 2 + 1];
+  }
+  return { x: x / n, y: y / n };
+}
+
+export const MEASURE_LABEL_SIZE = 9;
+
+/** Label position relative to its anchor (display-local, top-left of the text box). */
+export function measureLabelOffset(kind: MeasureObject['kind'], labelWidth: number): { x: number; y: number } {
+  if (kind === 'perimeter') return { x: 6, y: -MEASURE_LABEL_SIZE - 4 };
+  if (kind === 'distance') return { x: -labelWidth / 2, y: -MEASURE_LABEL_SIZE - 6 };
+  return { x: -labelWidth / 2, y: -MEASURE_LABEL_SIZE / 2 };
+}
+
+export function writeMeasure(doc: PDFDocument, page: PDFPage, pm: Matrix, o: MeasureObject, font: PDFFont): void {
+  const { local } = frames(pm, o, o.height);
+  const P = (x: number, y: number) => applyMatrix(local, x, y);
+  const n = Math.floor(o.points.length / 2);
+  if (n < 2) return;
+  const vertices: number[] = [];
+  for (let i = 0; i < n; i++) vertices.push(...P(o.points[i * 2], o.points[i * 2 + 1]));
+  const { label } = measureValue(o.kind, o.points, o.scale);
+  const color = hexToRgbTuple(o.stroke);
+  const size = MEASURE_LABEL_SIZE;
+  const labelW = font.widthOfTextAtSize(label, size);
+  const ops: PDFOperator[] = [pushGraphicsState(), setLineWidth(o.strokeWidth), setLineJoin(LineJoinStyle.Round), setStrokingRgbColor(...color)];
+  ops.push(moveTo(vertices[0], vertices[1]));
+  for (let i = 1; i < n; i++) ops.push(lineTo(vertices[i * 2], vertices[i * 2 + 1]));
+  if (o.kind === 'area') ops.push(closePath());
+  ops.push(stroke());
+  if (o.kind === 'distance') {
+    // Tick marks across both ends.
+    const [x1, y1, x2, y2] = vertices;
+    const len = Math.hypot(x2 - x1, y2 - y1) || 1;
+    const nx = (-(y2 - y1) / len) * 5;
+    const ny = ((x2 - x1) / len) * 5;
+    ops.push(moveTo(x1 - nx, y1 - ny), lineTo(x1 + nx, y1 + ny), moveTo(x2 - nx, y2 - ny), lineTo(x2 + nx, y2 + ny), stroke());
+  }
+  // The value, upright as the page is seen: white box + text, drawn in the display frame (y flipped per glyph line).
+  const at = measureLabelAnchor(o.kind, o.points);
+  const off = measureLabelOffset(o.kind, labelW);
+  const boxTopLeft = { x: at.x + off.x, y: at.y + off.y };
+  const lm = multiply(local, multiply(translate(boxTopLeft.x, boxTopLeft.y + size), [1, 0, 0, -1, 0, 0]));
+  ops.push(
+    pushGraphicsState(),
+    concatTransformationMatrix(...lm),
+    setFillingRgbColor(1, 1, 1),
+    rectangle(-2, -2.5, labelW + 4, size + 3),
+    fill(),
+    setFillingRgbColor(...color),
+    beginText(),
+    setFontAndSize(PDFName.of('F1'), size),
+    moveText(0, 0),
+    showText(font.encodeText(label)),
+    endText(),
+    popGraphicsState(),
+  );
+  ops.push(popGraphicsState());
+  const lb = transformRectBounds(local, { x: boxTopLeft.x - 3, y: boxTopLeft.y - 3, width: labelW + 6, height: size + 6 });
+  const xs = [...vertices.filter((_, i) => i % 2 === 0), lb.x, lb.x + lb.width];
+  const ys = [...vertices.filter((_, i) => i % 2 === 1), lb.y, lb.y + lb.height];
+  const pad = 6;
+  const bbox: [number, number, number, number] = [Math.min(...xs) - pad, Math.min(...ys) - pad, Math.max(...xs) + pad, Math.max(...ys) + pad];
+  const ap = appearance(doc, ops, bbox, [1, 0, 0, 1, 0, 0], doc.context.obj({ Font: { F1: font.ref } }));
+  // /Measure (PDF 32000 12.9): X converts user-space units to real units; D and A format distances and areas.
+  const k = realPerPoint(o.scale);
+  const fmt = (unit: string, c: number) => ({ Type: 'NumberFormat', U: text(unit), C: c, D: 100, SS: text(' ') });
+  const measure = { Type: 'Measure', Subtype: 'RL', R: text(scaleText(o.scale)), X: [fmt(o.scale.realUnit, k)], D: [fmt(o.scale.realUnit, 1)], A: [fmt(`${o.scale.realUnit}²`, 1)] };
+  const geometry = o.kind === 'distance' ? { L: vertices, LE: ['Butt', 'Butt'], Cap: true } : { Vertices: vertices };
+  const ref = doc.context.register(
+    doc.context.obj({
+      Type: 'Annot',
+      Subtype: o.kind === 'distance' ? 'Line' : o.kind === 'perimeter' ? 'PolyLine' : 'Polygon',
+      Rect: bbox,
+      IT: MEASURE_INTENT[o.kind],
+      ...geometry,
+      Measure: measure,
+      C: color,
+      BS: { W: o.strokeWidth, S: 'S' },
+      Subj: text(o.kind === 'distance' ? 'Distance' : o.kind === 'perimeter' ? 'Perimeter' : 'Area'),
+      ...commentDict(o, o.text ? `${label}\n${o.text}` : label),
+      F: 4,
+      P: page.ref,
+      AP: { N: ap },
     }),
   );
   addToPage(doc, page, ref);

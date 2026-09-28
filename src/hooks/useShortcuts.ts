@@ -5,6 +5,7 @@ import { closeDocumentAction, openDialog, saveDocument } from '@/actions/documen
 import { printDocument } from '@/actions/print';
 import { cycleTab } from '@/store/tabs';
 import { readCurrentPage, readToEnd, stopReading, togglePauseReading } from '@/actions/readingAids';
+import { useAutoScroll } from '@/components/viewer/AutoScroll';
 import { rotateView, startPresentation, toggleFullscreen } from '@/components/ribbon/ReaderTabs';
 
 /** Selects all text on a page's text layer (Ctrl+A in the Select text tool). */
@@ -53,6 +54,12 @@ export function useShortcuts(): void {
       }
       if (key === 'escape' && s.fullscreen) {
         void toggleFullscreen();
+        return;
+      }
+      // Auto-scroll (Acrobat: Ctrl+Shift+H).
+      if (mod && e.shiftKey && key === 'h' && s.pages.length) {
+        e.preventDefault();
+        useAutoScroll.getState().toggle();
         return;
       }
       // Read aloud (Acrobat's keys): V page, B to the end, C pause/resume, E stop.

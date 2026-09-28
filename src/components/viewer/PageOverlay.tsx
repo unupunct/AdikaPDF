@@ -7,7 +7,7 @@
  * Stage is scaled by the zoom factor.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Circle, Layer, Line, Rect, Stage, Transformer } from 'react-konva';
+import { Circle, Group, Layer, Line, Rect, Stage, Transformer } from 'react-konva';
 import type Konva from 'konva';
 import type { EditorObject, FieldKind, LineObject, NoteObject, PageRef, TextObject, ToolId } from '@/types';
 import { NotePopup } from './NotePopup';
@@ -18,6 +18,7 @@ import { displaySize, normalizeAngle, normalizeRect, objectDisplayBounds, type R
 import {
   defaultFieldSize,
   makeAttachment,
+  makeMeasure,
   makePoly,
   makeStamp,
   makeField,
@@ -36,6 +37,8 @@ import { ObjectNode } from './ObjectNode';
 import { useModalArgs } from '@/store/useModalArgs';
 import { pickFiles } from '@/lib/platform';
 import { captureSnapshot } from '@/actions/readingAids';
+import { measureValue, useMeasureScale } from '@/lib/measure';
+import { MeasureShape } from './ObjectNode';
 import { TextEditor } from './TextEditor';
 
 type Draft =
@@ -43,11 +46,12 @@ type Draft =
   | { kind: 'line'; tool: 'line' | 'arrow'; x0: number; y0: number; x1: number; y1: number }
   | { kind: 'pen'; points: number[] }
   | { kind: 'callout'; x0: number; y0: number; x1: number; y1: number }
+  | { kind: 'measure'; x0: number; y0: number; x1: number; y1: number }
   | { kind: 'marquee'; x0: number; y0: number; x1: number; y1: number };
 
 /** Polygon / polyline being clicked in, vertex by vertex. */
 interface PolyDraft {
-  tool: 'polygon' | 'polyline';
+  tool: 'polygon' | 'polyline' | 'measure-perimeter' | 'measure-area';
   points: number[];
   cursor: { x: number; y: number };
 }
@@ -158,6 +162,11 @@ export function PageOverlay({ page, zoom }: { page: PageRef; zoom: number }) {
         if (d.points.length >= 4) store.addObject(makePen(page.id, d.points, style), false);
         return;
       }
+      if (d.kind === 'measure') {
+        if (Math.hypot(d.x1 - d.x0, d.y1 - d.y0) < 3) return;
+        store.addObject(makeMeasure('distance', page.id, [d.x0, d.y0, d.x1, d.y1], useMeasureScale.getState().scale, getAuthor()), false);
+        return; // the measure tool stays on
+      }
       if (d.kind === 'callout') {
         // Pressed on the point to comment on, released where the text box goes.
         const w = 180;
@@ -263,9 +272,14 @@ export function PageOverlay({ page, zoom }: { page: PageRef; zoom: number }) {
       setPolyDraft(null);
       if (!pd) return;
       const store = usePDFStore.getState();
-      const need = pd.tool === 'polygon' ? 6 : 4;
-      if (pd.points.length < need) {
-        store.toast(pd.tool === 'polygon' ? 'A polygon needs at least 3 points.' : 'A polyline needs at least 2 points.', 'info');
+      const closed = pd.tool === 'polygon' || pd.tool === 'measure-area';
+      if (pd.points.length < (closed ? 6 : 4)) {
+        store.toast(closed ? 'Click at least 3 points.' : 'Click at least 2 points.', 'info');
+        return;
+      }
+      if (pd.tool === 'measure-perimeter' || pd.tool === 'measure-area') {
+        // Measuring continues with the tool on, as in Acrobat.
+        store.addObject(makeMeasure(pd.tool === 'measure-area' ? 'area' : 'perimeter', page.id, pd.points, useMeasureScale.getState().scale, getAuthor()), false);
         return;
       }
       store.addObject(makePoly(pd.tool, page.id, pd.points, store.style, getAuthor()));
@@ -292,7 +306,7 @@ export function PageOverlay({ page, zoom }: { page: PageRef; zoom: number }) {
   }, [polyDraft !== null, finishPoly, setPolyDraft]);
 
   useEffect(() => {
-    if (tool !== 'polygon' && tool !== 'polyline') setPolyDraft(null);
+    if (tool !== 'polygon' && tool !== 'polyline' && tool !== 'measure-perimeter' && tool !== 'measure-area') setPolyDraft(null);
   }, [tool, setPolyDraft]);
 
   const editExistingText = useCallback(
@@ -425,15 +439,20 @@ export function PageOverlay({ page, zoom }: { page: PageRef; zoom: number }) {
       case 'callout':
         startDrag({ kind: 'callout', x0: p.x, y0: p.y, x1: p.x, y1: p.y });
         return;
+      case 'measure-distance':
+        startDrag({ kind: 'measure', x0: p.x, y0: p.y, x1: p.x, y1: p.y });
+        return;
       case 'polygon':
-      case 'polyline': {
+      case 'polyline':
+      case 'measure-perimeter':
+      case 'measure-area': {
         const pd = polyRef.current;
         if (!pd) {
           setPolyDraft({ tool, points: [p.x, p.y], cursor: p });
           return;
         }
         // Clicking the first point again closes a polygon.
-        if (tool === 'polygon' && pd.points.length >= 6 && Math.hypot(p.x - pd.points[0], p.y - pd.points[1]) < 6 / zoom) {
+        if ((tool === 'polygon' || tool === 'measure-area') && pd.points.length >= 6 && Math.hypot(p.x - pd.points[0], p.y - pd.points[1]) < 6 / zoom) {
           finishPoly(pd);
           return;
         }
@@ -468,7 +487,7 @@ export function PageOverlay({ page, zoom }: { page: PageRef; zoom: number }) {
         const [lx, ly] = cur.points.slice(-2);
         if (Math.hypot(p.x - lx, p.y - ly) < 0.8 / zoom) return;
         next = { ...cur, points: [...cur.points, p.x, p.y] };
-      } else if (cur.kind === 'line' && ev.shiftKey) {
+      } else if ((cur.kind === 'line' || cur.kind === 'measure') && ev.shiftKey) {
         // Shift snaps lines to 45° steps.
         const a = Math.round(Math.atan2(p.y - cur.y0, p.x - cur.x0) / (Math.PI / 4)) * (Math.PI / 4);
         const len = Math.hypot(p.x - cur.x0, p.y - cur.y0);
@@ -604,6 +623,7 @@ export function PageOverlay({ page, zoom }: { page: PageRef; zoom: number }) {
         patch = { ...base, points: [o.points[0] * sx, o.points[1] * sy, o.points[2] * sx, o.points[3] * sy] };
         break;
       case 'poly':
+      case 'measure':
         patch = { ...base, points: o.points.map((v, i) => (i % 2 === 0 ? v * sx : v * sy)), width: Math.max(4, o.width * sx), height: Math.max(4, o.height * sy) };
         break;
       default:
@@ -760,7 +780,16 @@ export function PageOverlay({ page, zoom }: { page: PageRef; zoom: number }) {
 
 function PolyDraftNode({ draft, zoom }: { draft: PolyDraft; zoom: number }) {
   const style = usePDFStore((s) => s.style);
+  const scale = useMeasureScale((s) => s.scale);
   const pts = [...draft.points, draft.cursor.x, draft.cursor.y];
+  if (draft.tool === 'measure-perimeter' || draft.tool === 'measure-area') {
+    const kind = draft.tool === 'measure-area' ? 'area' : 'perimeter';
+    return (
+      <Group listening={false}>
+        <MeasureShape kind={kind} points={pts} stroke="#dc2626" strokeWidth={1} label={measureValue(kind, pts, scale).label} />
+      </Group>
+    );
+  }
   return (
     <>
       <Line points={pts} stroke={style.stroke} strokeWidth={Math.max(1, style.strokeWidth)} closed={draft.tool === 'polygon' && draft.points.length >= 4} dash={[5 / zoom, 3 / zoom]} lineJoin="round" listening={false} />
@@ -775,6 +804,14 @@ function DraftNode({ draft, zoom }: { draft: Draft; zoom: number }) {
   const style = usePDFStore((s) => s.style);
   if (draft.kind === 'callout') {
     return <Line points={[draft.x0, draft.y0, draft.x1, draft.y1]} stroke={style.stroke} strokeWidth={1} dash={[4 / zoom, 3 / zoom]} listening={false} />;
+  }
+  if (draft.kind === 'measure') {
+    const pts = [draft.x0, draft.y0, draft.x1, draft.y1];
+    return (
+      <Group listening={false}>
+        <MeasureShape kind="distance" points={pts} stroke="#dc2626" strokeWidth={1} label={measureValue('distance', pts, useMeasureScale.getState().scale).label} />
+      </Group>
+    );
   }
   if (draft.kind === 'pen') {
     return <Line points={draft.points} stroke={style.stroke} strokeWidth={style.strokeWidth} opacity={style.opacity} lineCap="round" lineJoin="round" listening={false} />;

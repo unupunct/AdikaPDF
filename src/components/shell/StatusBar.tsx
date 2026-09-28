@@ -1,6 +1,7 @@
 import { BadgeCheck, BadgeX, ShieldAlert } from 'lucide-react';
 import { usePDFStore } from '@/store/usePDFStore';
 import { displaySize } from '@/lib/geometry';
+import { AUTO_SPEEDS, useAutoScroll } from '@/components/viewer/AutoScroll';
 
 const TOOL_HINTS: Partial<Record<string, string>> = {
   select: 'Click to select · Shift-click to add · drag empty space to box-select · Alt while dragging disables snapping',
@@ -16,6 +17,10 @@ const TOOL_HINTS: Partial<Record<string, string>> = {
   pen: 'Draw freely · the tool stays active',
   highlight: 'Drag over text to highlight · the tool stays active',
   redact: 'Drag over content to mark it for permanent removal',
+  'measure-distance': 'Drag between two points · Shift snaps to 45° · the tool stays active',
+  'measure-perimeter': 'Click the points · double-click or Enter to finish · Backspace removes a point',
+  'measure-area': 'Click the corners · double-click, Enter or the first point finishes',
+  snapshot: 'Drag a box to copy that area as a picture',
 };
 
 export function StatusBar() {
@@ -29,6 +34,7 @@ export function StatusBar() {
   const page = pages[idx];
   const size = page ? displaySize(page) : null;
   const hint = tool.startsWith('field-') ? 'Click or drag to place a form field' : TOOL_HINTS[tool];
+  const auto = useAutoScroll();
   const invalid = sigs.some((s) => s.integrity !== 'valid' || s.modifiedAfterSigning);
 
   return (
@@ -50,6 +56,11 @@ export function StatusBar() {
         <span>Ready</span>
       )}
       <span className="min-w-0 flex-1 truncate">{page ? hint : ''}</span>
+      {auto.on ? (
+        <span data-testid="status-autoscroll" className="font-medium text-brand-700 dark:text-brand-300">
+          Auto-scroll {auto.direction === 1 ? '↓' : '↑'} {AUTO_SPEEDS[auto.level]} px/s · ↑↓ speed · − reverse · Esc stop
+        </span>
+      ) : null}
       {sigs.length ? (
         <button
           type="button"

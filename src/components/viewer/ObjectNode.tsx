@@ -6,7 +6,9 @@
 import { memo, useEffect, useState } from 'react';
 import { Arrow, Ellipse, Group, Image as KImage, Line, Path, Rect, Shape, Text } from 'react-konva';
 import type Konva from 'konva';
-import type { EditorObject, PolyObject, SignatureObject, StampObject, TextObject } from '@/types';
+import type { EditorObject, MeasureObject, PolyObject, SignatureObject, StampObject, TextObject } from '@/types';
+import { measureValue } from '@/lib/measure';
+import { MEASURE_LABEL_SIZE, measureLabelAnchor, measureLabelOffset } from '@/lib/pdf/commentAnnots';
 import { cloudPathData } from '@/lib/cloud';
 import { calloutKnee } from '@/lib/pdf/annotations';
 import { layoutText } from '@/lib/textLayout';
@@ -193,6 +195,8 @@ function Content({ obj }: { obj: EditorObject }) {
       return <StampContent obj={obj} />;
     case 'poly':
       return <PolyContent obj={obj} />;
+    case 'measure':
+      return <MeasureContent obj={obj} />;
     case 'attachment':
       return (
         <>
@@ -314,6 +318,42 @@ function StampContent({ obj }: { obj: StampObject }) {
       {obj.subtitle ? (
         <Text text={obj.subtitle} width={obj.width} y={h * 0.62} align="center" fontSize={h * 0.2} fontFamily={cssFontFamily('sans')} fill={obj.color} wrap="none" listening={false} />
       ) : null}
+    </Group>
+  );
+}
+
+/** Measurement line or shape with its value label (also used for the live preview while drawing). */
+export function MeasureShape({ kind, points, stroke, strokeWidth, label }: { kind: MeasureObject['kind']; points: number[]; stroke: string; strokeWidth: number; label: string }) {
+  const size = MEASURE_LABEL_SIZE;
+  const w = canvasMeasure({ family: 'sans', bold: false, italic: false }, size)(label);
+  const at = measureLabelAnchor(kind, points);
+  const off = measureLabelOffset(kind, w);
+  const ticks: number[][] = [];
+  if (kind === 'distance' && points.length >= 4) {
+    const [x1, y1, x2, y2] = points;
+    const len = Math.hypot(x2 - x1, y2 - y1) || 1;
+    const nx = (-(y2 - y1) / len) * 5;
+    const ny = ((x2 - x1) / len) * 5;
+    ticks.push([x1 - nx, y1 - ny, x1 + nx, y1 + ny], [x2 - nx, y2 - ny, x2 + nx, y2 + ny]);
+  }
+  return (
+    <>
+      <Line points={points} closed={kind === 'area'} stroke={stroke} strokeWidth={strokeWidth} lineJoin="round" hitStrokeWidth={Math.max(10, strokeWidth + 8)} />
+      {ticks.map((t, k) => (
+        <Line key={k} points={t} stroke={stroke} strokeWidth={strokeWidth} listening={false} />
+      ))}
+      <Rect x={at.x + off.x - 2} y={at.y + off.y - 0.5} width={w + 4} height={size + 3} fill="#ffffff" opacity={0.92} listening={false} />
+      <Text x={at.x + off.x} y={at.y + off.y + 0.5} text={label} fontSize={size} fontFamily={cssFontFamily('sans')} fill={stroke} wrap="none" listening={false} />
+    </>
+  );
+}
+
+function MeasureContent({ obj }: { obj: MeasureObject }) {
+  const { label } = measureValue(obj.kind, obj.points, obj.scale);
+  return (
+    <Group opacity={obj.opacity}>
+      <Rect width={obj.width} height={obj.height} fill="transparent" />
+      <MeasureShape kind={obj.kind} points={obj.points} stroke={obj.stroke} strokeWidth={obj.strokeWidth} label={label} />
     </Group>
   );
 }
