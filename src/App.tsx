@@ -21,6 +21,7 @@ import { dirtyTabCount } from '@/store/tabs';
 import { ensureFontsLoaded } from '@/lib/fonts';
 import { ensurePrintWatcher, initialFiles, onForwardedFiles } from '@/lib/platform';
 import { openPdfPath } from '@/actions/document';
+import { maybeAutoCheck } from '@/lib/updates';
 
 export default function App() {
   const hasDoc = usePDFStore((s) => s.pages.length > 0);
@@ -55,6 +56,7 @@ export default function App() {
       for (const p of paths) await openPdfPath(p);
     });
     void ensurePrintWatcher();
+    maybeAutoCheck();
     return () => {
       void off.then((f) => f());
     };
