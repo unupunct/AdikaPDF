@@ -3,16 +3,16 @@
  * Layers (optional content) and Search results.
  */
 import { useEffect, useState, type ReactNode } from 'react';
-import { MessagesSquare, Bookmark, ChevronDown, ChevronRight, FileSearch, Layers as LayersIcon, LayoutGrid, Paperclip, Save, ExternalLink } from 'lucide-react';
+import { MessagesSquare, Bookmark, FileSearch, Layers as LayersIcon, LayoutGrid, Paperclip, Save, ExternalLink } from 'lucide-react';
 import { usePDFStore, type SidebarTab } from '@/store/usePDFStore';
 import { ThumbnailSidebar } from './ThumbnailSidebar';
 import { Tooltip } from '@/components/ui/primitives';
-import { getEmbeddedFiles, getLayerConfig, getOutline, type EmbeddedFile, type OutlineNode } from '@/lib/pdf/pdfService';
-import { goToDestination } from '@/components/viewer/ReaderLayers';
-import { openExternal, saveBytes } from '@/lib/platform';
+import { getEmbeddedFiles, getLayerConfig, type EmbeddedFile } from '@/lib/pdf/pdfService';
+import { saveBytes } from '@/lib/platform';
 import { usePageLabels } from '@/hooks/usePageLabels';
 import { cn } from '@/lib/cn';
 import { CommentsPanel } from './CommentsPanel';
+import { BookmarksPanel } from './BookmarksPanel';
 
 const TABS: Array<{ id: SidebarTab; label: string; icon: ReactNode }> = [
   { id: 'pages', label: 'Pages', icon: <LayoutGrid size={16} /> },
@@ -82,66 +82,6 @@ function useSourceIds(): Array<{ id: string; name: string }> {
     }
   }
   return out;
-}
-
-// ------------------------------------------------------------------ bookmarks
-
-function BookmarksPanel() {
-  const sources = useSourceIds();
-  const [trees, setTrees] = useState<Array<{ id: string; name: string; items: OutlineNode[] }> | null>(null);
-  const key = sources.map((s) => s.id).join('|');
-  useEffect(() => {
-    let alive = true;
-    void Promise.all(sources.map(async (s) => ({ ...s, items: await getOutline(s.id).catch(() => []) }))).then((t) => alive && setTrees(t));
-    return () => {
-      alive = false;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key]);
-  const withItems = trees?.filter((t) => t.items.length) ?? [];
-  return (
-    <>
-      <PanelHeader title="Bookmarks" />
-      <div className="flex-1 overflow-auto py-1" data-testid="outline-panel">
-        {trees && withItems.length === 0 ? <Empty>This document has no bookmarks.</Empty> : null}
-        {withItems.map((t) => (
-          <div key={t.id}>
-            {withItems.length > 1 ? <div className="truncate px-3 pb-1 pt-2 text-[11px] font-semibold text-muted">{t.name}</div> : null}
-            {t.items.map((n, i) => (
-              <OutlineItem key={i} node={n} sourceId={t.id} depth={0} />
-            ))}
-          </div>
-        ))}
-      </div>
-    </>
-  );
-}
-
-function OutlineItem({ node, sourceId, depth }: { node: OutlineNode; sourceId: string; depth: number }) {
-  const [open, setOpen] = useState(depth === 0 && node.items.length > 0 && node.items.length < 12);
-  const follow = () => {
-    if (node.url) void openExternal(node.url).catch(() => undefined);
-    else void goToDestination(sourceId, node.dest);
-  };
-  return (
-    <div>
-      <div className="group flex items-center rounded-md pr-2 hover-app" style={{ paddingLeft: 4 + depth * 12 }}>
-        <button type="button" aria-label={open ? 'Collapse' : 'Expand'} onClick={() => setOpen(!open)} className={cn('flex h-6 w-5 shrink-0 items-center justify-center text-muted', node.items.length === 0 && 'invisible')}>
-          {open ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
-        </button>
-        <button
-          type="button"
-          onClick={follow}
-          data-testid="outline-item"
-          className={cn('min-w-0 flex-1 truncate py-1 text-left text-[12.5px]', node.bold && 'font-semibold', node.italic && 'italic')}
-          title={node.title}
-        >
-          {node.title}
-        </button>
-      </div>
-      {open ? node.items.map((c, i) => <OutlineItem key={i} node={c} sourceId={sourceId} depth={depth + 1} />) : null}
-    </div>
-  );
 }
 
 // ------------------------------------------------------------------ attachments

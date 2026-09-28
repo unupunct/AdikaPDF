@@ -11,7 +11,9 @@ import { openPdfBytes, withBusy, PDF_FILTER } from './document';
 import { IMAGE_EXTENSIONS, imagesToPdf, pickImagesAsDataUrls } from './convert';
 import { openPdf, PasswordRequiredError, type PDFDocumentProxy } from '@/lib/pdf/pdfService';
 import { officeToPdf, pickFiles, pickPaths, saveBytes, type PickedFile } from '@/lib/platform';
-import { exportPagesAsImages, exportToDocx, exportToPptx, exportToXlsx, extractStructuredText } from '@/lib/pdf/convert';
+import { exportPagesAsImages, exportToPptx, exportToXlsx, extractStructuredText } from '@/lib/pdf/convert';
+import { collectDocxGraphics, exportToDocx } from '@/lib/pdf/docx';
+import { layoutRows } from '@/lib/pdf/exportFormats';
 import { compressPdf } from '@/lib/pdf/compress';
 import { isPdfEncrypted } from '@/lib/crypto/encrypt';
 import { log } from '@/lib/log';
@@ -19,7 +21,7 @@ import { log } from '@/lib/log';
 export type QuickToolId = 'pdf-word' | 'pdf-jpg' | 'word-pdf' | 'jpg-pdf' | 'merge' | 'pdf-ppt' | 'compress' | 'ppt-pdf' | 'pdf-excel' | 'excel-pdf';
 
 export const QUICK_TOOLS: Array<{ id: QuickToolId; title: string; hint: string }> = [
-  { id: 'pdf-word', title: 'PDF to Word', hint: 'Editable .docx with headings and paragraphs' },
+  { id: 'pdf-word', title: 'PDF to Word', hint: 'Editable .docx that keeps fonts, layout, tables and images' },
   { id: 'pdf-jpg', title: 'PDF to JPG', hint: 'Every page as a JPG image' },
   { id: 'word-pdf', title: 'Word to PDF', hint: '.docx, .doc, .rtf, .odt via Microsoft Word' },
   { id: 'jpg-pdf', title: 'JPG to PDF', hint: 'Photos and scans (JPG, PNG, HEIC, TIFF…)' },
@@ -91,8 +93,11 @@ async function fromPdf(kind: 'docx' | 'jpg' | 'pptx' | 'xlsx'): Promise<void> {
           out.push({ name: `${base}-jpg.zip`, data: await exportPagesAsImages(pdf, { format: 'jpeg', dpi: 150, quality: 0.9 }, tick) });
         } else {
           const text = await extractStructuredText(pdf, tick, { detectBold: true });
-          if (kind === 'docx') out.push({ name: `${base}.docx`, data: await exportToDocx(text, base) });
-          if (kind === 'xlsx') out.push({ name: `${base}.xlsx`, data: await exportToXlsx(text) });
+          if (kind === 'docx') out.push({ name: `${base}.docx`, data: await exportToDocx(text, base, { graphics: await collectDocxGraphics(pdf, text, tick) }) });
+          if (kind === 'xlsx') {
+            const rows = layoutRows(text, await collectDocxGraphics(pdf, text, tick));
+            out.push({ name: `${base}.xlsx`, data: await exportToXlsx(text, text.map((p) => rows.filter((r) => r.pageNumber === p.pageNumber).map((r) => r.cells))) });
+          }
           if (kind === 'pptx') out.push({ name: `${base}.pptx`, data: await exportToPptx(pdf, text, { dpi: 150, title: base }, tick) });
         }
       } finally {

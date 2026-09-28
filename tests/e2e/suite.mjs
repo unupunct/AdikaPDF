@@ -17,6 +17,7 @@ import { launchApp, tempDir } from './harness.mjs';
 import { registerFormatTests } from './formats.part.mjs';
 import { makeReaderFixture, registerReaderTests } from './reader.part.mjs';
 import { makeCommentFixture, registerCommentTests } from './comments.part.mjs';
+import { registerToolTests } from './tools.part.mjs';
 
 const only = process.argv.slice(2).filter((a) => !a.startsWith('--'));
 const shots = process.argv.includes('--shots');
@@ -312,6 +313,8 @@ test('draw rectangle, ellipse, arrow, freehand and highlight by mouse', async ()
 test('select, move by dragging, delete, undo and redo', async () => {
   const before = (await state()).objects.find((o) => o.type === 'rect');
   await clickAt(1, 375, 420);
+  // Selection lands on the next render; give it a moment on slow machines.
+  await page.waitForFunction((id) => window.__adika.store.getState().selectedIds.includes(id), before.id, { timeout: 5000 }).catch(() => {});
   let s = await state();
   assert(s.selected.includes(before.id), 'rect selected by click');
   await drag(1, [375, 420], [395, 440]);
@@ -768,6 +771,7 @@ test('scanner reports a clear message when no scanner is attached', async () => 
 registerReaderTests(test, { S, page, dir, open, idle, savedFile, assert, pdfText, join, writeFileSync, readFileSync, JSZip, PDFDocument, F, pdfjs, FONT_DATA });
 registerCommentTests(test, { S, page, dir, open, idle, savedFile, assert, join, writeFileSync, F, pdfjs, FONT_DATA });
 registerFormatTests(test, { S, page, dir, open, idle, savedFile, assert, pdfText, join, writeFileSync, readFileSync, JSZip, PDFDocument, F, pdfjs, FONT_DATA });
+registerToolTests(test, { S, page, dir, open, idle, savedFile, assert, pdfText, join, writeFileSync, PDFDocument, F, pdfjs, FONT_DATA, at });
 
 test('dark mode toggle and welcome after close', async () => {
   await page.click('[data-testid="theme-toggle"]');

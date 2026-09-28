@@ -15,9 +15,7 @@ import {
   exportAllSvgZip,
   exportPagesAsImages,
   exportPlainText,
-  exportToDocx,
   exportToHtml,
-  exportToMarkdown,
   exportToPptx,
   exportToXlsx,
   extractStructuredText,
@@ -32,6 +30,13 @@ import fontkit from '@pdf-lib/fontkit';
 import { loadFontBytes } from '@/lib/fonts';
 
 // ================================================================ helpers
+
+/** Sheet rows per page from the page layout (a table row with wrapped cells stays one row). */
+async function xlsxRows(pdf: PDFDocumentProxy, text: Awaited<ReturnType<typeof extractStructuredText>>, onProgress?: (done: number, total: number) => void): Promise<string[][][]> {
+  const graphics = await (await import('@/lib/pdf/docx')).collectDocxGraphics(pdf, text, onProgress);
+  const rows = (await import('@/lib/pdf/exportFormats')).layoutRows(text, graphics);
+  return text.map((p) => rows.filter((r) => r.pageNumber === p.pageNumber).map((r) => r.cells));
+}
 
 async function withEditedDoc<T>(fn: (pdf: PDFDocumentProxy, bytes: Uint8Array) => Promise<T>, progress?: (m: string, f: number | null) => void): Promise<T> {
   const bytes = await exportCurrentPdf({}, progress);
@@ -312,6 +317,8 @@ export interface ExportRequest {
   dpi: number;
   pageNumbers?: number[];
   quality?: number;
+  /** Word only: editable flowing text (default) or paragraphs pinned to their PDF position. */
+  docxLayout?: 'flow' | 'exact';
 }
 
 const FORMAT_INFO: Record<ExportFormat, { ext: string; label: string }> = {
@@ -340,23 +347,35 @@ export async function exportAs(req: ExportRequest): Promise<void> {
       const needsText = ['docx', 'odt', 'rtf', 'xlsx', 'csv', 'pptx', 'html', 'epub', 'md', 'txt', 'json'].includes(req.format);
       const text = needsText ? await extractStructuredText(pdf, tick('Reading text'), { detectBold: true, pageNumbers: req.pageNumbers }) : [];
       switch (req.format) {
-        case 'docx':
-          return exportToDocx(text, baseName());
+        case 'docx': {
+          const { collectDocxGraphics, exportToDocx } = await import('@/lib/pdf/docx');
+          const graphics = await collectDocxGraphics(pdf, text, tick('Reading images and colours'));
+          return exportToDocx(text, baseName(), { layout: req.docxLayout, graphics });
+        }
         case 'odt':
-          return (await import('@/lib/pdf/exportFormats')).exportToOdt(text, baseName());
-        case 'rtf':
-          return new Blob([(await import('@/lib/pdf/exportFormats')).exportToRtf(text, baseName())], { type: 'application/rtf' });
-        case 'csv':
-          return new Blob([(await import('@/lib/pdf/exportFormats')).exportToCsv(text, { delimiter: ',' })], { type: 'text/csv' });
+        case 'rtf': {
+          // Same layout as the Word export: pictures, colours and rules come from the rendered pages.
+          const { collectDocxGraphics } = await import('@/lib/pdf/docx');
+          const graphics = await collectDocxGraphics(pdf, text, tick('Reading images and colours'));
+          const formats = await import('@/lib/pdf/exportFormats');
+          if (req.format === 'odt') return formats.exportToOdt(text, baseName(), graphics);
+          return new Blob([formats.exportToRtf(text, baseName(), graphics)], { type: 'application/rtf' });
+        }
+        case 'csv': {
+          const graphics = await (await import('@/lib/pdf/docx')).collectDocxGraphics(pdf, text, tick('Reading tables'));
+          return new Blob([(await import('@/lib/pdf/exportFormats')).exportToCsv(text, { delimiter: ',' }, graphics)], { type: 'text/csv' });
+        }
         case 'json': {
           const fields = await (await import('./security')).readFormFields(bytes);
           const json = await (await import('@/lib/pdf/exportFormats')).exportToJson(pdf, text, { formFields: fields.map((f) => ({ name: f.name, kind: f.kind, value: f.value })) });
           return new Blob([json], { type: 'application/json' });
         }
-        case 'epub':
-          return (await import('@/lib/pdf/epub')).pdfToEpub(text, { title: baseName(), author: '' });
+        case 'epub': {
+          const graphics = await (await import('@/lib/pdf/docx')).collectDocxGraphics(pdf, text, tick('Reading tables and lists'));
+          return (await import('@/lib/pdf/epub')).pdfToEpub(text, { title: baseName(), author: '' }, graphics);
+        }
         case 'xlsx':
-          return exportToXlsx(text);
+          return exportToXlsx(text, await xlsxRows(pdf, text, tick('Reading tables')));
         case 'pptx':
           return exportToPptx(pdf, text, { dpi: req.dpi, title: baseName() }, tick('Rendering slides'));
         case 'png':
@@ -367,8 +386,11 @@ export async function exportAs(req: ExportRequest): Promise<void> {
           return exportAllSvgZip(pdf, { dpi: req.dpi, pageNumbers: req.pageNumbers }, tick('Rendering pages'));
         case 'html':
           return exportToHtml(pdf, text, { dpi: req.dpi, title: baseName() }, tick('Rendering pages'));
-        case 'md':
-          return new Blob([exportToMarkdown(text)], { type: 'text/markdown' });
+        case 'md': {
+          const { collectDocxGraphics } = await import('@/lib/pdf/docx');
+          const graphics = await collectDocxGraphics(pdf, text, tick('Reading tables and lists'));
+          return new Blob([(await import('@/lib/pdf/exportFormats')).exportToMarkdown(text, graphics)], { type: 'text/markdown' });
+        }
         case 'txt':
           return new Blob([exportPlainText(text)], { type: 'text/plain' });
       }

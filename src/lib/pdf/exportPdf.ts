@@ -45,6 +45,7 @@ import {
 } from 'pdf-lib';
 import fontkit from '@pdf-lib/fontkit';
 import type {
+  BookmarkItem,
   EditorObject,
   FieldObject,
   ImageObject,
@@ -72,6 +73,8 @@ import { loadFontBytes, type FontVariant } from '@/lib/fonts';
 import { layoutText, canvasMeasure, type Measure } from '@/lib/textLayout';
 import { embedFontForText } from './fontEmbed';
 import { writeFreeText, writeMarkup, writeNote } from './annotations';
+import { writeAttachment, writeLink, writePoly, writeStamp } from './commentAnnots';
+import { writeOutline } from './outline';
 import type { FieldValue } from '@/store/usePDFStore';
 
 export interface ExportInput {
@@ -79,6 +82,8 @@ export interface ExportInput {
   pages: PageRef[];
   objects: EditorObject[];
   fieldValues: Record<string, FieldValue>;
+  /** Edited bookmarks; null/undefined keeps the file's own outline. */
+  outline?: BookmarkItem[] | null;
 }
 
 export interface RasterResult {
@@ -263,6 +268,10 @@ function collectFontTexts(objects: EditorObject[]): Map<string, string[]> {
   for (const o of objects) {
     if (o.type === 'text') add({ family: o.fontFamily, bold: o.bold, italic: o.italic }, o.text);
     if (o.type === 'signature' && o.showCaption) add({ family: 'sans', bold: false, italic: false }, `${signatureCaption(o)}…`);
+    if (o.type === 'stamp' && !o.src) {
+      add({ family: 'sans', bold: true, italic: false }, o.label);
+      add({ family: 'sans', bold: false, italic: false }, o.subtitle);
+    }
   }
   return out;
 }
@@ -700,6 +709,7 @@ export async function buildPdf(input: ExportInput, options: ExportOptions = {}):
     list.push(o);
     byPage.set(o.pageId, list);
   }
+  const pageById = new Map(planned.map((p) => [p.ref.id, p.page]));
   for (let i = 0; i < planned.length; i++) {
     const { ref, page, rasterized } = planned[i];
     progress('Applying edits', 0.4 + (i / planned.length) * 0.5);
@@ -740,13 +750,36 @@ export async function buildPdf(input: ExportInput, options: ExportOptions = {}):
         case 'field':
           await addFormField(ctx, page, pm, rotation, o);
           break;
+        case 'stamp':
+          writeStamp(
+            ctx.doc,
+            page,
+            pm,
+            o,
+            await fontFor(ctx, { family: 'sans', bold: false, italic: false }),
+            await fontFor(ctx, { family: 'sans', bold: true, italic: false }),
+            o.src ? await imageFor(ctx, o.src) : null,
+          );
+          break;
+        case 'poly':
+          writePoly(ctx.doc, page, pm, o);
+          break;
+        case 'attachment':
+          writeAttachment(ctx.doc, page, pm, o);
+          break;
+        case 'link':
+          writeLink(ctx.doc, page, pm, o, o.target.kind === 'page' ? (pageById.get(o.target.pageId) ?? null) : null);
+          break;
         case 'redact':
           break; // already burned into the raster
       }
     }
   }
 
-  // 6. Form appearances, flattening, metadata.
+  // 6. Bookmarks edited in the panel replace the file's outline.
+  if (input.outline) writeOutline(doc, input.outline, pageById);
+
+  // 7. Form appearances, flattening, metadata.
   const form = doc.getForm();
   if (form.getFields().length > 0) {
     const acro = lookupDict(doc, doc.catalog.get(PDFName.of('AcroForm')));

@@ -37,6 +37,9 @@ const KIND_LABEL: Record<string, string> = {
   Stamp: 'Stamp',
   Caret: 'Insert text',
   FileAttachment: 'Attachment',
+  Callout: 'Callout',
+  TextBox: 'Text box',
+  Cloud: 'Cloud',
 };
 
 function icon(kind: string) {
@@ -108,7 +111,10 @@ export function CommentsPanel() {
         if (o.type === 'note') return [{ key: o.id, pageId: o.pageId, y: o.y, kind: 'Text', author: o.author, date: o.modifiedAt, text: o.text, objectId: o.id }];
         if (o.type === 'markup')
           return [{ key: o.id, pageId: o.pageId, y: o.y, kind: { highlight: 'Highlight', underline: 'Underline', strikeout: 'StrikeOut', squiggly: 'Squiggly' }[o.kind], author: o.author, date: o.modifiedAt, text: o.text || o.selectedText, objectId: o.id }];
-        if (o.type === 'text' && o.annotation) return [{ key: o.id, pageId: o.pageId, y: o.y, kind: 'FreeText', author: o.author ?? '', date: null, text: o.text, objectId: o.id }];
+        if (o.type === 'text' && o.annotation) return [{ key: o.id, pageId: o.pageId, y: o.y, kind: o.callout ? 'Callout' : o.border ? 'TextBox' : 'FreeText', author: o.author ?? '', date: null, text: o.text, objectId: o.id }];
+        if (o.type === 'stamp') return [{ key: o.id, pageId: o.pageId, y: o.y, kind: 'Stamp', author: o.author, date: o.modifiedAt, text: o.text || [o.label, o.subtitle].filter(Boolean).join(' – ') || 'Picture stamp', objectId: o.id }];
+        if (o.type === 'poly') return [{ key: o.id, pageId: o.pageId, y: o.y, kind: o.kind === 'cloud' ? 'Cloud' : o.kind === 'polygon' ? 'Polygon' : 'PolyLine', author: o.author, date: o.modifiedAt, text: o.text, objectId: o.id }];
+        if (o.type === 'attachment') return [{ key: o.id, pageId: o.pageId, y: o.y, kind: 'FileAttachment', author: o.author, date: o.modifiedAt, text: o.text || o.fileName, objectId: o.id }];
         return [];
       }),
     [objects],

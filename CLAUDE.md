@@ -1,6 +1,6 @@
 # Adika PDF Editor
 
-Privacy-first, offline Windows PDF editor (read, comment, edit, sign, organise, protect, OCR, convert). Version 1.2.0. MIT. Repo: https://github.com/unupunct/AdikaPDF (branch `main`).
+Privacy-first, offline Windows PDF editor (read, comment, edit, sign, organise, protect, OCR, convert). Version 1.3.0. MIT. Repo: https://github.com/unupunct/AdikaPDF (branch `main`).
 
 ## Architecture
 - **Tauri 2 desktop app.** Almost all logic runs in the WebView (React 18 + TypeScript + Vite 7 + Tailwind 4, state in zustand, canvas via Konva, rendering via pdf.js, writing via pdf-lib).
@@ -12,9 +12,10 @@ Privacy-first, offline Windows PDF editor (read, comment, edit, sign, organise, 
 - `src/actions/`: user-facing operations (convert, document, print, quickTools, security, sign)
 - `src/components/`: ribbon, modals, sidebar, viewer, shell, inspector, ui primitives
 - `src/lib/pdf/`: format engines (convert, exportPdf, exportFormats, pdfa, ocr, compress, repair, xps, dxf, epub, email, annotations)
+- PDF -> Word/ODT/RTF/Markdown/Excel/CSV/EPUB share one page-layout analysis: `wordLayout.ts` (pure: paragraphs, alignment, lists, ruled/aligned tables, columns, image placement, running headers/footers), `docx.ts` (reads images/rules/colours from pdf.js via `collectDocxGraphics`, `planDocument`, writes .docx in flowing or exact mode), `docWriters.ts` (ODT, RTF, Markdown, rows, reflow blocks).
 - `src/lib/crypto/`: `digitalSignature.ts` (PAdES-style signing and verification), `encrypt.ts` (AES-256)
 - `src/store/`: zustand stores (`usePDFStore.ts` is the main one, `tabs.ts`)
-- `tests/*.test.ts`: vitest unit tests. `tests/e2e/`: drives the release exe over the WebView2 debug port (`ADIKA_E2E=1`). `tests/token/`: SoftHSM2 token tests (SoftHSM lives in the git-ignored `.tools/`).
+- `tests/*.test.ts`: vitest unit tests. `tests/manual/`: harness that converts real PDFs to .docx/.odt/.rtf/.md/.csv/.xlsx/.epub for a round-trip check in Word (`W2D_IN=a.pdf;b.pdf W2D_OUT=dir npx vitest run --config tests/manual/vitest.config.ts`). `tests/e2e/`: drives the release exe over the WebView2 debug port (`ADIKA_E2E=1`). `tests/token/`: SoftHSM2 token tests (SoftHSM lives in the git-ignored `.tools/`).
 - `scripts/copy-*-assets.mjs`: copy pdf.js and Tesseract assets into `public/` on `npm install` (git-ignored).
 
 ## Commands
@@ -32,6 +33,3 @@ npm run typecheck
 - Project is on D: (a spinning HDD), so installs and builds are slower than on the SSD.
 - A new PowerShell window may be needed after installs so PATH includes the new tools.
 - The project was started on the user's work PC; `node_modules/` and `src-tauri/target/` were copied over from there (the target folder has installers 1.0.0 to 1.2.0).
-
-## Known issues spotted
-- README.md lines 14 and 38 lost their backslashes in paths (`%LOCALAPPDATA%Adika PDF EditorPrinted`, `C:Program FilesAdika PDF Editorlogs`).

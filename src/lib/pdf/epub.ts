@@ -7,6 +7,8 @@
 
 import JSZip from 'jszip';
 import { stripInvalidXmlChars, xmlEscape, type PageText, type TextLine } from './convert';
+import type { DocxPageGraphics } from './docx';
+import { layoutReflow } from './docWriters';
 
 // ---------------------------------------------------------------------------
 // Markup tokenizer (pure)
@@ -563,7 +565,7 @@ export async function epubToHtml(bytes: Uint8Array): Promise<EpubHtml> {
 
 type Block =
   | { kind: 'heading'; level: 1 | 2 | 3; text: string; id: string }
-  | { kind: 'para'; runs: { text: string; bold: boolean }[] }
+  | { kind: 'para'; runs: { text: string; bold: boolean; italic?: boolean }[]; spaced?: boolean }
   | { kind: 'table'; rows: string[][] };
 
 interface Chapter {
@@ -612,8 +614,30 @@ function tableRows(lines: TextLine[]): string[][] {
   });
 }
 
+/** Headings, paragraphs and tables from the page layout (the Word export's analysis). */
+function layoutBlocks(pages: PageText[], graphics: DocxPageGraphics[]): Block[] {
+  const blocks: Block[] = [];
+  let hid = 0;
+  for (const b of layoutReflow(pages, graphics)) {
+    if (b.kind === 'heading') blocks.push({ kind: 'heading', level: b.level, text: b.text, id: `h${++hid}` });
+    else if (b.kind === 'table') blocks.push({ kind: 'table', rows: b.rows });
+    else {
+      const runs: { text: string; bold: boolean; italic?: boolean }[] = b.bullet ? [{ text: '• ', bold: false, italic: false }] : [];
+      for (const r of b.runs) {
+        const last = runs[runs.length - 1];
+        if (last && last.bold === r.bold && !!last.italic === r.italic) last.text += r.text;
+        else runs.push({ ...r });
+      }
+      // These runs carry their own spacing.
+      blocks.push({ kind: 'para', runs, spaced: true });
+    }
+  }
+  return blocks;
+}
+
 /** Turns positioned lines into headings, paragraphs and tables. */
-function pagesToBlocks(pages: PageText[]): Block[] {
+function pagesToBlocks(pages: PageText[], graphics?: DocxPageGraphics[]): Block[] {
+  if (graphics) return layoutBlocks(pages, graphics);
   const all = pages.flatMap((p) => p.lines);
   const docBody = bodySize(all) || 11;
   const blocks: Block[] = [];
@@ -680,8 +704,8 @@ function pagesToBlocks(pages: PageText[]): Block[] {
 }
 
 /** Splits at the top heading level present, or every ~5 pages without headings. */
-function splitChapters(pages: PageText[], title: string): Chapter[] {
-  const blocks = pagesToBlocks(pages);
+function splitChapters(pages: PageText[], title: string, graphics?: DocxPageGraphics[]): Chapter[] {
+  const blocks = pagesToBlocks(pages, graphics);
   const levels = blocks.filter((b): b is Extract<Block, { kind: 'heading' }> => b.kind === 'heading').map((b) => b.level);
   if (levels.length) {
     const top = Math.min(...levels);
@@ -704,7 +728,7 @@ function splitChapters(pages: PageText[], title: string): Chapter[] {
     const slice = pages.slice(i, i + 5);
     const first = slice[0].pageNumber;
     const last = slice[slice.length - 1].pageNumber;
-    chapters.push({ title: first === last ? `Page ${first}` : `Pages ${first}–${last}`, blocks: pagesToBlocks(slice) });
+    chapters.push({ title: first === last ? `Page ${first}` : `Pages ${first}–${last}`, blocks: pagesToBlocks(slice, graphics?.slice(i, i + 5)) });
   }
   if (!chapters.length) chapters.push({ title, blocks: [] });
   return chapters;
@@ -720,7 +744,24 @@ function blockXhtml(b: Block, top: number): string {
     const rows = b.rows.map((r) => `<tr>${r.map((c) => `<td>${xmlEscape(c)}</td>`).join('')}</tr>`).join('\n');
     return `<table>\n${rows}\n</table>`;
   }
-  const inner = b.runs.map((r) => (r.bold ? `<strong>${xmlEscape(r.text.trim())}</strong>` : xmlEscape(r.text))).join(b.runs.length > 1 ? ' ' : '');
+  if (b.spaced) {
+    const html = b.runs
+      .map((r) => {
+        const m = /^(\s*)(.*?)(\s*)$/s.exec(r.text)!;
+        let t = xmlEscape(m[2]);
+        if (t && r.italic) t = `<em>${t}</em>`;
+        if (t && r.bold) t = `<strong>${t}</strong>`;
+        return m[1] + t + m[3];
+      })
+      .join('');
+    return `<p>${html.replace(/\s+/g, ' ').trim()}</p>`;
+  }
+  const wrap = (r: { text: string; bold: boolean; italic?: boolean }) => {
+    const t = xmlEscape(r.text.trim());
+    const i = r.italic ? `<em>${t}</em>` : t;
+    return r.bold ? `<strong>${i}</strong>` : i;
+  };
+  const inner = b.runs.map((r) => (r.bold || r.italic ? wrap(r) : xmlEscape(r.text))).join(b.runs.length > 1 ? ' ' : '');
   return `<p>${inner.replace(/ {2,}/g, ' ').trim()}</p>`;
 }
 
@@ -752,11 +793,12 @@ export interface EpubMeta {
   language?: string;
 }
 
-export async function pdfToEpub(pages: PageText[], meta: EpubMeta): Promise<Blob> {
+/** `graphics` (from `collectDocxGraphics`) enables the page-layout analysis: ruled tables, lists, running headers left out. */
+export async function pdfToEpub(pages: PageText[], meta: EpubMeta, graphics?: DocxPageGraphics[]): Promise<Blob> {
   const title = stripInvalidXmlChars(meta.title).trim() || 'Untitled';
   const author = stripInvalidXmlChars(meta.author ?? '').trim();
   const lang = (meta.language ?? 'en').trim() || 'en';
-  const chapters = splitChapters(pages, title);
+  const chapters = splitChapters(pages, title, graphics);
   const topLevel = Math.min(
     3,
     ...chapters.flatMap((c) => c.blocks).flatMap((b) => (b.kind === 'heading' ? [b.level] : [])),

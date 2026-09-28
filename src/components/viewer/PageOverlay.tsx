@@ -17,6 +17,9 @@ import { usePDFStore } from '@/store/usePDFStore';
 import { displaySize, normalizeAngle, normalizeRect, objectDisplayBounds, type Rect as R } from '@/lib/geometry';
 import {
   defaultFieldSize,
+  makeAttachment,
+  makePoly,
+  makeStamp,
   makeField,
   makeImage,
   makeLine,
@@ -30,15 +33,25 @@ import {
 import { layoutText, TEXT_PADDING } from '@/lib/textLayout';
 import { pageTextRuns, runAngle, runRect } from '@/lib/pdf/textGeometry';
 import { ObjectNode } from './ObjectNode';
+import { useModalArgs } from '@/store/useModalArgs';
+import { pickFiles } from '@/lib/platform';
 import { TextEditor } from './TextEditor';
 
 type Draft =
   | { kind: 'box'; tool: ToolId; x0: number; y0: number; x1: number; y1: number }
   | { kind: 'line'; tool: 'line' | 'arrow'; x0: number; y0: number; x1: number; y1: number }
   | { kind: 'pen'; points: number[] }
+  | { kind: 'callout'; x0: number; y0: number; x1: number; y1: number }
   | { kind: 'marquee'; x0: number; y0: number; x1: number; y1: number };
 
-const BOX_TOOLS: ToolId[] = ['rect', 'ellipse', 'highlight', 'redact', 'field-text', 'field-checkbox', 'field-radio', 'field-dropdown', 'field-signature'];
+/** Polygon / polyline being clicked in, vertex by vertex. */
+interface PolyDraft {
+  tool: 'polygon' | 'polyline';
+  points: number[];
+  cursor: { x: number; y: number };
+}
+
+const BOX_TOOLS: ToolId[] = ['rect', 'ellipse', 'highlight', 'redact', 'link', 'crop', 'textbox', 'cloud', 'field-text', 'field-checkbox', 'field-radio', 'field-dropdown', 'field-signature'];
 const STICKY_TOOLS: ToolId[] = ['pen', 'highlight', 'redact'];
 const SNAP_PX = 6;
 
@@ -63,6 +76,15 @@ export function PageOverlay({ page, zoom }: { page: PageRef; zoom: number }) {
   const stageRef = useRef<Konva.Stage>(null);
   const trRef = useRef<Konva.Transformer>(null);
   const [draft, setDraft] = useState<Draft | null>(null);
+  const [polyDraft, setPolyDraftState] = useState<PolyDraft | null>(null);
+  // Pointer events can arrive before React re-renders, so the draft also lives in a ref.
+  const polyRef = useRef<PolyDraft | null>(null);
+  /** The last click repeated the previous point (the second click of a double-click). */
+  const polyRepeat = useRef(false);
+  const setPolyDraft = useCallback((pd: PolyDraft | null) => {
+    polyRef.current = pd;
+    setPolyDraftState(pd);
+  }, []);
   const [guides, setGuides] = useState<Array<{ vertical: boolean; pos: number }>>([]);
   const editing = objects.find((o): o is TextObject => o.id === editingTextId && o.type === 'text');
   const editingNote = objects.find((o): o is NoteObject => o.id === editingTextId && o.type === 'note');
@@ -135,6 +157,31 @@ export function PageOverlay({ page, zoom }: { page: PageRef; zoom: number }) {
         if (d.points.length >= 4) store.addObject(makePen(page.id, d.points, style), false);
         return;
       }
+      if (d.kind === 'callout') {
+        // Pressed on the point to comment on, released where the text box goes.
+        const w = 180;
+        const h = style.fontSize * 1.25 + 10;
+        let { x1, y1 } = d;
+        if (Math.hypot(x1 - d.x0, y1 - d.y0) < 10) {
+          x1 = d.x0 + 50;
+          y1 = d.y0 - 50;
+        }
+        const bx = Math.max(0, Math.min(size.width - w, x1 >= d.x0 ? x1 : x1 - w));
+        const by = Math.max(0, Math.min(size.height - h, y1 - h / 2));
+        const obj = makeText(page.id, bx, by, style, {
+          annotation: true,
+          author: getAuthor(),
+          width: w,
+          height: h,
+          border: style.stroke,
+          background: '#ffffff',
+          callout: { x: d.x0 - bx, y: d.y0 - by },
+        });
+        store.setTool('select');
+        store.addObject(obj);
+        store.setEditingText(obj.id);
+        return;
+      }
       if (d.kind === 'line') {
         let { x1, y1 } = d;
         if (Math.hypot(x1 - d.x0, y1 - d.y0) < 3) {
@@ -163,6 +210,32 @@ export function PageOverlay({ page, zoom }: { page: PageRef; zoom: number }) {
         finishCreation(true);
         return;
       }
+      if (d.tool === 'link' || d.tool === 'crop') {
+        if (rect.width < 4 || rect.height < 4) {
+          store.toast(d.tool === 'link' ? 'Drag a box over the text or area that should become a link.' : 'Drag the box of the area to keep.', 'info');
+          return;
+        }
+        if (d.tool === 'link') useModalArgs.setState({ linkDraft: { pageId: page.id, rect } });
+        else useModalArgs.setState({ cropDraft: { pageId: page.id, rect } });
+        store.setTool('select');
+        store.openModal(d.tool);
+        return;
+      }
+      if (d.tool === 'textbox') {
+        if (rect.width < 20 || rect.height < 10) rect = { x: d.x0, y: d.y0, width: 200, height: style.fontSize * 1.25 + 10 };
+        const obj = makeText(page.id, rect.x, rect.y, style, { annotation: true, author: getAuthor(), width: rect.width, height: rect.height, border: style.stroke, background: '#ffffff' });
+        store.setTool('select');
+        store.addObject(obj);
+        store.setEditingText(obj.id);
+        return;
+      }
+      if (d.tool === 'cloud') {
+        if (tiny) rect = { x: d.x0 - 60, y: d.y0 - 40, width: 120, height: 80 };
+        const { x, y, width: w, height: h } = rect;
+        store.addObject(makePoly('cloud', page.id, [x, y, x + w, y, x + w, y + h, x, y + h], style, getAuthor()));
+        finishCreation(false);
+        return;
+      }
       if (tiny) {
         if (d.tool === 'highlight' || d.tool === 'redact') return;
         rect = { x: d.x0 - 50, y: d.y0 - 30, width: 100, height: 60 };
@@ -171,8 +244,47 @@ export function PageOverlay({ page, zoom }: { page: PageRef; zoom: number }) {
       else store.addObject(makeShape(d.tool as 'rect' | 'ellipse' | 'highlight', page.id, rect, style), d.tool !== 'highlight');
       finishCreation(STICKY_TOOLS.includes(d.tool));
     },
-    [page.id, finishCreation],
+    [page.id, finishCreation, size.width, size.height],
   );
+
+  // --------------------------------------------------------------- polygon / polyline
+
+  const finishPoly = useCallback(
+    (pd: PolyDraft | null) => {
+      setPolyDraft(null);
+      if (!pd) return;
+      const store = usePDFStore.getState();
+      const need = pd.tool === 'polygon' ? 6 : 4;
+      if (pd.points.length < need) {
+        store.toast(pd.tool === 'polygon' ? 'A polygon needs at least 3 points.' : 'A polyline needs at least 2 points.', 'info');
+        return;
+      }
+      store.addObject(makePoly(pd.tool, page.id, pd.points, store.style, getAuthor()));
+      store.setTool('select');
+    },
+    [page.id],
+  );
+
+  // Enter finishes, Escape cancels, Backspace removes the last point.
+  useEffect(() => {
+    if (!polyDraft) return;
+    const onKey = (e: KeyboardEvent) => {
+      const pd = polyRef.current;
+      if (!pd) return;
+      if (e.key === 'Enter') finishPoly(pd);
+      else if (e.key === 'Escape') setPolyDraft(null);
+      else if (e.key === 'Backspace') setPolyDraft({ ...pd, points: pd.points.slice(0, -2) });
+      else return;
+      e.preventDefault();
+      e.stopPropagation();
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, [polyDraft !== null, finishPoly, setPolyDraft]);
+
+  useEffect(() => {
+    if (tool !== 'polygon' && tool !== 'polyline') setPolyDraft(null);
+  }, [tool, setPolyDraft]);
 
   const editExistingText = useCallback(
     async (x: number, y: number) => {
@@ -278,6 +390,47 @@ export function PageOverlay({ page, zoom }: { page: PageRef; zoom: number }) {
         if (!sig) return;
         store.addObject(makeSignature(page.id, p.x, p.y, sig));
         store.setPendingSignature(null);
+        return;
+      }
+      case 'stamp': {
+        const t = store.pendingStamp;
+        if (!t) return;
+        store.addObject(makeStamp(page.id, p.x, p.y, t, getAuthor()));
+        store.setPendingStamp(null);
+        return;
+      }
+      case 'attach': {
+        void (async () => {
+          const [f] = await pickFiles([{ name: 'All files', extensions: ['*'] }]);
+          if (!f) return;
+          let bin = '';
+          for (let k = 0; k < f.bytes.length; k += 0x8000) bin += String.fromCharCode(...f.bytes.subarray(k, k + 0x8000));
+          const mime = /\.pdf$/i.test(f.name) ? 'application/pdf' : /\.(png)$/i.test(f.name) ? 'image/png' : /\.(jpe?g)$/i.test(f.name) ? 'image/jpeg' : /\.docx$/i.test(f.name) ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' : /\.xlsx$/i.test(f.name) ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' : /\.txt$/i.test(f.name) ? 'text/plain' : 'application/octet-stream';
+          const s2 = usePDFStore.getState();
+          s2.addObject(makeAttachment(page.id, p.x, p.y, { name: f.name, mime, data: btoa(bin), size: f.bytes.length }, getAuthor()));
+          s2.setTool('select');
+        })();
+        return;
+      }
+      case 'callout':
+        startDrag({ kind: 'callout', x0: p.x, y0: p.y, x1: p.x, y1: p.y });
+        return;
+      case 'polygon':
+      case 'polyline': {
+        const pd = polyRef.current;
+        if (!pd) {
+          setPolyDraft({ tool, points: [p.x, p.y], cursor: p });
+          return;
+        }
+        // Clicking the first point again closes a polygon.
+        if (tool === 'polygon' && pd.points.length >= 6 && Math.hypot(p.x - pd.points[0], p.y - pd.points[1]) < 6 / zoom) {
+          finishPoly(pd);
+          return;
+        }
+        const [lx, ly] = pd.points.slice(-2);
+        polyRepeat.current = Math.hypot(p.x - lx, p.y - ly) < 3 / zoom;
+        if (polyRepeat.current) return; // second click of a double-click
+        setPolyDraft({ ...pd, points: [...pd.points, p.x, p.y], cursor: p });
         return;
       }
       case 'pen':
@@ -440,6 +593,9 @@ export function PageOverlay({ page, zoom }: { page: PageRef; zoom: number }) {
       case 'arrow':
         patch = { ...base, points: [o.points[0] * sx, o.points[1] * sy, o.points[2] * sx, o.points[3] * sy] };
         break;
+      case 'poly':
+        patch = { ...base, points: o.points.map((v, i) => (i % 2 === 0 ? v * sx : v * sy)), width: Math.max(4, o.width * sx), height: Math.max(4, o.height * sy) };
+        break;
       default:
         patch = { ...base, width: Math.max(4, o.width * sx), height: Math.max(4, o.height * sy) };
     }
@@ -486,6 +642,14 @@ export function PageOverlay({ page, zoom }: { page: PageRef; zoom: number }) {
         scaleX={zoom}
         scaleY={zoom}
         onPointerDown={onStagePointerDown}
+        onPointerMove={(e) => {
+          const pd = polyRef.current;
+          if (pd) setPolyDraft({ ...pd, cursor: clampPoint(pointFromClient(e.evt.clientX, e.evt.clientY)) });
+        }}
+        onDblClick={() => {
+          // Konva also reports two quick clicks in different places as a double-click: only a real one finishes.
+          if (polyRef.current && polyRepeat.current) finishPoly(polyRef.current);
+        }}
       >
         <Layer>
           <Rect name="hit-bg" width={size.width} height={size.height} fill="transparent" />
@@ -517,6 +681,7 @@ export function PageOverlay({ page, zoom }: { page: PageRef; zoom: number }) {
             />
           ))}
           {draft ? <DraftNode draft={draft} zoom={zoom} /> : null}
+          {polyDraft ? <PolyDraftNode draft={polyDraft} zoom={zoom} /> : null}
           {guides.map((g, i) => (
             <Line
               key={`g-${i}`}
@@ -583,8 +748,24 @@ export function PageOverlay({ page, zoom }: { page: PageRef; zoom: number }) {
   );
 }
 
+function PolyDraftNode({ draft, zoom }: { draft: PolyDraft; zoom: number }) {
+  const style = usePDFStore((s) => s.style);
+  const pts = [...draft.points, draft.cursor.x, draft.cursor.y];
+  return (
+    <>
+      <Line points={pts} stroke={style.stroke} strokeWidth={Math.max(1, style.strokeWidth)} closed={draft.tool === 'polygon' && draft.points.length >= 4} dash={[5 / zoom, 3 / zoom]} lineJoin="round" listening={false} />
+      {Array.from({ length: draft.points.length / 2 }, (_, k) => (
+        <Circle key={k} x={draft.points[k * 2]} y={draft.points[k * 2 + 1]} radius={3 / zoom} fill="#ffffff" stroke="#0284c7" strokeWidth={1 / zoom} listening={false} />
+      ))}
+    </>
+  );
+}
+
 function DraftNode({ draft, zoom }: { draft: Draft; zoom: number }) {
   const style = usePDFStore((s) => s.style);
+  if (draft.kind === 'callout') {
+    return <Line points={[draft.x0, draft.y0, draft.x1, draft.y1]} stroke={style.stroke} strokeWidth={1} dash={[4 / zoom, 3 / zoom]} listening={false} />;
+  }
   if (draft.kind === 'pen') {
     return <Line points={draft.points} stroke={style.stroke} strokeWidth={style.strokeWidth} opacity={style.opacity} lineCap="round" lineJoin="round" listening={false} />;
   }
@@ -595,6 +776,8 @@ function DraftNode({ draft, zoom }: { draft: Draft; zoom: number }) {
   if (draft.kind === 'marquee') {
     return <Rect {...r} fill="rgba(2,132,199,0.08)" stroke="#0284c7" strokeWidth={1 / zoom} dash={[4 / zoom, 3 / zoom]} listening={false} />;
   }
+  const outlineOnly = draft.tool === 'link' || draft.tool === 'crop';
+  if (outlineOnly) return <Rect {...r} fill="rgba(2,132,199,0.10)" stroke="#0284c7" strokeWidth={1 / zoom} dash={[4 / zoom, 3 / zoom]} listening={false} />;
   const fill =
     draft.tool === 'highlight'
       ? style.highlightColor

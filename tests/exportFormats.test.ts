@@ -67,12 +67,14 @@ describe('ODT export', () => {
     wellFormedish(await zip.file('styles.xml')!.async('string'));
     wellFormedish(await zip.file('meta.xml')!.async('string'));
     wellFormedish(await zip.file('META-INF/manifest.xml')!.async('string'));
-    expect(content).toContain('<text:h text:style-name="Heading1_MP1" text:outline-level="1">Raport anual ăîșț</text:h>');
+    expect(content).toMatch(/<text:h text:style-name="P\d+" text:outline-level="1"><text:span text:style-name="T\d+">Raport anual ăîșț<\/text:span><\/text:h>/);
     expect(content).toContain('&lt;&amp;&gt; &quot;citat&quot;');
     expect(content).toContain('<table:table table:name="Table1"');
-    expect(content).toContain('table:number-columns-repeated="3"');
+    expect(content.match(/<table:table-column /g)?.length).toBe(3);
     expect(content).toContain('Mere; roșii');
-    expect(content).toContain('text:style-name="T_b">Paragraf aldin');
+    // "Paragraf aldin" keeps its bold run style.
+    const bold = /<text:span text:style-name="(T\d+)">Paragraf aldin/.exec(content)![1];
+    expect(content).toMatch(new RegExp(`style:name="${bold}" style:family="text"><style:text-properties [^>]*fo:font-weight="bold"`));
     // Second page is landscape: its own master page.
     const styles = await zip.file('styles.xml')!.async('string');
     expect(styles).toContain('style:name="MP2"');
@@ -100,8 +102,8 @@ describe('RTF export', () => {
     expect(rtf.startsWith('{\\rtf1\\ansi\\ansicpg1252')).toBe(true);
     expect(rtf.endsWith('}')).toBe(true);
     expect(/[^\x00-\x7f]/.test(rtf)).toBe(false);
-    expect(rtf).toContain('\\outlinelevel0\\b\\f0\\fs40 Raport anual \\u259?\\u238?\\u537?\\u539?\\par');
-    expect(rtf.match(/\\trowd/g)?.length).toBe(3);
+    expect(rtf).toMatch(/\\s1\\outlinelevel0[^\n]*\{\\fs48\\b Raport anual \\u259\?\\u238\?\\u537\?\\u539\?\}\\par/);
+    expect(rtf.match(/\\row\b/g)?.length).toBe(3);
     expect(rtf.match(/\\cell\b/g)?.length).toBe(9);
     expect(rtf).toContain('\\row');
     // Landscape second page -> new section with its own size.
@@ -119,12 +121,12 @@ describe('RTF export', () => {
     expect(depth).toBe(0);
   });
 
-  it('uses \\page between same-size pages', () => {
+  it('starts each short PDF page on a new page', () => {
     const pages = samplePages();
     pages[1] = { ...pages[1], width: pages[0].width, height: pages[0].height };
     const rtf = exportToRtf(pages, 'x');
-    expect(rtf).toContain('\n\\page\n');
-    expect(rtf).not.toContain('\\sbkpage');
+    expect(rtf.match(/\\sectd\\sbkpage/g)?.length).toBe(2);
+    expect(rtf).not.toContain('\\lndscpsxn');
   });
 });
 

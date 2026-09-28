@@ -18,7 +18,7 @@ void (async () => {
     enabled = await invoke<boolean>('e2e_mode').catch(() => false);
   }
   if (!enabled) return;
-  const [store, dialogs, document, convert, security, sign, platform, signature, search, email, tabs, print, log] = await Promise.all([
+  const [store, dialogs, document, convert, security, sign, platform, signature, search, email, tabs, print, log, pageTools, modalArgs] = await Promise.all([
     import('./store/usePDFStore'),
     import('./store/useDialogs'),
     import('./actions/document'),
@@ -32,6 +32,8 @@ void (async () => {
     import('./store/tabs'),
     import('./actions/print'),
     import('./lib/log'),
+    import('./actions/pageTools'),
+    import('./store/useModalArgs'),
   ]);
   (window as unknown as { __adika: unknown }).__adika = {
     store: store.usePDFStore,
@@ -47,6 +49,8 @@ void (async () => {
     tabs,
     print,
     log,
+    pageTools,
+    modalArgs: modalArgs.useModalArgs,
   };
 })();
 

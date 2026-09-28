@@ -7,6 +7,7 @@ import { AboutModal, CompressModal, OcrModal, OrganizerModal, PasswordModal, Pdf
 import { ExportModal, ImportModal } from './ConvertModals';
 import { PropertiesModal } from './PropertiesModal';
 import { ToolsModal } from './ToolsModal';
+import { CropModal, LinkModal, PageMarksModal } from './PageToolModals';
 
 export function Modals() {
   return (
@@ -26,6 +27,9 @@ export function Modals() {
       <AboutModal />
       <PropertiesModal />
       <ToolsModal />
+      <LinkModal />
+      <CropModal />
+      <PageMarksModal />
       <PasswordPrompt />
       <ConfirmPrompt />
     </>

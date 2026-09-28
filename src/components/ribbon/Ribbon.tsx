@@ -54,6 +54,12 @@ import {
   BringToFront,
   SendToBack,
   FileKey2,
+  Link2,
+  Crop,
+  Droplets,
+  PanelBottom,
+  PaintBucket,
+  Hash,
 } from 'lucide-react';
 import { usePDFStore } from '@/store/usePDFStore';
 import type { RibbonTab, ToolId } from '@/types';
@@ -63,6 +69,12 @@ import { mergeDialog, saveDocument } from '@/actions/document';
 import { exportFormCsv } from '@/actions/security';
 import { flattenCurrent, pickImagesAsDataUrls } from '@/actions/convert';
 import { useModalArgs, type ImportKind } from '@/store/useModalArgs';
+import { removeAllPageMarks } from '@/actions/pageTools';
+
+function openMarks(tab: 'watermark' | 'header' | 'background') {
+  useModalArgs.setState({ pageMarksTab: tab });
+  usePDFStore.getState().openModal('pageMarks');
+}
 import { CommentTab, HomeTab, ViewTab } from './ReaderTabs';
 import type { ExportFormat } from '@/actions/convert';
 
@@ -246,6 +258,18 @@ function EditTab() {
       </Group>
       <Group label="Insert">
         <Big icon={<ImagePlus size={I} />} label="Image" disabled={!editable} onClick={() => void pickImage()} active={s.tool === 'image'} testId="btn-image" />
+        <ToolBtn tool="link" icon={<Link2 size={I} />} label="Link" tip="Drag a box to link it to a web page or another page" />
+      </Group>
+      <Group label="Page marks">
+        <Big icon={<Droplets size={I} />} label="Watermark" disabled={!editable} onClick={() => openMarks('watermark')} tip="Add a text or picture watermark to the pages" testId="btn-watermark" />
+        <Stack>
+          <Small icon={<PanelBottom size={i} />} label="Header & footer" disabled={!editable} onClick={() => openMarks('header')} testId="btn-header-footer" />
+          <Small icon={<Hash size={i} />} label="Bates numbering" disabled={!editable} onClick={() => openMarks('header')} />
+          <Small icon={<PaintBucket size={i} />} label="Background" disabled={!editable} onClick={() => openMarks('background')} />
+        </Stack>
+        <Stack>
+          <Small icon={<Eraser size={i} />} label="Remove marks" disabled={!editable} onClick={() => void removeAllPageMarks()} testId="btn-remove-marks" />
+        </Stack>
       </Group>
       <Group label="Draw">
         <ToolBtn tool="rect" icon={<Square size={I} />} label="Rectangle" tip="Rectangle (R) — Shift for a square" />
@@ -344,6 +368,22 @@ function OrganizeTab() {
         <Stack>
           <Small icon={<FilePlus2 size={i} />} label="Insert blank" disabled={!editable} onClick={() => s.insertBlankPage(idx + 1)} testId="btn-insert-blank" />
           <Small icon={<SquareStack size={i} />} label="Duplicate page" disabled={!editable || !current} onClick={() => current && s.duplicatePages([current])} />
+        </Stack>
+      </Group>
+      <Group label="Page setup">
+        <Big
+          icon={<Crop size={I} />}
+          label="Crop pages"
+          disabled={!editable}
+          onClick={() => {
+            useModalArgs.setState({ cropDraft: null });
+            s.openModal('crop');
+          }}
+          tip="Hide page margins (type them, or use the crop tool)"
+          testId="btn-crop"
+        />
+        <Stack>
+          <ToolBtn big={false} tool="crop" icon={<Crop size={i} />} label="Crop tool" tip="Drag the box of the area to keep" />
         </Stack>
       </Group>
       <Group label="Combine & split">
