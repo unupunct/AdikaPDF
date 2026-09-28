@@ -35,6 +35,7 @@ import { pageTextRuns, runAngle, runRect } from '@/lib/pdf/textGeometry';
 import { ObjectNode } from './ObjectNode';
 import { useModalArgs } from '@/store/useModalArgs';
 import { pickFiles } from '@/lib/platform';
+import { captureSnapshot } from '@/actions/readingAids';
 import { TextEditor } from './TextEditor';
 
 type Draft =
@@ -51,7 +52,7 @@ interface PolyDraft {
   cursor: { x: number; y: number };
 }
 
-const BOX_TOOLS: ToolId[] = ['rect', 'ellipse', 'highlight', 'redact', 'link', 'crop', 'textbox', 'cloud', 'field-text', 'field-checkbox', 'field-radio', 'field-dropdown', 'field-signature'];
+const BOX_TOOLS: ToolId[] = ['rect', 'ellipse', 'highlight', 'redact', 'link', 'crop', 'snapshot', 'textbox', 'cloud', 'field-text', 'field-checkbox', 'field-radio', 'field-dropdown', 'field-signature'];
 const STICKY_TOOLS: ToolId[] = ['pen', 'highlight', 'redact'];
 const SNAP_PX = 6;
 
@@ -210,6 +211,14 @@ export function PageOverlay({ page, zoom }: { page: PageRef; zoom: number }) {
         finishCreation(true);
         return;
       }
+      if (d.tool === 'snapshot') {
+        if (rect.width < 4 || rect.height < 4) {
+          store.toast('Drag a box around the area to copy.', 'info');
+          return;
+        }
+        void captureSnapshot(page, rect);
+        return; // the tool stays on for more snapshots
+      }
       if (d.tool === 'link' || d.tool === 'crop') {
         if (rect.width < 4 || rect.height < 4) {
           store.toast(d.tool === 'link' ? 'Drag a box over the text or area that should become a link.' : 'Drag the box of the area to keep.', 'info');
@@ -244,7 +253,7 @@ export function PageOverlay({ page, zoom }: { page: PageRef; zoom: number }) {
       else store.addObject(makeShape(d.tool as 'rect' | 'ellipse' | 'highlight', page.id, rect, style), d.tool !== 'highlight');
       finishCreation(STICKY_TOOLS.includes(d.tool));
     },
-    [page.id, finishCreation, size.width, size.height],
+    [page, finishCreation, size.width, size.height],
   );
 
   // --------------------------------------------------------------- polygon / polyline
@@ -334,7 +343,8 @@ export function PageOverlay({ page, zoom }: { page: PageRef; zoom: number }) {
   // --------------------------------------------------------------- stage pointer
 
   const onStagePointerDown = (e: Konva.KonvaEventObject<PointerEvent>) => {
-    if (e.evt.button !== 0 || readOnly) return;
+    // Snapshots are a reading feature: they also work on read-only documents.
+    if (e.evt.button !== 0 || (readOnly && tool !== 'snapshot')) return;
     const store = usePDFStore.getState();
     const clickedEmpty = e.target === e.target.getStage() || e.target.name() === 'hit-bg';
     const p = clampPoint(pointFromClient(e.evt.clientX, e.evt.clientY));
@@ -776,7 +786,7 @@ function DraftNode({ draft, zoom }: { draft: Draft; zoom: number }) {
   if (draft.kind === 'marquee') {
     return <Rect {...r} fill="rgba(2,132,199,0.08)" stroke="#0284c7" strokeWidth={1 / zoom} dash={[4 / zoom, 3 / zoom]} listening={false} />;
   }
-  const outlineOnly = draft.tool === 'link' || draft.tool === 'crop';
+  const outlineOnly = draft.tool === 'link' || draft.tool === 'crop' || draft.tool === 'snapshot';
   if (outlineOnly) return <Rect {...r} fill="rgba(2,132,199,0.10)" stroke="#0284c7" strokeWidth={1 / zoom} dash={[4 / zoom, 3 / zoom]} listening={false} />;
   const fill =
     draft.tool === 'highlight'

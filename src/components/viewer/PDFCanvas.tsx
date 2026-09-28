@@ -9,6 +9,7 @@ import { usePDFStore, MIN_ZOOM, MAX_ZOOM } from '@/store/usePDFStore';
 import { displaySize } from '@/lib/geometry';
 import type { PageRef } from '@/types';
 import { PageView } from './PageView';
+import { Magnifier } from './Magnifier';
 import { cn } from '@/lib/cn';
 
 export const PAGE_GAP = 20;
@@ -282,6 +283,7 @@ export function PDFCanvas() {
           });
         })}
       </div>
+      <Magnifier container={containerRef} />
     </div>
   );
 }

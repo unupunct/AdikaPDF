@@ -44,7 +44,8 @@ export type ToolId =
   | 'cloud'
   | 'polygon'
   | 'polyline'
-  | 'attach';
+  | 'attach'
+  | 'snapshot';
 
 export type RibbonTab = 'home' | 'view' | 'edit' | 'comment' | 'sign' | 'organize' | 'forms' | 'security' | 'convert';
 

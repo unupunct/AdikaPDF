@@ -63,6 +63,7 @@ import {
   Spline,
 } from 'lucide-react';
 import { CommentFileMenu, StampMenu } from './CommentTools';
+import { ReadAloudGroup, ReadingToolsGroup } from './ReadingTools';
 import { getAuthor, setAuthor } from '@/lib/author';
 import { usePDFStore } from '@/store/usePDFStore';
 import { closeDocumentAction, openDialog, openPdfPath, saveDocument } from '@/actions/document';
@@ -144,7 +145,7 @@ export function Stack({ children }: { children: ReactNode }) {
 
 export function ToolBtn({ tool, icon, label, tip, big = true }: { tool: ToolId; icon: ReactNode; label: string; tip?: string; big?: boolean }) {
   const active = usePDFStore((s) => s.tool === tool);
-  const reading = tool === 'selectText' || tool === 'pan' || tool === 'select';
+  const reading = tool === 'selectText' || tool === 'pan' || tool === 'select' || tool === 'snapshot';
   const enabled = usePDFStore((s) => s.pages.length > 0 && (reading || !s.readOnlyReason));
   const setTool = usePDFStore((s) => s.setTool);
   const B = big ? Big : Small;
@@ -365,6 +366,8 @@ export function ViewTab() {
         <Big icon={s.fullscreen ? <Minimize size={I} /> : <Maximize size={I} />} label="Full screen" active={s.fullscreen} onClick={() => void toggleFullscreen()} tip="Full screen (F11)" testId="btn-fullscreen" />
         <Big icon={<MonitorPlay size={I} />} label="Present" disabled={!hasDoc} onClick={startPresentation} tip="Presentation mode (F5)" testId="btn-present" />
       </Group>
+      <ReadAloudGroup />
+      <ReadingToolsGroup />
       <Group label="Panels">
         <Stack>
           <Small icon={<LayoutGrid size={i} />} label="Pages" onClick={() => openPanel('pages')} disabled={!hasDoc} />
