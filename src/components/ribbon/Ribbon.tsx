@@ -58,6 +58,9 @@ import {
   SendToBack,
   FileKey2,
   Link2,
+  ListTree,
+  ImageDown,
+  Replace,
   Crop,
   Droplets,
   PanelBottom,
@@ -371,6 +374,13 @@ function OrganizeTab() {
         <Stack>
           <Small icon={<FilePlus2 size={i} />} label="Insert blank" disabled={!editable} onClick={() => s.insertBlankPage(idx + 1)} testId="btn-insert-blank" />
           <Small icon={<SquareStack size={i} />} label="Duplicate page" disabled={!editable || !current} onClick={() => current && s.duplicatePages([current])} />
+          <Small icon={<Replace size={i} />} label="Replace pages" disabled={!editable} onClick={() => s.openModal('replacePages')} testId="btn-replace-pages" />
+        </Stack>
+      </Group>
+      <Group label="Structure">
+        <Stack>
+          <Small icon={<ListTree size={i} />} label="Bookmarks from headings" disabled={!editable} onClick={() => void import('@/actions/pageOps').then((m) => m.bookmarksFromHeadings())} testId="btn-auto-bookmarks" />
+          <Small icon={<Link2 size={i} />} label="Links from web addresses" disabled={!editable} onClick={() => void import('@/actions/pageOps').then((m) => m.linksFromUrls())} testId="btn-auto-links" />
         </Stack>
       </Group>
       <Group label="Page setup">
@@ -481,6 +491,7 @@ function ConvertTab() {
         <Big icon={<Presentation size={I} />} label="PowerPoint" disabled={!hasDoc} onClick={() => openExport('pptx')} />
         <Stack>
           <Small icon={<FileImage size={i} />} label="Images" disabled={!hasDoc} onClick={() => openExport('png')} />
+          <Small icon={<ImageDown size={i} />} label="Export pictures (ZIP)" disabled={!hasDoc} onClick={() => void import('@/actions/pageOps').then((m) => m.exportImages())} testId="btn-export-images" />
           <Small icon={<PenTool size={i} />} label="SVG" disabled={!hasDoc} onClick={() => openExport('svg')} />
           <Small icon={<FileCode2 size={i} />} label="HTML / Markdown" disabled={!hasDoc} onClick={() => openExport('html')} />
         </Stack>

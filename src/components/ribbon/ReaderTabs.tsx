@@ -70,7 +70,6 @@ import { useAutoScroll } from '@/components/viewer/AutoScroll';
 import { getAuthor, setAuthor } from '@/lib/author';
 import { usePDFStore } from '@/store/usePDFStore';
 import { closeDocumentAction, openDialog, openPdfPath, saveDocument } from '@/actions/document';
-import { printDocument } from '@/actions/print';
 import { DropdownContent, DropdownItem, DropdownMenu, DropdownSeparator, DropdownTrigger, Tooltip } from '@/components/ui/primitives';
 import { clearRecent, getRecent, removeRecent, type RecentFile } from '@/lib/recent';
 import { findPageByInput, usePageLabels } from '@/hooks/usePageLabels';
@@ -269,7 +268,7 @@ export function HomeTab() {
       <Group label="File">
         <Big icon={<FolderOpen size={I} />} label="Open" onClick={() => void openDialog()} tip="Open a PDF (Ctrl+O)" testId="btn-open" />
         <Big icon={<Save size={I} />} label="Save" disabled={!editable} onClick={() => void saveDocument(false)} tip="Save (Ctrl+S)" testId="btn-save" />
-        <Big icon={<Printer size={I} />} label="Print" disabled={!hasDoc} onClick={() => void printDocument()} tip="Print (Ctrl+P)" testId="btn-print" />
+        <Big icon={<Printer size={I} />} label="Print" disabled={!hasDoc} onClick={() => usePDFStore.getState().openModal('print')} tip="Print (Ctrl+P): several pages per sheet, booklet, poster" testId="btn-print" />
         <Stack>
           <Small icon={<SaveAll size={i} />} label="Save as…" disabled={!editable} onClick={() => void saveDocument(true)} tip="Save a copy (Ctrl+Shift+S)" testId="btn-save-as" />
           <RecentMenu />

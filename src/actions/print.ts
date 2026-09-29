@@ -8,6 +8,34 @@
 import { usePDFStore } from '@/store/usePDFStore';
 import { exportCurrentPdf, withBusy } from './document';
 import { rasterizePage, canvasToBytes } from '@/lib/pdf/pdfService';
+import type { PrintLayout } from '@/lib/pdf/impose';
+
+export interface PrintOptions {
+  layout?: PrintLayout;
+  /** 0-based page indices; undefined = all. */
+  pages?: number[];
+}
+
+async function prepare(opts: PrintOptions): Promise<Uint8Array | null> {
+  const store = usePDFStore.getState();
+  const bytes = store.readOnlyReason
+    ? null // protected files print from their original bytes (edits are impossible anyway)
+    : await withBusy('Preparing to print…', (p) => exportCurrentPdf({}, p));
+  const data = bytes ?? Object.values(store.sources)[0]?.bytes;
+  if (!data) return null;
+  const layout = opts.layout ?? { kind: 'normal' };
+  if (layout.kind === 'normal' && !opts.pages) return data;
+  const { layOut } = await import('@/lib/pdf/impose');
+  return (await withBusy('Laying out the sheets…', () => layOut(data, layout, opts.pages))) ?? null;
+}
+
+/** Saves the laid-out sheets (booklet, several per sheet, poster) as a PDF. */
+export async function saveLaidOut(opts: PrintOptions): Promise<void> {
+  const data = await prepare(opts);
+  if (!data) return;
+  const { saveDerived } = await import('./document');
+  await saveDerived(data, `-${opts.layout?.kind === 'nup' ? `${opts.layout.perSheet}-up` : (opts.layout?.kind ?? 'print')}`, false);
+}
 
 /** Test hook: when set, receives the prepared PDF instead of opening the print dialog. */
 let printInterceptor: ((bytes: Uint8Array) => void) | null = null;
@@ -15,13 +43,11 @@ export function e2eInterceptPrint(fn: ((bytes: Uint8Array) => void) | null): voi
   printInterceptor = fn;
 }
 
-export async function printDocument(): Promise<void> {
+/** Prints the document (all edits), optionally only some pages or laid out on sheets. */
+export async function printDocument(opts: PrintOptions = {}): Promise<void> {
   const store = usePDFStore.getState();
   if (store.pages.length === 0) return;
-  const bytes = store.readOnlyReason
-    ? null // protected files print from their original bytes (edits are impossible anyway)
-    : await withBusy('Preparing to print…', (p) => exportCurrentPdf({}, p));
-  const data = bytes ?? Object.values(store.sources)[0]?.bytes;
+  const data = await prepare(opts);
   if (!data) return;
   if (printInterceptor) {
     printInterceptor(data);

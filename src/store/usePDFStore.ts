@@ -72,7 +72,8 @@ export type ModalId =
   | 'compare'
   | 'find-redact'
   | 'batch'
-  | 'recover';
+  | 'recover'
+  | 'replacePages';
 
 export interface Toast {
   id: string;
