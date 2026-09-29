@@ -10,6 +10,7 @@ import { ToolsModal } from './ToolsModal';
 import { CropModal, LinkModal, PageMarksModal } from './PageToolModals';
 import { FindRedactModal } from './FindRedactModal';
 import { BatchModal } from './BatchModal';
+import { RecoverModal } from './RecoverModal';
 
 export function Modals() {
   return (
@@ -34,6 +35,7 @@ export function Modals() {
       <PageMarksModal />
       <FindRedactModal />
       <BatchModal />
+      <RecoverModal />
       <PasswordPrompt />
       <ConfirmPrompt />
     </>

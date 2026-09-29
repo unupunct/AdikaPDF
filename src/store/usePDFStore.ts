@@ -71,7 +71,8 @@ export type ModalId =
   | 'pageMarks'
   | 'compare'
   | 'find-redact'
-  | 'batch';
+  | 'batch'
+  | 'recover';
 
 export interface Toast {
   id: string;

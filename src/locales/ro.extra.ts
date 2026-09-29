@@ -26,6 +26,20 @@ export const RO_EXTRA: Record<string, string> = {
   'Interface language: English (switch to Română)': 'Limba interfeței: English (comutare la Română)',
   Language: 'Limbă',
 
+  // Crash recovery and closing the window.
+  'Recover unsaved documents': 'Recuperare documente nesalvate',
+  'Adika PDF Editor closed before these documents were saved. Their last automatic backups can be opened again.':
+    'Adika PDF Editor s-a închis înainte ca aceste documente să fie salvate. Ultimele copii de siguranță automate pot fi redeschise.',
+  Discard: 'Renunțare',
+  Recover: 'Recuperare',
+  '{0} edit{1}': '{0#o modificare|# modificări|# de modificări}',
+  'Recovered {0} document{1}. Save to keep the changes.': '{0#S-a recuperat un document|S-au recuperat # documente|S-au recuperat # de documente}. Salvați pentru a păstra modificările.',
+  'Recovery failed: {0}': 'Recuperarea a eșuat: {0}',
+  'Close Adika PDF Editor?': 'Închideți Adika PDF Editor?',
+  'A document has unsaved changes. Close without saving?': 'Un document are modificări nesalvate. Închideți fără salvare?',
+  '{0} documents have unsaved changes. Close without saving?': '{0#Un document are|# documente au|# de documente au} modificări nesalvate. Închideți fără salvare?',
+  'Close without saving': 'Închidere fără salvare',
+
   // Find & redact patterns.
   'E-mail addresses': 'Adrese de e-mail',
   'Phone numbers': 'Numere de telefon',
