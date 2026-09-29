@@ -108,6 +108,15 @@ export async function pickPaths(filters: FileFilter[], multiple = false): Promis
   return Array.isArray(result) ? result : [result];
 }
 
+/** Asks for a folder (desktop); null if cancelled. */
+export async function pickFolder(): Promise<string | null> {
+  if (!isDesktop) throw new DesktopOnlyError('Choosing a folder');
+  const queued = e2ePick();
+  if (queued) return queued[0] ?? null;
+  const result = await openDialog({ multiple: false, directory: true });
+  return typeof result === 'string' ? result : null;
+}
+
 /**
  * Saves bytes. On desktop, shows a Save dialog (or writes straight to
  * `existingPath` when given). Returns the saved path, 'downloaded' in a

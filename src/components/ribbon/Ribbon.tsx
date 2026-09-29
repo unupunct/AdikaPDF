@@ -68,6 +68,7 @@ import {
   PaintBucket,
   Hash,
   KeyRound,
+  Mails,
 } from 'lucide-react';
 import { usePDFStore } from '@/store/usePDFStore';
 import type { RibbonTab, ToolId } from '@/types';
@@ -446,6 +447,7 @@ function FormsTab() {
       <Group label="Data">
         <Big icon={<TableProperties size={I} />} label="Fill form" disabled={!hasDoc} onClick={() => usePDFStore.setState({ inspectorOpen: true, selectedIds: [] })} tip="Fill existing form fields in the right panel" />
         <Big icon={<FileSpreadsheet size={I} />} label="Export CSV" disabled={!hasDoc} onClick={() => void exportFormCsv()} tip="Export field values as CSV" />
+        <Big icon={<Mails size={I} />} label="Mail merge" disabled={!hasDoc} onClick={() => s.openModal('mailmerge')} tip="Fill this form once for every row of a CSV or Excel table: one PDF per row or one combined PDF" testId="btn-mailmerge" />
         <Big icon={<BookCopy size={I} />} label="Batch CSV" onClick={() => s.openModal('export')} tip="Collect answers from many filled PDFs into one CSV (Convert → Export)" />
       </Group>
       <Group label="Finish">
@@ -530,7 +532,7 @@ function ConvertTab() {
         <Big icon={<Stamp size={I} />} label="Flatten" disabled={!hasDoc} onClick={() => void flattenCurrent()} />
       </Group>
       <Group label="Many files">
-        <Big icon={<FileStack size={I} />} label="Batch" onClick={() => s.openModal('batch')} tip="OCR, compress, watermark, PDF/A, protect, sanitize or flatten many PDFs at once" testId="btn-batch" />
+        <Big icon={<FileStack size={I} />} label="Batch" onClick={() => s.openModal('batch')} tip="OCR, compress, watermark, page numbers, PDF/A, protect, sanitize or flatten many PDFs at once, one operation or a saved sequence of steps" testId="btn-batch" />
       </Group>
     </>
   );

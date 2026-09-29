@@ -73,6 +73,7 @@ export type ModalId =
   | 'compare'
   | 'find-redact'
   | 'batch'
+  | 'mailmerge'
   | 'recover'
   | 'replacePages';
 
