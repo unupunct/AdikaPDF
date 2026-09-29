@@ -158,6 +158,42 @@ export async function summarizeCommentsAction(): Promise<void> {
 
 // ------------------------------------------------------------------ compare
 
+/**
+ * Compares the current document (new version) with a PDF the user picks
+ * (old version) by pixels: a report with both versions overlaid.
+ */
+export async function compareVisually(): Promise<void> {
+  const s = usePDFStore.getState();
+  if (!s.pages.length) return;
+  const [f] = await pickFiles(PDF_FILTER);
+  if (!f) return;
+  const newName = s.fileName ?? 'Current document';
+  const out = await withBusy('Comparing documents…', async (progress) => {
+    const newBytes = await exportCurrentPdf({}, progress);
+    const [oldDoc, newDoc] = await Promise.all([openPdf(f.bytes), openPdf(newBytes)]);
+    try {
+      const [{ visualCompareReport }, { renderPageToCanvas }] = await Promise.all([import('@/lib/pdf/visualCompare'), import('@/lib/pdf/convert')]);
+      const raster = (pdf: typeof oldDoc, n: number) => async () => {
+        const { canvas, viewport, scale } = await renderPageToCanvas(pdf, n, 100);
+        const img = (canvas.getContext('2d') as CanvasRenderingContext2D).getImageData(0, 0, canvas.width, canvas.height);
+        canvas.width = canvas.height = 0;
+        return { data: img.data, width: img.width, height: img.height, widthPt: viewport.width / scale, heightPt: viewport.height / scale };
+      };
+      const pages = (pdf: typeof oldDoc) => Array.from({ length: pdf.numPages }, (_, i) => raster(pdf, i + 1));
+      return await visualCompareReport(pages(oldDoc), pages(newDoc), { oldName: f.name, newName }, (d, t) => progress(`Comparing page ${Math.min(d + 1, t)} of ${t}`, t ? d / t : null));
+    } finally {
+      await Promise.all([oldDoc.loadingTask.destroy().catch(() => undefined), newDoc.loadingTask.destroy().catch(() => undefined)]);
+    }
+  });
+  if (!out) return;
+  const base = newName.replace(/\.pdf$/i, '');
+  await openPdfBytes(out.bytes, `${base} - visual comparison.pdf`, null, false);
+  usePDFStore.setState({ dirty: true });
+  const st = usePDFStore.getState();
+  if (!out.changedPages.length) st.toast('No visible differences were found.', 'info');
+  else st.toast(`${out.areas} changed area${out.areas === 1 ? '' : 's'} on page${out.changedPages.length === 1 ? '' : 's'} ${out.changedPages.slice(0, 8).join(', ')}${out.changedPages.length > 8 ? '…' : ''}. The first page is a summary.`, 'success');
+}
+
 /** Compares the current document (new version) with a PDF the user picks (old version). */
 export async function compareWithFile(): Promise<void> {
   const s = usePDFStore.getState();

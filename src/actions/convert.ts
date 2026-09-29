@@ -402,18 +402,44 @@ export async function exportAs(req: ExportRequest): Promise<void> {
 
 // ================================================================ OCR / compress / PDF-A / flatten
 
-export async function runOcr(opts: { pageNumbers: number[]; dpi: number; lang: string }): Promise<void> {
+export async function runOcr(opts: { pageNumbers: number[]; dpi: number; lang: string; editable?: { family: 'sans' | 'serif' } }): Promise<void> {
+  const editable = opts.editable;
   const out = await withBusy('Recognising text (OCR)…', (progress) =>
     withEditedDoc(async (pdf, bytes) => {
-      const results = await ocrPages(pdf, opts, (m, f) => progress(m, f));
+      const { groupLines, lineColors, makeEditable } = await import('@/lib/pdf/editableScan');
+      const pages: import('@/lib/pdf/editableScan').EditablePage[] = [];
+      const results = await ocrPages(
+        pdf,
+        {
+          ...opts,
+          // Editable text: the paper and ink colour of every line, read while the page is rendered.
+          sample: editable
+            ? (r, pixels) =>
+                pages.push({
+                  pageNumber: r.pageNumber,
+                  widthPt: r.widthPt,
+                  heightPt: r.heightPt,
+                  lines: groupLines(r.words).map((l) => ({ text: l.words.map((w) => w.text).join(' '), x: l.x, y: l.y, width: l.width, height: l.height, ...lineColors(pixels, l) })),
+                })
+            : undefined,
+        },
+        (m, f) => progress(m, f),
+      );
       const words = results.reduce((n, r) => n + r.words.length, 0);
+      if (editable) {
+        progress('Writing editable text…', null);
+        const r = await makeEditable(bytes, pages, { loadFont: () => loadFontBytes({ family: editable.family, bold: false, italic: false }) });
+        return { bytes: r.bytes, words };
+      }
       progress('Embedding searchable text…', null);
       return { bytes: await makeSearchable(bytes, results), words };
     }, progress),
   );
   if (!out) return;
-  usePDFStore.getState().toast(`OCR found ${out.words} words. The text layer is now searchable and selectable.`, 'success');
-  await saveDerived(out.bytes, '-ocr', true);
+  usePDFStore
+    .getState()
+    .toast(editable ? `OCR found ${out.words} words. The text is now real, editable text (Edit → Edit text).` : `OCR found ${out.words} words. The text layer is now searchable and selectable.`, 'success');
+  await saveDerived(out.bytes, editable ? '-editable' : '-ocr', true);
 }
 
 export async function runCompress(opts: CompressOptions): Promise<{ before: number; after: number } | undefined> {

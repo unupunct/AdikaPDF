@@ -120,7 +120,13 @@ function assetBase(): URL {
 
 export async function ocrPages(
   pdf: PDFDocumentProxy,
-  opts: { pageNumbers: number[]; dpi?: number; lang?: string | string[] },
+  opts: {
+    pageNumbers: number[];
+    dpi?: number;
+    lang?: string | string[];
+    /** Called with each recognised page and its pixels (e.g. to read paper and ink colours). */
+    sample?: (result: OcrPageResult, pixels: { data: Uint8ClampedArray; width: number; height: number; scale: number }) => void;
+  },
   onProgress?: (msg: string, fraction: number) => void,
 ): Promise<OcrPageResult[]> {
   const { createWorker, OEM } = await import('tesseract.js');
@@ -157,16 +163,19 @@ export async function ocrPages(
       const png = await canvasToBlob(canvas, 'image/png');
       const widthPt = canvas.width / scale;
       const heightPt = canvas.height / scale;
+      const pixels = opts.sample ? (canvas.getContext('2d') as CanvasRenderingContext2D).getImageData(0, 0, canvas.width, canvas.height) : null;
       canvas.width = canvas.height = 0;
       const page = await pdf.getPage(n);
       const vp = page.getViewport({ scale: 1, rotation: 0 });
       const { data } = await worker.recognize(png, {}, { blocks: true, text: false });
-      results.push({
+      const result: OcrPageResult = {
         pageNumber: n,
         widthPt: vp.width || widthPt,
         heightPt: vp.height || heightPt,
         words: blocksToWords(data.blocks as unknown as TessBlock[], scale),
-      });
+      };
+      results.push(result);
+      if (pixels && opts.sample) opts.sample(result, { data: pixels.data, width: pixels.width, height: pixels.height, scale });
     }
     onProgress?.('OCR complete', 1);
   } finally {

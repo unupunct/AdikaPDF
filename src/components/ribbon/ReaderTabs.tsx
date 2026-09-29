@@ -4,6 +4,7 @@ import {
   ArrowLeft,
   ArrowRight,
   BookOpen,
+  BookText,
   Bookmark,
   ChevronDown,
   ChevronLeft,
@@ -387,6 +388,7 @@ export function ViewTab() {
         </Stack>
       </Group>
       <Group label="Reading">
+        <Big icon={<BookText size={I} />} label="Reading view" disabled={!hasDoc} onClick={() => s.openModal('readingview')} tip="The text reflowed like an e-book: adjustable size, width, font and colours" testId="btn-reading-view" />
         <Big icon={<Moon size={I} />} label="Night mode" active={s.nightMode} disabled={!hasDoc} onClick={() => s.setView({ nightMode: !s.nightMode })} tip="Dark pages for reading at night" testId="btn-night" />
         <Big icon={s.fullscreen ? <Minimize size={I} /> : <Maximize size={I} />} label="Full screen" active={s.fullscreen} onClick={() => void toggleFullscreen()} tip="Full screen (F11)" testId="btn-fullscreen" />
         <Big icon={<MonitorPlay size={I} />} label="Present" disabled={!hasDoc} onClick={startPresentation} tip="Presentation mode (F5)" testId="btn-present" />

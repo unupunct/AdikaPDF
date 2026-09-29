@@ -75,6 +75,7 @@ export type ModalId =
   | 'batch'
   | 'mailmerge'
   | 'accessibility'
+  | 'readingview'
   | 'recover'
   | 'replacePages';
 

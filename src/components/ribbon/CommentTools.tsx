@@ -4,7 +4,7 @@ import { usePDFStore } from '@/store/usePDFStore';
 import { DropdownContent, DropdownItem, DropdownMenu, DropdownSeparator, DropdownTrigger } from '@/components/ui/primitives';
 import { STAMP_PRESETS, stampDate, type StampTemplate } from '@/lib/objectFactory';
 import { pickImagesAsDataUrls } from '@/actions/convert';
-import { compareWithFile, exportComments, importComments, summarizeCommentsAction } from '@/actions/pageTools';
+import { compareVisually, compareWithFile, exportComments, importComments, summarizeCommentsAction } from '@/actions/pageTools';
 import { getAuthor } from '@/lib/author';
 import { translate } from '@/lib/i18n';
 import { I } from './ReaderTabs';
@@ -106,6 +106,9 @@ export function CommentFileMenu() {
         </DropdownItem>
         <DropdownItem icon={<GitCompare size={14} />} onSelect={() => void compareWithFile()}>
           Compare with another version…
+        </DropdownItem>
+        <DropdownItem icon={<GitCompare size={14} />} onSelect={() => void compareVisually()}>
+          Compare visually (overlay)…
         </DropdownItem>
       </DropdownContent>
     </DropdownMenu>
