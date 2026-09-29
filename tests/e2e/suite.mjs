@@ -607,7 +607,8 @@ test('certify, then a second signature on the signed file: both stay valid', asy
   await page.click('text=Create self-signed ID');
   await page.fill('[data-testid="selfsigned-name"]', 'Ana Certifica');
   await page.click('[data-testid="selfsigned-create"]');
-  await page.waitForSelector('[data-testid="identity-card"]', { timeout: 30000 });
+  // The card of an earlier ID may still be shown: wait for the new one.
+  await page.waitForFunction((name) => document.querySelector('[data-testid="identity-card"]')?.textContent.includes(name), 'Ana Certifica', { timeout: 30000 });
   await page.selectOption('select[aria-label="Certify"]', '2');
   await page.click('[data-testid="cert-sign-now"]');
   await idle();
@@ -619,7 +620,8 @@ test('certify, then a second signature on the signed file: both stay valid', asy
   await page.click('text=Create self-signed ID');
   await page.fill('[data-testid="selfsigned-name"]', 'Bogdan Aproba');
   await page.click('[data-testid="selfsigned-create"]');
-  await page.waitForSelector('[data-testid="identity-card"]', { timeout: 30000 });
+  // The card of an earlier ID may still be shown: wait for the new one.
+  await page.waitForFunction((name) => document.querySelector('[data-testid="identity-card"]')?.textContent.includes(name), 'Bogdan Aproba', { timeout: 30000 });
   assert(!(await page.$('select[aria-label="Certify"]')), 'certify is offered only for the first signature');
   await page.click('[data-testid="cert-sign-now"]');
   await idle();
@@ -627,8 +629,8 @@ test('certify, then a second signature on the signed file: both stay valid', asy
   const both = await S(() => window.__adika.store.getState().signatureStatus.map((s) => ({ n: s.signerName, i: s.integrity, m: s.modifiedAfterSigning, later: s.laterChanges, c: s.certified })));
   const a = both.find((s) => s.n.includes('Ana'));
   const b = both.find((s) => s.n.includes('Bogdan'));
-  assert(a && a.i === 'valid' && !a.m && a.later?.signatures && a.c === 2, `first (certified) signature still valid (${JSON.stringify(a)})`);
-  assert(b && b.i === 'valid' && !b.m, `second signature valid (${JSON.stringify(b)})`);
+  assert(a && a.i === 'valid' && !a.m && a.later?.signatures && a.c === 2, `first (certified) signature still valid (${JSON.stringify(both)})`);
+  assert(b && b.i === 'valid' && !b.m, `second signature valid (${JSON.stringify(both)})`);
   await page.click('[data-testid="btn-verify"]');
   await page.waitForSelector('[data-testid="signature-card"]', { timeout: 15000 });
   const text = await page.textContent('[data-testid="verify-modal"]');

@@ -170,6 +170,39 @@ export function registerPageTests(test, ctx) {
     assert(after.src === before && after.imgs === 0, `undo puts the picture back in the page (${JSON.stringify(after)})`);
   });
 
+  test('paragraph editing: a whole paragraph opens as one box, rewraps, and replaces the old lines', async () => {
+    const path = await make('letter.pdf', async (d, font) => {
+      const p = d.addPage([595, 842]);
+      p.drawText('Dear customer,', { x: 60, y: 760, size: 12, font });
+      const lines = ['Your order was shipped today and will arrive within three', 'working days. The invoice is attached to this message and', 'can also be downloaded from your account page.'];
+      lines.forEach((t, i) => p.drawText(t, { x: 60, y: 730 - i * 15, size: 12, font }));
+      p.drawText('Kind regards, the Adika team', { x: 60, y: 660, size: 12, font });
+    });
+    await open(path);
+    await S(() => window.__adika.store.getState().setZoom(1, null));
+    await page.click('[data-testid="tab-edit"]');
+    await page.click('[data-testid="tool-editText"]');
+    const box = await (await page.$('[data-testid="page-1"]')).boundingBox();
+    await page.mouse.click(box.x + 150, box.y + (842 - 715) - 4); // on the second line
+    await page.waitForSelector('[data-testid="text-editor"]', { timeout: 5000 });
+    const opened = await page.inputValue('[data-testid="text-editor"]');
+    assert(opened === 'Your order was shipped today and will arrive within three working days. The invoice is attached to this message and can also be downloaded from your account page.', `the whole paragraph (${opened})`);
+    await page.keyboard.press('Control+a');
+    await page.keyboard.type('Your order left our warehouse this morning and arrives in two working days. The invoice is attached; it is also in your account.');
+    await page.mouse.click(box.x + 400, box.y + 800);
+    const obj = await S(() => {
+      const o = window.__adika.store.getState().objects.find((x) => x.type === 'text');
+      return { lines: o.replaces?.length, lh: o.lineHeight, w: Math.round(o.width) };
+    });
+    assert(obj.lines === 3 && Math.abs(obj.lh - 1.25) < 0.01, `one box for 3 lines, same line spacing (${JSON.stringify(obj)})`);
+    await page.keyboard.press('Control+Shift+s');
+    await idle();
+    const [t] = await pdfText(await savedFile(/letter\.pdf$/));
+    const flat = t.replace(/\s+/g, ' ');
+    assert(!/shipped today|downloaded from/.test(flat), 'old lines removed');
+    assert(/warehouse this morning/.test(flat) && /Dear customer,/.test(flat) && /Kind regards/.test(flat), `new paragraph saved, others kept (${flat.slice(0, 200)})`);
+  });
+
   test('export images: every picture into one ZIP, JPEGs as stored', async () => {
     const jpg = Buffer.from('/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/wAALCAABAAEBAREA/8QAFAABAAAAAAAAAAAAAAAAAAAACf/EABQQAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQEAAD8AKp//2Q==', 'base64');
     const path = await make('pictures.pdf', async (d) => {

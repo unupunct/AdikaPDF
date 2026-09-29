@@ -501,7 +501,10 @@ function FieldProps({ obj, update }: { obj: FieldObject; update: (p: Partial<Fie
 
 /** Format, allowed range and calculation of a text field (saved as Acrobat form actions). */
 function SmartFieldProps({ obj, update }: { obj: FieldObject; update: (p: Partial<FieldObject>) => void }) {
-  const others = usePDFStore((s) => s.objects.filter((o): o is FieldObject => o.type === 'field' && o.fieldKind === 'text' && o.id !== obj.id).map((o) => o.name));
+  // Select the (stable) objects array and derive from it: a selector returning a new
+  // array each time would re-render forever.
+  const objects = usePDFStore((s) => s.objects);
+  const others = useMemo(() => objects.filter((o): o is FieldObject => o.type === 'field' && o.fieldKind === 'text' && o.id !== obj.id).map((o) => o.name), [objects, obj.id]);
   const logic = obj.logic ?? {};
   const set = (p: Partial<FieldLogic>) => update({ logic: { ...logic, ...p } });
   const fmt = logic.format ?? null;

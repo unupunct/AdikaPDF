@@ -32,6 +32,7 @@ import {
   makeText,
 } from '@/lib/objectFactory';
 import { layoutText, TEXT_PADDING } from '@/lib/textLayout';
+import { paragraphAt } from '@/lib/paragraph';
 import { pageTextRuns, runAngle, runRect } from '@/lib/pdf/textGeometry';
 import { ObjectNode } from './ObjectNode';
 import { useModalArgs } from '@/store/useModalArgs';
@@ -319,6 +320,34 @@ export function PageOverlay({ page, zoom }: { page: PageRef; zoom: number }) {
       const store = usePDFStore.getState();
       if (!run) {
         store.toast('No text found there. Click directly on a line of text.', 'info');
+        return;
+      }
+      // A paragraph of several lines is edited as one box that rewraps while typing.
+      const para = paragraphAt(runs, x, y);
+      if (para && para.lines.length > 1) {
+        const r0 = para.lines[0].runs[0];
+        const name = `${r0.fontFamily ?? ''} ${r0.fontName ?? ''}`;
+        const fam = /mono|courier|consol/i.test(name) ? 'mono' : /serif|times|georgia|garamond|roman/i.test(name) && !/sans/i.test(r0.fontFamily ?? '') ? 'serif' : 'sans';
+        const size = Math.round(para.size * 10) / 10;
+        const base = makeText(page.id, 0, 0, store.style, {
+          text: para.text,
+          fontSize: size,
+          fontFamily: fam,
+          bold: !!r0.bold,
+          italic: !!r0.italic,
+          color: '#000000',
+          background: null,
+          lineHeight: Math.round(para.lineHeight * 1000) / 1000,
+          align: para.align,
+          width: para.width + TEXT_PADDING * 2 + size * 0.6,
+          replaces: para.rects,
+        });
+        const layout = layoutText(base);
+        const firstBaseline = layout.lines[0]?.baseline ?? size;
+        const obj: TextObject = { ...base, x: para.x - TEXT_PADDING, y: para.lines[0].baseline - firstBaseline, height: layout.contentHeight };
+        store.setTool('select');
+        store.addObject(obj);
+        store.setEditingText(obj.id);
         return;
       }
       const family = /mono|courier|consol/i.test(`${run.fontFamily} ${run.fontName}`)
