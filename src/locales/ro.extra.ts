@@ -102,6 +102,15 @@ export const RO_EXTRA: Record<string, string> = {
   'Exported {0} image{1}{2}.': '{0#S-a exportat o imagine|S-au exportat # imagini|S-au exportat # de imagini}{2}.',
   ' ({0} skipped: unusual formats)': ' ({0} omise: formate neobișnuite)',
 
+  // Editing pictures already in the PDF.
+  'Edit image': 'Editare imagine',
+  'Click a picture in the page to move, resize, rotate, replace or delete it': 'Faceți clic pe o imagine din pagină pentru a o muta, redimensiona, roti, înlocui sau șterge',
+  'This picture is skewed or mirrored and cannot be edited as a box.': 'Această imagine este înclinată sau în oglindă și nu poate fi editată ca o casetă.',
+  'No picture found there. Click directly on a picture in the page.': 'Nu există nicio imagine acolo. Faceți clic direct pe o imagine din pagină.',
+  'This picture is stored in a format that cannot be edited here (it stays as it is).': 'Imaginea este stocată într-un format care nu poate fi editat aici (rămâne neschimbată).',
+  'The picture can now be moved, resized or rotated; replace it in Properties, or press Delete to remove it.': 'Imaginea poate fi acum mutată, redimensionată sau rotită; o puteți înlocui din Proprietăți sau șterge cu tasta Delete.',
+  'Replace picture…': 'Înlocuire imagine…',
+
   // Find & redact patterns.
   'E-mail addresses': 'Adrese de e-mail',
   'Phone numbers': 'Numere de telefon',

@@ -116,6 +116,60 @@ export function registerPageTests(test, ctx) {
     await page.waitForFunction(() => window.__adika.store.getState().toasts.some((t) => /No new web or e-mail addresses/.test(t.message)), null, { timeout: 20000 });
   });
 
+  test('edit image: a picture already in the PDF is moved, saved in its new place, undo restores it', async () => {
+    const jpg = Buffer.from('/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/wAALCAABAAEBAREA/8QAFAABAAAAAAAAAAAAAAAAAAAACf/EABQQAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQEAAD8AKp//2Q==', 'base64');
+    const path = await make('logo.pdf', async (d, font) => {
+      const img = await d.embedJpg(new Uint8Array(jpg));
+      const p = d.addPage([595, 842]);
+      p.drawText('Company letter', { x: 60, y: 760, size: 20, font });
+      p.drawImage(img, { x: 100, y: 500, width: 200, height: 100 }); // display: x 100..300, y 242..342
+    });
+    await open(path);
+    await S(() => window.__adika.store.getState().setZoom(1, null));
+    const before = await S(() => window.__adika.store.getState().pages[0].sourceId);
+    await page.click('[data-testid="tab-edit"]');
+    await page.click('[data-testid="tool-editImage"]');
+    const box = await (await page.$('[data-testid="page-1"]')).boundingBox();
+    await page.mouse.click(box.x + 200, box.y + 290);
+    await page.waitForFunction(() => window.__adika.store.getState().objects.some((o) => o.type === 'image'), null, { timeout: 15000 });
+    const obj = await S(() => {
+      const o = window.__adika.store.getState().objects.find((x) => x.type === 'image');
+      return { x: Math.round(o.x), y: Math.round(o.y), w: Math.round(o.width), h: Math.round(o.height), jpeg: o.src.startsWith('data:image/jpeg'), sel: window.__adika.store.getState().selectedIds.includes(o.id) };
+    });
+    assert(obj.x === 100 && obj.y === 242 && obj.w === 200 && obj.h === 100 && obj.jpeg && obj.sel, `picture lifted with its exact frame (${JSON.stringify(obj)})`);
+    // Move it 150 pt to the right.
+    await S(() => {
+      const s = window.__adika.store.getState();
+      const o = s.objects.find((x) => x.type === 'image');
+      s.updateObject(o.id, { x: o.x + 150 });
+    });
+    await page.keyboard.press('Control+Shift+s');
+    await idle();
+    const d = await pdfjs.getDocument({ data: new Uint8Array(readFileSync(await savedFile(/logo\.pdf$/))), disableFontFace: true, standardFontDataUrl: FONT_DATA }).promise;
+    const ops = await (await d.getPage(1)).getOperatorList();
+    const text = (await (await d.getPage(1)).getTextContent()).items.map((i) => i.str).join(' ');
+    await d.loadingTask.destroy();
+    // Follow the transformation to each painted image.
+    const O = pdfjs.OPS;
+    let m = [1, 0, 0, 1, 0, 0];
+    const stack = [];
+    const placed = [];
+    ops.fnArray.forEach((fn, i) => {
+      const a = ops.argsArray[i];
+      if (fn === O.save) stack.push(m);
+      else if (fn === O.restore) m = stack.pop() ?? m;
+      else if (fn === O.transform) m = [a[0] * m[0] + a[1] * m[2], a[0] * m[1] + a[1] * m[3], a[2] * m[0] + a[3] * m[2], a[2] * m[1] + a[3] * m[3], a[4] * m[0] + a[5] * m[2] + m[4], a[4] * m[1] + a[5] * m[3] + m[5]];
+      else if (fn === O.paintImageXObject || fn === O.paintJpegXObject) placed.push(m.map((v) => Math.round(v)));
+    });
+    assert(placed.length === 1, `the picture is drawn once (${JSON.stringify(placed)})`);
+    assert(placed[0][0] === 200 && placed[0][3] === 100 && placed[0][4] === 250 && placed[0][5] === 500, `at its new place (${JSON.stringify(placed[0])})`);
+    assert(text.includes('Company letter'), 'text untouched');
+    await page.keyboard.press('Control+z');
+    await page.keyboard.press('Control+z');
+    const after = await S(() => ({ src: window.__adika.store.getState().pages[0].sourceId, imgs: window.__adika.store.getState().objects.filter((o) => o.type === 'image').length }));
+    assert(after.src === before && after.imgs === 0, `undo puts the picture back in the page (${JSON.stringify(after)})`);
+  });
+
   test('export images: every picture into one ZIP, JPEGs as stored', async () => {
     const jpg = Buffer.from('/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/wAALCAABAAEBAREA/8QAFAABAAAAAAAAAAAAAAAAAAAACf/EABQQAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQEAAD8AKp//2Q==', 'base64');
     const path = await make('pictures.pdf', async (d) => {

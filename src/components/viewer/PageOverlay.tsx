@@ -386,6 +386,9 @@ export function PageOverlay({ page, zoom }: { page: PageRef; zoom: number }) {
       case 'editText':
         void editExistingText(p.x, p.y);
         return;
+      case 'editImage':
+        void import('@/actions/imageEdit').then((m) => m.liftImage(page, p.x, p.y));
+        return;
       case 'note': {
         e.evt.preventDefault(); // keep focus for the popup we are about to open
         const note = makeNote(page.id, p.x, p.y, getAuthor());

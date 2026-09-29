@@ -60,6 +60,7 @@ import {
   Link2,
   ListTree,
   ImageDown,
+  ImagePlay,
   Replace,
   Crop,
   Droplets,
@@ -260,6 +261,7 @@ function EditTab() {
     <>
       <Group label="Text">
         <ToolBtn tool="editText" icon={<TextCursorInput size={I} />} label="Edit text" tip="Click any existing text to replace it" />
+        <ToolBtn tool="editImage" icon={<ImagePlay size={I} />} label="Edit image" tip="Click a picture in the page to move, resize, rotate, replace or delete it" />
         <ToolBtn tool="text" icon={<Type size={I} />} label="Add text" tip="Click to add a text box (T)" />
       </Group>
       <Group label="Insert">

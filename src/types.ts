@@ -16,6 +16,7 @@ export type ToolId =
   | 'pan'
   | 'text'
   | 'editText'
+  | 'editImage'
   | 'image'
   | 'rect'
   | 'ellipse'

@@ -447,6 +447,9 @@ function ImageProps({ obj, update }: { obj: ImageObject; update: (p: Partial<Ima
         <Num label="Bottom" value={bottom} min={0} max={95 - top} onChange={(v) => setCrop(left, top, right, v)} />
       </div>
       <div className="mt-2 flex gap-1.5">
+        <Button size="sm" onClick={() => void import('@/actions/imageEdit').then((m) => m.replacePicture(obj))} data-testid="replace-picture">
+          Replace picture…
+        </Button>
         <Button size="sm" onClick={() => setCrop(0, 0, 0, 0)}>
           Reset crop
         </Button>

@@ -93,6 +93,32 @@ function toRgba(data: Uint8Array, w: number, h: number, bpc: number, sp: Space):
   return out;
 }
 
+/** One image XObject as JPEG / JPEG 2000 bytes or RGBA pixels; null when it cannot be read. */
+export function readImage(doc: PDFDocument, s: PDFRawStream, name: string, pageNo: number): ExtractedImage | null {
+  const d = s.dict;
+  const w = num(d.lookup(PDFName.of('Width')));
+  const h = num(d.lookup(PDFName.of('Height')));
+  if (d.lookup(PDFName.of('ImageMask'))?.toString() === 'true' || w < 1 || h < 1) return null;
+  const f = filters(d);
+  if (f.length === 1 && (f[0] === 'DCTDecode' || f[0] === 'DCT')) return { name: `${name}.jpg`, page: pageNo, width: w, height: h, kind: 'jpg', bytes: s.contents };
+  if (f.length === 1 && f[0] === 'JPXDecode') return { name: `${name}.jp2`, page: pageNo, width: w, height: h, kind: 'jp2', bytes: s.contents };
+  try {
+    const sp = colorSpace(doc, d.get(PDFName.of('ColorSpace')));
+    const data = decodePDFRawStream(s).decode();
+    const rgba = sp ? toRgba(data, w, h, num(d.lookup(PDFName.of('BitsPerComponent')), 8), sp) : null;
+    if (!rgba) return null;
+    // Transparency: a soft mask of the same size.
+    const sm = d.lookup(PDFName.of('SMask'));
+    if (sm instanceof PDFRawStream && num(sm.dict.lookup(PDFName.of('Width'))) === w && num(sm.dict.lookup(PDFName.of('Height'))) === h) {
+      const a = decodePDFRawStream(sm).decode();
+      if (a.length >= w * h) for (let i = 0; i < w * h; i++) rgba[i * 4 + 3] = a[i];
+    }
+    return { name: `${name}.png`, page: pageNo, width: w, height: h, kind: 'pixels', rgba };
+  } catch {
+    return null; // CCITT, JBIG2, unusual colour spaces
+  }
+}
+
 export async function extractImages(bytes: Uint8Array): Promise<{ images: ExtractedImage[]; skipped: number }> {
   const doc = await PDFDocument.load(bytes, { updateMetadata: false, ignoreEncryption: true });
   const seen = new Set<string>();
@@ -117,40 +143,9 @@ export async function extractImages(bytes: Uint8Array): Promise<{ images: Extrac
         continue;
       }
       if (sub !== PDFName.of('Image')) continue;
-      const w = num(d.lookup(PDFName.of('Width')));
-      const h = num(d.lookup(PDFName.of('Height')));
-      if (d.lookup(PDFName.of('ImageMask'))?.toString() === 'true' || w < 1 || h < 1) {
-        skipped++;
-        continue;
-      }
-      const f = filters(d);
-      const name = `page${pageNo}-image${images.length + 1}`;
-      if (f.length === 1 && (f[0] === 'DCTDecode' || f[0] === 'DCT')) {
-        images.push({ name: `${name}.jpg`, page: pageNo, width: w, height: h, kind: 'jpg', bytes: s.contents });
-        continue;
-      }
-      if (f.length === 1 && f[0] === 'JPXDecode') {
-        images.push({ name: `${name}.jp2`, page: pageNo, width: w, height: h, kind: 'jp2', bytes: s.contents });
-        continue;
-      }
-      try {
-        const sp = colorSpace(doc, d.get(PDFName.of('ColorSpace')));
-        const data = decodePDFRawStream(s).decode();
-        const rgba = sp ? toRgba(data, w, h, num(d.lookup(PDFName.of('BitsPerComponent')), 8), sp) : null;
-        if (!rgba) {
-          skipped++;
-          continue;
-        }
-        // Transparency: a soft mask of the same size.
-        const sm = d.lookup(PDFName.of('SMask'));
-        if (sm instanceof PDFRawStream && num(sm.dict.lookup(PDFName.of('Width'))) === w && num(sm.dict.lookup(PDFName.of('Height'))) === h) {
-          const a = decodePDFRawStream(sm).decode();
-          if (a.length >= w * h) for (let i = 0; i < w * h; i++) rgba[i * 4 + 3] = a[i];
-        }
-        images.push({ name: `${name}.png`, page: pageNo, width: w, height: h, kind: 'pixels', rgba });
-      } catch {
-        skipped++; // CCITT, JBIG2, unusual colour spaces
-      }
+      const img = readImage(doc, s, `page${pageNo}-image${images.length + 1}`, pageNo);
+      if (img) images.push(img);
+      else skipped++;
     }
   };
 

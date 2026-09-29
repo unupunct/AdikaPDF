@@ -10,6 +10,7 @@ const TOOL_HINTS: Partial<Record<string, string>> = {
   pan: 'Drag to scroll the page',
   text: 'Click where the new text should start',
   editText: 'Click on existing text to replace it',
+  editImage: 'Click a picture in the page to move, resize, rotate, replace or delete it',
   image: 'Click to place the image',
   signature: 'Click to place your signature',
   rect: 'Drag to draw · Shift for a square',
