@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useDialogs } from '@/store/useDialogs';
 import { Button, Callout, Dialog, Field, Input } from '@/components/ui/primitives';
 import { SignatureModal } from './SignatureModal';
-import { CertificateModal, TokenModal, VerifyModal } from './DigitalSignModals';
+import { CertificateModal, StoreCertModal, TokenModal, VerifyModal } from './DigitalSignModals';
 import { AboutModal, CompressModal, OcrModal, OrganizerModal, PasswordModal, PdfaModal, SplitModal } from './DocumentModals';
 import { ExportModal, ImportModal } from './ConvertModals';
 import { PropertiesModal } from './PropertiesModal';
@@ -20,6 +20,7 @@ export function Modals() {
       <SignatureModal />
       <CertificateModal />
       <TokenModal />
+      <StoreCertModal />
       <VerifyModal />
       <OrganizerModal />
       <SplitModal />

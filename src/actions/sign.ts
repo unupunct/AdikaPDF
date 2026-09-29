@@ -9,13 +9,15 @@ import { exportCurrentPdf, primarySourceBytes, refreshSignatureStatus, saveDeriv
 import {
   identityFromCertificateDer,
   signPdf,
+  addDocumentTimestamp,
   addValidationData,
   signerFromIdentity,
   verifyPdfSignatures,
   type ExternalSigner,
   type SigningIdentity,
 } from '@/lib/crypto/digitalSignature';
-import { base64ToBytes, httpGet, httpPost, isDesktop, pkcs11Sign, systemCertificates, type TokenCertificate } from '@/lib/platform';
+import { appDataRead, appDataWrite, base64ToBytes, httpGet, httpPost, isDesktop, pkcs11Sign, systemCertificates, winstoreSign, type StoreCertificate, type TokenCertificate } from '@/lib/platform';
+import { downloadTrustedLists, trustIndex, type TrustedListCache } from '@/lib/crypto/euTrustedList';
 import type { SignatureValidation } from '@/types';
 import { PDFDocument } from 'pdf-lib';
 import { displaySize, displayToPdfMatrix, normalizeRotation, transformRectBounds } from '@/lib/geometry';
@@ -35,6 +37,18 @@ export interface SignMeta {
   certify?: 0 | 1 | 2 | 3;
   /** Store the chain and OCSP/CRL answers in the file (long-term validation; needs internet). */
   ltv?: boolean;
+  /** PAdES baseline format (EU eIDAS): ETSI.CAdES.detached. */
+  pades?: boolean;
+  /** After the validation data, a document timestamp (PAdES B-LTA). Needs tsaUrl and ltv. */
+  archive?: boolean;
+}
+
+/** The PAdES level the options produce (null for the classic format). */
+export function padesLevelOf(meta: SignMeta): 'B-B' | 'B-T' | 'B-LT' | 'B-LTA' | null {
+  if (!meta.pades) return null;
+  if (!meta.tsaUrl) return 'B-B';
+  if (!meta.ltv) return 'B-T';
+  return meta.archive ? 'B-LTA' : 'B-LT';
 }
 
 /** Converts a display-space rect on page `pageIndex` of `bytes` to PDF user space. */
@@ -168,6 +182,7 @@ async function signWith(
       allowInvalidatingExisting: false,
       // Only the first signature can certify (the option is hidden for signed files).
       certify: meta.certify && !hadSignatures ? meta.certify : undefined,
+      pades: !!meta.pades,
     });
   });
   if (!out) return;
@@ -185,9 +200,46 @@ async function signWith(
       final = ltv.bytes;
       if (!ltv.complete) store.toast(`Signed. Long-term validation is incomplete: ${ltv.notes.join(' ')}`, 'info');
     }
+    if (ltv && meta.archive && meta.tsaUrl) {
+      const tsaUrl = meta.tsaUrl;
+      const stamped = await withBusy('Adding the archive timestamp…', async () => {
+        try {
+          return await addDocumentTimestamp(final, { tsaUrl, fetchImpl: isDesktop ? nativeFetch : undefined });
+        } catch (e) {
+          store.toast(`Signed, but the archive timestamp could not be added: ${e instanceof Error ? e.message : String(e)}`, 'info');
+          return null;
+        }
+      });
+      if (stamped) final = stamped;
+    }
   }
   await saveDerived(final, '-signed', true);
   await refreshSignatureStatus();
+}
+
+/**
+ * Verify → Add archive timestamp (PAdES B-LTA): validation data, then a
+ * document timestamp over everything. Repeating it before the timestamp
+ * authority's certificate expires keeps the signatures verifiable.
+ */
+export async function addArchiveTimestamp(tsaUrl: string): Promise<void> {
+  const store = usePDFStore.getState();
+  const bytes = primarySourceBytes();
+  if (!bytes || !store.signatureStatus.length) return;
+  if (store.dirty) {
+    store.toast('Save or undo the changes first: the timestamp is added to the signed file as it is.', 'info');
+    return;
+  }
+  const res = await withBusy('Adding the archive timestamp…', async () => {
+    const opts = { trustedRoots: await trustedRoots(), httpGet: isDesktop ? httpGet : undefined, httpPost: isDesktop ? httpPost : undefined };
+    const ltv = await addValidationData(bytes, opts);
+    return { ...ltv, bytes: await addDocumentTimestamp(ltv.bytes, { tsaUrl, fetchImpl: isDesktop ? nativeFetch : undefined }) };
+  });
+  if (!res) return;
+  await saveDerived(res.bytes, '-lta', true);
+  await refreshSignatureStatus();
+  await verifyCurrentSignatures(false);
+  usePDFStore.getState().toast(res.complete ? 'Archive timestamp added (PAdES B-LTA).' : `Archive timestamp added, but the validation data is incomplete: ${res.notes.join(' ')}`, res.complete ? 'success' : 'info');
 }
 
 /** Verify → Add long-term validation: stores the validation data in an already signed PDF (the signatures stay valid). */
@@ -243,6 +295,88 @@ export async function signWithToken(
   await signWith({ signer }, { name: info.name, issuer: cnOf(info.issuer) }, placement, meta, inkSrc, consumeId);
 }
 
+/** Signs with a certificate of the Windows certificate store (Windows asks for the PIN). */
+export async function signWithStoreCert(cert: StoreCertificate, placement: SignPlacement, meta: SignMeta, inkSrc: string | null, consumeId: string | null = null): Promise<void> {
+  const info = identityFromCertificateDer(base64ToBytes(cert.derBase64));
+  if (info.keyAlgorithm !== 'rsa' && info.keyAlgorithm !== 'ecdsa') throw new Error('The certificate uses an unsupported key type.');
+  const signer: ExternalSigner = {
+    certificate: info.certificate,
+    chain: await issuerChain(info.certificate),
+    keyAlgorithm: info.keyAlgorithm,
+    sign: (data) => winstoreSign(cert.thumbprint, data),
+  };
+  await signWith({ signer }, { name: info.name, issuer: cnOf(info.issuer) }, placement, meta, inkSrc, consumeId);
+}
+
+/** Intermediate certificates from the Windows CA store, so verifiers can build the chain. */
+async function issuerChain(leaf: forge.pki.Certificate): Promise<forge.pki.Certificate[]> {
+  const certs = await systemCertificates();
+  const pool: forge.pki.Certificate[] = [];
+  for (const b64 of certs.intermediates) {
+    try {
+      pool.push(identityFromCertificateDer(base64ToBytes(b64)).certificate);
+    } catch {
+      /* skip */
+    }
+  }
+  const issued = (issuer: forge.pki.Certificate, cert: forge.pki.Certificate) => {
+    try {
+      return issuer.verify(cert);
+    } catch {
+      return false; // e.g. an ECDSA issuer, which forge cannot check
+    }
+  };
+  const chain: forge.pki.Certificate[] = [];
+  for (let cur = leaf; chain.length < 5; ) {
+    const next = pool.find((c) => !chain.includes(c) && c.subject.hash === cur.issuer.hash && issued(c, cur));
+    if (!next || next.subject.hash === next.issuer.hash) break;
+    chain.push(next);
+    cur = next;
+  }
+  return chain;
+}
+
+// ---------------------------------------------------------------- EU Trusted Lists
+
+const TL_FILE = 'eu-trusted-lists.json';
+let tlCache: TrustedListCache | null = null;
+let tlIndex: ReturnType<typeof trustIndex> | null = null;
+
+/** The downloaded EU Trusted Lists (null until downloaded once). */
+export async function euTrustedLists(): Promise<TrustedListCache | null> {
+  if (tlCache) return tlCache;
+  try {
+    const raw = await appDataRead(TL_FILE);
+    tlCache = raw.length ? (JSON.parse(new TextDecoder().decode(raw)) as TrustedListCache) : null;
+  } catch {
+    tlCache = null; // missing or damaged: download again
+  }
+  return tlCache;
+}
+
+async function euTrust() {
+  const cache = await euTrustedLists();
+  if (!cache) return undefined;
+  tlIndex ??= trustIndex(cache);
+  return tlIndex;
+}
+
+/** Downloads the EU list of trusted lists and every national list, and keeps them for offline use. */
+export async function updateEuTrustedLists(): Promise<TrustedListCache | null> {
+  const store = usePDFStore.getState();
+  const res = await withBusy('Downloading the EU Trusted Lists…', (progress) =>
+    downloadTrustedLists(httpGet, (done, total) => progress(`Downloading the EU Trusted Lists (${done} / ${total})…`, total ? done / total : null)),
+  );
+  if (!res) return null;
+  await appDataWrite(TL_FILE, new TextEncoder().encode(JSON.stringify(res)));
+  tlCache = res;
+  tlIndex = null;
+  const failed = res.lists.filter((l) => l.error).map((l) => l.territory);
+  const summary = `EU Trusted Lists updated: ${res.services.length} qualified services from ${res.lists.length - failed.length} countries.`;
+  store.toast(failed.length ? `${summary} Not available: ${failed.join(', ')}.` : summary, 'success');
+  return res;
+}
+
 function cnOf(dn: string): string {
   const m = /CN=([^,/]+)/.exec(dn);
   return m ? m[1].trim() : dn;
@@ -272,6 +406,7 @@ export async function verifyCurrentSignatures(checkRevocation: boolean): Promise
   const result = await withBusy('Verifying signatures…', async () =>
     verifyPdfSignatures(bytes, {
       trustedRoots: await trustedRoots(),
+      euTrust: await euTrust(),
       checkRevocation,
       httpGet: isDesktop ? httpGet : undefined,
       httpPost: isDesktop ? httpPost : undefined,

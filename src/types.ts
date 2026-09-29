@@ -409,4 +409,12 @@ export interface SignatureValidation {
   laterChanges?: { ltv: boolean; signatures: boolean; form: boolean; other: boolean } | null;
   /** e.g. "RSA-2048 / SHA-256". */
   algorithm?: string;
+  /** A document timestamp (ETSI.RFC3161), not a person's signature. */
+  documentTimestamp?: boolean;
+  /** PAdES baseline level (EU eIDAS) reached by this signature. */
+  padesLevel?: 'B-B' | 'B-T' | 'B-LT' | 'B-LTA' | null;
+  /** EU qualified certificate (QcCompliance); 'qscd': key on a qualified signature creation device. */
+  qualified?: 'qc' | 'qscd' | null;
+  /** The signer (or timestamp) certificate chains to an EU Trusted List service. */
+  euTrusted?: string | null;
 }

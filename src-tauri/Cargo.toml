@@ -36,3 +36,4 @@ strip = true
 
 [target."cfg(windows)".dependencies]
 schannel = "0.1.29"
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Security", "Win32_Security_Cryptography"] }

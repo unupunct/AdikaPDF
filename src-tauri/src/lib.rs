@@ -10,6 +10,8 @@ mod print_watcher;
 mod net;
 mod pkcs11;
 mod recovery;
+mod appdata;
+mod certstore;
 
 use percent_encoding::percent_decode_str;
 use std::path::PathBuf;
@@ -133,6 +135,10 @@ pub fn run() {
             recovery::recovery_read,
             recovery::recovery_list,
             recovery::recovery_remove,
+            appdata::appdata_write,
+            appdata::appdata_read,
+            certstore::winstore_list,
+            certstore::winstore_sign,
             convert::converter_availability,
             convert::office_to_pdf,
             convert::html_to_pdf,

@@ -116,6 +116,8 @@ interface SignOptionsBase {
    * 1 none, 2 filling in forms and signing, 3 also comments.
    */
   certify?: 1 | 2 | 3;
+  /** PAdES baseline (EU eIDAS): ETSI.CAdES.detached without the signing-time attribute. */
+  pades?: boolean;
 }
 
 /** Sign either with a software identity (.p12 / self-signed) or an external signer (token). */
@@ -129,6 +131,13 @@ export interface VerifyOptions {
   checkRevocation?: boolean;
   httpPost?: (url: string, contentType: string, body: Uint8Array) => Promise<Uint8Array>;
   httpGet?: (url: string) => Promise<Uint8Array>;
+  /** EU Trusted List services (qualified CAs and timestamp authorities) as extra trust anchors. */
+  euTrust?: EuTrustIndex;
+}
+
+/** Trusted-list certificates by subject Name (hex of its DER). */
+export interface EuTrustIndex {
+  find(subjectHex: string, kind: 'ca' | 'tsa'): Array<{ der: Uint8Array; label: string }>;
 }
 
 /** Fields added to SignatureValidation for the verify tool (optional in types.ts). */
@@ -943,7 +952,10 @@ function tstInfoOf(token: Uint8Array): { b: Uint8Array; kids: Tlv[] } {
 }
 
 async function fetchTimestampToken(url: string, signatureValue: Uint8Array, fetchImpl: typeof fetch): Promise<Uint8Array> {
-  const imprint = digest(OID.sha256, signatureValue);
+  return fetchTimestampForImprint(url, digest(OID.sha256, signatureValue), fetchImpl);
+}
+
+async function fetchTimestampForImprint(url: string, imprint: Uint8Array, fetchImpl: typeof fetch): Promise<Uint8Array> {
   const nonce = binaryToBytes(forge.random.getBytesSync(8));
   nonce[0] = (nonce[0] & 0x7f) | 0x01;
   const body = buildTimeStampRequest(imprint, nonce);
@@ -1011,7 +1023,7 @@ function attribute(oid: string, value: Uint8Array): Uint8Array {
   return der(0x30, derOid(oid), der(0x31, value));
 }
 
-async function buildCms(signer: ExternalSigner, contentDigest: Uint8Array, signingTime: Date): Promise<Uint8Array> {
+async function buildCms(signer: ExternalSigner, contentDigest: Uint8Array, signingTime: Date, pades = false): Promise<Uint8Array> {
   const leaf = metaOf(signer.certificate);
   if (leaf.keyAlgorithm !== signer.keyAlgorithm) {
     throw new Error(`Signer key type (${signer.keyAlgorithm}) does not match its certificate (${leaf.keyAlgorithm}).`);
@@ -1019,9 +1031,10 @@ async function buildCms(signer: ExternalSigner, contentDigest: Uint8Array, signi
   const issuerSerial = der(0x30, der(0x30, der(0xa4, leaf.issuerDer)), der(0x02, leaf.serial));
   const signingCertV2 = der(0x30, der(0x30, der(0x30, der(0x04, digest(OID.sha256, leaf.der)), issuerSerial)));
   // DER SET OF must be sorted by encoding.
+  // PAdES forbids the signing-time attribute: the claimed time is the dictionary's /M.
   const attrs = [
     attribute(OID.contentType, derOid(OID.data)),
-    attribute(OID.signingTime, derTime(signingTime)),
+    ...(pades ? [] : [attribute(OID.signingTime, derTime(signingTime))]),
     attribute(OID.messageDigest, der(0x04, contentDigest)),
     attribute(OID.signingCertV2, signingCertV2),
   ].sort(compareBytes);
@@ -1188,7 +1201,7 @@ async function addSignatureObjects(doc: PDFDocument, opts: SignOptions, displayN
   const signingTime = opts.signingTime ?? new Date();
 
   // --- signature value dictionary with placeholders
-  const sigDict = ctx.obj({ Type: 'Sig', Filter: 'Adobe.PPKLite', SubFilter: 'adbe.pkcs7.detached' }) as PDFDict;
+  const sigDict = ctx.obj({ Type: 'Sig', Filter: 'Adobe.PPKLite', SubFilter: opts.pades ? 'ETSI.CAdES.detached' : 'adbe.pkcs7.detached' }) as PDFDict;
   const ph = PDFName.of(BYTE_RANGE_PLACEHOLDER);
   sigDict.set(PDFName.of('ByteRange'), ctx.obj([PDFNumber.of(0), ph, ph, ph]));
   sigDict.set(PDFName.of('Contents'), PDFHexString.of('0'.repeat(placeholderBytes * 2)));
@@ -1260,16 +1273,8 @@ async function addSignatureObjects(doc: PDFDocument, opts: SignOptions, displayN
   acro.set(PDFName.of('SigFlags'), PDFNumber.of(3)); // SignaturesExist | AppendOnly
 }
 
-/** Finds the placeholders in the written file, fills /ByteRange and the CMS signature. */
-async function fillSignature(
-  bytes: Uint8Array,
-  searchFrom: number,
-  opts: SignOptions,
-  signer: ExternalSigner,
-  placeholderBytes: number,
-  signingTime: Date,
-): Promise<SignResult> {
-  // --- locate placeholders
+/** Finds the /Contents and /ByteRange placeholders in the written file and fills /ByteRange. */
+function fillByteRange(bytes: Uint8Array, searchFrom: number, placeholderBytes: number): { contentsStart: number; contentsEnd: number } {
   const hexPh = asciiBytes('<' + '0'.repeat(placeholderBytes * 2) + '>');
   let contentsStart = -1;
   for (let from = searchFrom; ; ) {
@@ -1294,10 +1299,21 @@ async function fillSignature(
   const brLen = brClose - brOpen; // characters before ']'
   if (brText.length > brLen) throw new Error('Internal error: /ByteRange placeholder too small.');
   bytes.set(asciiBytes(brText.padEnd(brLen, ' ')), brOpen);
+  return { contentsStart, contentsEnd };
+}
 
-  // --- CMS over the two ranges
+/** Finds the placeholders in the written file, fills /ByteRange and the CMS signature. */
+async function fillSignature(
+  bytes: Uint8Array,
+  searchFrom: number,
+  opts: SignOptions,
+  signer: ExternalSigner,
+  placeholderBytes: number,
+  signingTime: Date,
+): Promise<SignResult> {
+  const { contentsStart, contentsEnd } = fillByteRange(bytes, searchFrom, placeholderBytes);
   const contentDigest = digest(OID.sha256, bytes.subarray(0, contentsStart), bytes.subarray(contentsEnd));
-  let cms = await buildCms(signer, contentDigest, signingTime);
+  let cms = await buildCms(signer, contentDigest, signingTime, !!opts.pades);
   if (opts.tsaUrl) {
     const fetchImpl = opts.fetchImpl ?? globalThis.fetch?.bind(globalThis);
     if (!fetchImpl) throw new Error('No fetch implementation available for the timestamp request.');
@@ -1308,6 +1324,83 @@ async function fillSignature(
   if (cms.length > placeholderBytes) return { ok: false, needed: cms.length };
   bytes.set(asciiBytes(bytesToHex(cms).padEnd(placeholderBytes * 2, '0')), contentsStart + 1);
   return { ok: true, bytes };
+}
+
+/**
+ * Document timestamp (PAdES B-LTA, ETSI.RFC3161): a timestamp over the whole
+ * file so far, added as an incremental update. Added after the validation
+ * data, it protects signatures and validation data against the later
+ * weakening of their algorithms; repeating it every few years extends that.
+ */
+export async function addDocumentTimestamp(pdfBytes: Uint8Array, opts: { tsaUrl: string; fetchImpl?: typeof fetch; fieldName?: string }): Promise<Uint8Array> {
+  const fetchImpl = opts.fetchImpl ?? globalThis.fetch?.bind(globalThis);
+  if (!fetchImpl) throw new Error('No fetch implementation available for the timestamp request.');
+  let size = 12288;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const { incrementalUpdate } = await import('@/lib/pdf/incremental');
+    const res = await incrementalUpdate(pdfBytes, (doc) => {
+      const ctx = doc.context;
+      const { topNames } = collectFields(doc);
+      const ph = PDFName.of(BYTE_RANGE_PLACEHOLDER);
+      const v = ctx.obj({ Type: 'DocTimeStamp', Filter: 'Adobe.PPKLite', SubFilter: 'ETSI.RFC3161' }) as PDFDict;
+      v.set(PDFName.of('ByteRange'), ctx.obj([PDFNumber.of(0), ph, ph, ph]));
+      v.set(PDFName.of('Contents'), PDFHexString.of('0'.repeat(size * 2)));
+      const page = doc.getPages()[0];
+      const widget = ctx.obj({ Type: 'Annot', Subtype: 'Widget', FT: 'Sig', Rect: [0, 0, 0, 0], F: 132, P: page.ref }) as PDFDict;
+      widget.set(PDFName.of('T'), pdfText(uniqueFieldName(opts.fieldName ?? 'DocTimeStamp1', topNames)));
+      widget.set(PDFName.of('V'), ctx.register(v));
+      const widgetRef = ctx.register(widget);
+      const annots = page.node.lookup(PDFName.of('Annots'));
+      if (annots instanceof PDFArray) annots.push(widgetRef);
+      else page.node.set(PDFName.of('Annots'), ctx.obj([widgetRef]));
+      let acro = doc.catalog.lookupMaybe(PDFName.of('AcroForm'), PDFDict);
+      if (!acro) {
+        acro = ctx.obj({}) as PDFDict;
+        doc.catalog.set(PDFName.of('AcroForm'), ctx.register(acro));
+      }
+      const fields = acro.lookupMaybe(PDFName.of('Fields'), PDFArray);
+      if (fields) fields.push(widgetRef);
+      else acro.set(PDFName.of('Fields'), ctx.obj([widgetRef]));
+      acro.set(PDFName.of('SigFlags'), PDFNumber.of(3));
+    });
+    const bytes = res.bytes;
+    const { contentsStart, contentsEnd } = fillByteRange(bytes, res.start, size);
+    const imprint = digest(OID.sha256, bytes.subarray(0, contentsStart), bytes.subarray(contentsEnd));
+    const token = await fetchTimestampForImprint(opts.tsaUrl, imprint, fetchImpl);
+    if (token.length > size) {
+      size = Math.ceil((token.length + 2048) / 1024) * 1024;
+      continue;
+    }
+    bytes.set(asciiBytes(bytesToHex(token).padEnd(size * 2, '0')), contentsStart + 1);
+    return bytes;
+  }
+  throw new Error('The timestamp does not fit into the reserved space.');
+}
+
+/** Checks a document timestamp: the token's imprint must match the signed byte ranges. */
+async function verifyDocTimestamp(token: Uint8Array, ranges: Uint8Array[]): Promise<CmsInfo & { genTime: Date | null }> {
+  const tst = tstInfoOf(token);
+  const mi = kids(tst.b, tst.kids[2]);
+  const miAlg = oidOf(tst.b, kids(tst.b, mi[0])[0]);
+  // The TSA signs the TSTInfo; the TSTInfo holds the digest of the document.
+  const info = await verifyCms(token, [tst.b]);
+  const genTime = timeOf(tst.b, tst.kids[4]);
+  if (!createMd(miAlg)) {
+    info.integrity = 'unknown';
+    info.problems.push(`Unsupported digest algorithm ${miAlg}.`);
+  } else if (!bytesEqual(content(tst.b, mi[1]), digest(miAlg, ...ranges))) {
+    info.integrity = 'invalid';
+    info.problems.push('The document was modified after the timestamp (digest mismatch).');
+  }
+  return { ...info, genTime };
+}
+
+/** PAdES baseline level (ETSI EN 319 142-1) reached by a signature, or null. */
+function padesLevel(subFilter: string, info: CmsInfo, ltv: boolean, laterDocTimestamp: boolean): SignatureValidation['padesLevel'] {
+  if (subFilter !== 'ETSI.CAdES.detached' || !info.signingCertV2 || info.signingTime) return null;
+  if (!info.hasTimestamp) return 'B-B';
+  if (!ltv) return 'B-T';
+  return laterDocTimestamp ? 'B-LTA' : 'B-LT';
 }
 
 // ---------------------------------------------------------------------------
@@ -1579,6 +1672,10 @@ interface CmsInfo {
   timestampTime: Date | null;
   hasTimestamp: boolean;
   digestOid: string | null;
+  /** Signature timestamp tokens (unsigned attributes). */
+  tokens: Uint8Array[];
+  /** ESS signing-certificate-v2 is signed (required by PAdES / CAdES). */
+  signingCertV2: boolean;
 }
 
 /** Verify a detached CMS/PKCS#7 blob against the signed data. */
@@ -1592,6 +1689,8 @@ async function verifyCms(d: Uint8Array, signedData: Uint8Array[]): Promise<CmsIn
     timestampTime: null,
     hasTimestamp: false,
     digestOid: null,
+    tokens: [],
+    signingCertV2: false,
   };
   const ci = kids(d, readTlv(d, 0));
   if (oidOf(d, ci[0]) !== OID.signedData) {
@@ -1652,6 +1751,7 @@ async function verifyCms(d: Uint8Array, signedData: Uint8Array[]): Promise<CmsIn
       if (oidOf(d, oid) !== OID.timeStampToken) continue;
       info.hasTimestamp = true;
       try {
+        info.tokens.push(raw(d, kids(d, values)[0]).slice());
         const tst = tstInfoOf(raw(d, kids(d, values)[0]).slice());
         info.timestampTime = timeOf(tst.b, tst.kids[4]);
         const mi = kids(tst.b, tst.kids[2]);
@@ -1680,6 +1780,7 @@ async function verifyCms(d: Uint8Array, signedData: Uint8Array[]): Promise<CmsIn
       const first = kids(d, values)[0];
       if (type === OID.messageDigest) messageDigest = octets(d, first);
       else if (type === OID.signingTime) info.signingTime = timeOf(d, first);
+      else if (type === OID.signingCertV2) info.signingCertV2 = true;
     }
     if (!messageDigest || !bytesEqual(messageDigest, contentDigest)) {
       info.integrity = 'invalid';
@@ -1715,6 +1816,7 @@ export async function verifyPdfSignatures(pdfBytes: Uint8Array, opts: VerifyOpti
   const { sigFields } = collectFields(doc);
   const results: ExtendedValidation[] = [];
   const dss = readDss(doc);
+  const signedEnds: Array<{ r: ExtendedValidation; end: number; doc: boolean; subFilter?: string; info?: CmsInfo }> = [];
 
   for (const f of sigFields) {
     if (!f.sig) continue;
@@ -1764,16 +1866,24 @@ export async function verifyPdfSignatures(pdfBytes: Uint8Array, opts: VerifyOpti
       r.coversWholeFile = a === 0 && c + d === pdfBytes.length;
       r.modifiedAfterSigning = !r.coversWholeFile;
 
-      if (subFilter && !/^(adbe\.pkcs7\.detached|ETSI\.CAdES\.detached|adbe\.pkcs7\.sha1)$/.test(subFilter)) {
+      if (subFilter && !/^(adbe\.pkcs7\.detached|ETSI\.CAdES\.detached|adbe\.pkcs7\.sha1|ETSI\.RFC3161)$/.test(subFilter)) {
         r.message = `Unsupported signature format /${subFilter}.`;
         continue;
       }
       let blob = contents.asBytes();
       blob = blob.subarray(0, readTlv(blob, 0).end); // strip zero padding after the DER
-      const info = await verifyCms(blob, [pdfBytes.subarray(a, a + b), pdfBytes.subarray(c, c + d)]);
+      const ranges = [pdfBytes.subarray(a, a + b), pdfBytes.subarray(c, c + d)];
+      const docTs = subFilter === 'ETSI.RFC3161' ? await verifyDocTimestamp(blob, ranges) : null;
+      const info = docTs ?? (await verifyCms(blob, ranges));
+      if (docTs) {
+        r.documentTimestamp = true;
+        r.hasTimestamp = true;
+        r.signedAt = docTs.genTime?.toISOString() ?? r.signedAt;
+        signedEnds.push({ r, end: c + d, doc: true });
+      } else signedEnds.push({ r, end: c + d, doc: false, subFilter, info });
       r.integrity = info.integrity;
-      r.hasTimestamp = info.hasTimestamp;
-      const when = info.timestampTime ?? info.signingTime;
+      r.hasTimestamp = r.hasTimestamp || info.hasTimestamp;
+      const when = docTs?.genTime ?? info.timestampTime ?? info.signingTime;
       if (when) r.signedAt = when.toISOString();
       const notes = [...info.problems];
 
@@ -1790,6 +1900,17 @@ export async function verifyPdfSignatures(pdfBytes: Uint8Array, opts: VerifyOpti
         const chain = await buildChain(info.cert, [...info.certs, ...(dss?.certs ?? [])], opts.trustedRoots ?? [], when ?? new Date());
         r.chainStatus = chain.status;
         r.chainDetails = chain.details;
+        const qc = qcStatementsOf(info.cert);
+        r.qualified = qc.compliance ? (qc.qscd ? 'qscd' : 'qc') : null;
+        if (opts.euTrust) {
+          const pool = [...info.certs, ...(dss?.certs ?? [])];
+          const eu = await euTrustOf(info.cert, pool, docTs ? 'tsa' : 'ca', when ?? new Date(), opts.euTrust);
+          r.euTrusted = eu;
+          if (eu && r.chainStatus !== 'trusted' && r.chainStatus !== 'expired') {
+            r.chainStatus = 'trusted';
+            r.chainDetails = [...(r.chainDetails ?? []), `Trusted through the EU Trusted List (${eu}).`];
+          }
+        }
         // Validation data saved in the file answers first (works offline, years later).
         const issuer = chain.chain[1] ?? (r.selfSigned ? info.cert : null);
         const saved = dss && !r.selfSigned ? await revocationFromDss(info.cert, issuer, dss) : null;
@@ -1833,7 +1954,66 @@ export async function verifyPdfSignatures(pdfBytes: Uint8Array, opts: VerifyOpti
       r.message = `Signature could not be parsed: ${e instanceof Error ? e.message : String(e)}`;
     }
   }
+  // PAdES level: B-LTA needs a valid document timestamp after the signature.
+  for (const s of signedEnds) {
+    if (s.doc || !s.info || s.r.integrity !== 'valid') continue;
+    const later = signedEnds.some((o) => o.doc && o.end > s.end && o.r.integrity === 'valid');
+    s.r.padesLevel = padesLevel(s.subFilter ?? '', s.info, !!s.r.ltv, later);
+    if (s.r.padesLevel) s.r.message += ` PAdES baseline ${s.r.padesLevel}.`;
+  }
   return results;
+}
+
+/** The EU Trusted List service the certificate chains to, or null. */
+async function euTrustOf(cert: forge.pki.Certificate, pool: forge.pki.Certificate[], kind: 'ca' | 'tsa', at: Date, index: EuTrustIndex): Promise<string | null> {
+  const hex = (b: Uint8Array) => bytesToHex(b).toLowerCase();
+  const m = metaOf(cert);
+  // A timestamp authority is often listed with its own certificate.
+  const own = index.find(hex(m.subjectDer), kind).find((s) => bytesEqual(s.der, m.der));
+  if (own) return own.label;
+  const anchors: forge.pki.Certificate[] = [];
+  const labels = new Map<string, string>();
+  const seen = new Set<string>();
+  for (const c of [cert, ...pool]) {
+    const issuer = hex(metaOf(c).issuerDer);
+    if (seen.has(issuer)) continue;
+    seen.add(issuer);
+    for (const s of index.find(issuer, kind)) {
+      try {
+        const a = parseCertificate(s.der);
+        anchors.push(a);
+        labels.set(hex(s.der), s.label);
+      } catch {
+        /* unparsable service certificate */
+      }
+    }
+  }
+  if (!anchors.length) return null;
+  const chain = await buildChain(cert, pool, anchors, at);
+  if (chain.status !== 'trusted') return null;
+  // The chain may hold the copy embedded in the signature: match by DER.
+  for (const c of chain.chain) {
+    const label = labels.get(hex(metaOf(c).der));
+    if (label) return label;
+  }
+  return null;
+}
+
+/** ETSI EN 319 412-5 QcStatements: EU qualified certificate, key in a qualified device (QSCD). */
+export function qcStatementsOf(cert: forge.pki.Certificate): { compliance: boolean; qscd: boolean } {
+  const out = { compliance: false, qscd: false };
+  const v = metaOf(cert).extensions.get('1.3.6.1.5.5.7.1.3');
+  if (!v) return out;
+  try {
+    for (const st of kids(v, readTlv(v, 0))) {
+      const id = oidOf(v, kids(v, st)[0]);
+      if (id === '0.4.0.1862.1.1') out.compliance = true;
+      else if (id === '0.4.0.1862.1.4') out.qscd = true;
+    }
+  } catch {
+    /* malformed extension: not qualified */
+  }
+  return out;
 }
 
 // ---------------------------------------------------------------------------
@@ -1916,6 +2096,12 @@ export async function classifyLaterChanges(signedRevision: Uint8Array, full: Uin
     const d = v instanceof PDFRef ? b.context.lookup(v) : v;
     return d instanceof PDFDict && d.lookup(PDFName.of('FT')) === PDFName.of('Sig');
   };
+  // A document timestamp (PAdES B-LTA) is allowed even on "no changes" certified documents.
+  const isDocTimestamp = (v: unknown) => {
+    const d = v instanceof PDFRef ? b.context.lookup(v) : v;
+    const val = d instanceof PDFDict ? d.lookup(PDFName.of('V')) : null;
+    return isSigWidget(d) && val instanceof PDFDict && val.lookup(PDFName.of('Type')) === PDFName.of('DocTimeStamp');
+  };
 
   for (const [ref, obj] of b.context.enumerateIndirectObjects()) {
     const key = ref.toString();
@@ -1942,7 +2128,9 @@ export async function classifyLaterChanges(signedRevision: Uint8Array, full: Uin
       for (const k of keys) {
         if (k === 'Fields') {
           const added = arrayGrew(old.get(PDFName.of('Fields')), obj.get(PDFName.of('Fields')), a, b);
-          if (added && added.length) res.signatures = true;
+          const refs = added && added.length ? (obj.lookup(PDFName.of('Fields')) as PDFArray).asArray().slice(-added.length) : [];
+          if (refs.length && refs.every(isDocTimestamp)) res.ltv = true;
+          else if (added && added.length) res.signatures = true;
           else if (!added) res.other = true;
         } else if (!['SigFlags', 'NeedAppearances', 'DR', 'DA'].includes(k)) res.other = true;
       }
@@ -1956,7 +2144,8 @@ export async function classifyLaterChanges(signedRevision: Uint8Array, full: Uin
         if (!added) res.other = true;
         else if (added.length) {
           const refs = (obj.lookup(PDFName.of('Annots')) as PDFArray).asArray().slice(-added.length);
-          if (refs.every(isSigWidget)) res.signatures = true;
+          if (refs.every(isDocTimestamp)) res.ltv = true;
+          else if (refs.every(isSigWidget)) res.signatures = true;
           else res.other = true;
         }
       }
@@ -2072,8 +2261,15 @@ export async function addValidationData(pdfBytes: Uint8Array, opts: LtvOptions):
       complete = false;
       continue;
     }
-    const chain = await buildChain(info.cert, [...info.certs, ...(existing?.certs ?? [])], opts.trustedRoots ?? [], new Date());
     const entry = { key: hexOf(digest(OID.sha1, full)), certs: [] as string[], ocsps: [] as number[], crls: [] as number[] };
+    // The signer, and the timestamp authorities of its timestamps (PAdES B-LT).
+    const subjects: Array<{ cert: forge.pki.Certificate; pool: forge.pki.Certificate[]; tsa: boolean }> = [{ cert: info.cert, pool: info.certs, tsa: false }];
+    for (const t of info.tokens) {
+      const ti = await verifyCms(t, []);
+      if (ti.cert) subjects.push({ cert: ti.cert, pool: ti.certs, tsa: true });
+    }
+    for (const subject of subjects) {
+    const chain = await buildChain(subject.cert, [...subject.pool, ...(existing?.certs ?? [])], opts.trustedRoots ?? [], new Date());
     for (const c of chain.chain) {
       const d = metaOf(c).der;
       certs.set(hexOf(d), d);
@@ -2083,7 +2279,7 @@ export async function addValidationData(pdfBytes: Uint8Array, opts: LtvOptions):
     for (let i = 0; i < chain.chain.length; i++) {
       const cert = chain.chain[i];
       if (isSelfIssued(cert)) {
-        if (i === 0) {
+        if (i === 0 && !subject.tsa) {
           notes.push(`${f.fullName}: the certificate is self-signed; it has no revocation service, so only the certificate itself is stored.`);
           complete = false;
         }
@@ -2132,6 +2328,7 @@ export async function addValidationData(pdfBytes: Uint8Array, opts: LtvOptions):
         complete = false;
       }
     }
+    }
     vri.push(entry);
   }
   if (!vri.length) throw new Error('This PDF has no digital signatures.');
@@ -2168,7 +2365,8 @@ export async function addValidationData(pdfBytes: Uint8Array, opts: LtvOptions):
 
 function summarise(r: ExtendedValidation, notes: string[]): string {
   const parts: string[] = [];
-  if (r.integrity === 'valid') parts.push(`Signed by ${r.signerName}. The signed content has not been modified.`);
+  if (r.documentTimestamp && r.integrity === 'valid') parts.push(`Document timestamp by ${r.signerName}. The document has not been modified since.`);
+  else if (r.integrity === 'valid') parts.push(`Signed by ${r.signerName}. The signed content has not been modified.`);
   else if (r.integrity === 'invalid') parts.push('INVALID signature.');
   else parts.push('Signature validity could not be determined.');
   parts.push(...notes);
@@ -2192,7 +2390,12 @@ function summarise(r: ExtendedValidation, notes: string[]): string {
   }
   if (r.revocationStatus === 'revoked') parts.push('The signer certificate has been REVOKED.');
   else if (r.revocationStatus === 'good') parts.push('The signer certificate is not revoked.');
-  if (r.hasTimestamp) parts.push('Includes an RFC 3161 timestamp (the timestamp authority itself is not validated).');
+  if (r.hasTimestamp && !r.documentTimestamp) parts.push('Includes an RFC 3161 timestamp.');
+  if (r.euTrusted && r.documentTimestamp) parts.push(`Qualified timestamp authority on the EU Trusted List (${r.euTrusted}).`);
+  else if (r.euTrusted && r.qualified === 'qscd') parts.push(`Qualified electronic signature: EU qualified certificate, key on a qualified device, issuer on the EU Trusted List (${r.euTrusted}).`);
+  else if (r.euTrusted && r.qualified === 'qc') parts.push(`Advanced electronic signature with an EU qualified certificate; issuer on the EU Trusted List (${r.euTrusted}).`);
+  else if (r.euTrusted) parts.push(`The issuer is a qualified trust service on the EU Trusted List (${r.euTrusted}).`);
+  else if (r.qualified) parts.push('The certificate declares itself EU qualified, but its issuer was not confirmed on the EU Trusted List.');
   if (r.certified) parts.push(['', 'Certified: no changes are allowed.', 'Certified: filling in forms and signing are allowed.', 'Certified: filling in forms, signing and comments are allowed.'][r.certified]);
   if (r.ltv) parts.push('Long-term validation: the validation data of the whole chain is saved in the file.');
   return parts.join(' ');

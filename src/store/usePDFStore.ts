@@ -52,6 +52,7 @@ export type ModalId =
   | 'signature'
   | 'certificate'
   | 'token'
+  | 'winstore'
   | 'organizer'
   | 'password'
   | 'compress'
