@@ -16,6 +16,7 @@ import {
   Copy,
   Eraser,
   FileArchive,
+  FileStack,
   FileCheck2,
   FileCode2,
   FileImage,
@@ -37,6 +38,8 @@ import {
   RotateCcw,
   RotateCw,
   ScanLine,
+  ScanSearch,
+  Wand2,
   ScanText,
   Scissors,
   ShieldCheck,
@@ -115,7 +118,7 @@ export function Ribbon() {
           </button>
         ))}
       </div>
-      <div className={cn('flex h-[84px] items-stretch gap-0 overflow-x-auto border-t border-app px-1.5 py-1.5', !hasDoc && tab !== 'home' && tab !== 'convert' && tab !== 'view' && 'opacity-60')}>
+      <div data-testid="ribbon" className={cn('flex h-[84px] items-stretch gap-0 overflow-x-auto border-t border-app px-1.5 py-1.5', !hasDoc && tab !== 'home' && tab !== 'convert' && tab !== 'view' && 'opacity-60')}>
         {tab === 'home' && <HomeTab />}
         {tab === 'view' && <ViewTab />}
         {tab === 'comment' && <CommentTab />}
@@ -398,6 +401,9 @@ function FormsTab() {
   const { hasDoc, s } = useDoc();
   return (
     <>
+      <Group label="Detect">
+        <Big icon={<Wand2 size={I} />} label="Detect fields" disabled={!hasDoc} onClick={() => void import('@/actions/formDetect').then((m) => m.detectFormFields())} tip="Make a flat or scanned form fillable: finds fill-in lines, empty boxes and checkboxes, named after their labels" testId="btn-detect-fields" />
+      </Group>
       <Group label="Add fields">
         <ToolBtn tool="field-text" icon={<TextCursorInput size={I} />} label="Text field" />
         <ToolBtn tool="field-checkbox" icon={<CheckSquare size={I} />} label="Checkbox" />
@@ -423,6 +429,7 @@ function SecurityTab() {
     <>
       <Group label="Redaction">
         <ToolBtn tool="redact" icon={<Eraser size={I} />} label="Mark redaction" tip="Draw boxes over content to remove permanently" />
+        <Big icon={<ScanSearch size={I} />} label="Find & redact" disabled={!hasDoc} onClick={() => s.openModal('find-redact')} tip="Mark every e-mail, phone, IBAN, CNP, card number, date or chosen word" testId="btn-find-redact" />
         <Big
           icon={<ScanLine size={I} />}
           label="Apply & save"
@@ -488,6 +495,9 @@ function ConvertTab() {
         <Big icon={<FileArchive size={I} />} label="Compress" disabled={!hasDoc} onClick={() => s.openModal('compress')} testId="btn-compress" />
         <Big icon={<FileCheck2 size={I} />} label="PDF/A" disabled={!hasDoc} onClick={() => s.openModal('pdfa')} tip="Archival PDF/A-2b" />
         <Big icon={<Stamp size={I} />} label="Flatten" disabled={!hasDoc} onClick={() => void flattenCurrent()} />
+      </Group>
+      <Group label="Many files">
+        <Big icon={<FileStack size={I} />} label="Batch" onClick={() => s.openModal('batch')} tip="OCR, compress, watermark, PDF/A, protect, sanitize or flatten many PDFs at once" testId="btn-batch" />
       </Group>
     </>
   );

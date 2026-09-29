@@ -1,4 +1,5 @@
-import { Info, Moon, PanelLeft, PanelRight, Sun } from 'lucide-react';
+import { Info, Languages, Moon, PanelLeft, PanelRight, Sun } from 'lucide-react';
+import { useLang, type Lang } from '@/lib/i18n';
 import { usePDFStore } from '@/store/usePDFStore';
 import { Button, Tooltip } from '@/components/ui/primitives';
 import { AdikaLogo } from './AdikaLogo';
@@ -44,6 +45,7 @@ export function TopBar() {
             {theme === 'dark' ? <Sun size={17} /> : <Moon size={17} />}
           </Button>
         </Tooltip>
+        <LanguageButton />
         <Tooltip content="About Adika PDF Editor">
           <Button variant="ghost" size="icon" aria-label="About" onClick={() => s.openModal('about')}>
             <Info size={17} />
@@ -51,6 +53,19 @@ export function TopBar() {
         </Tooltip>
       </div>
     </header>
+  );
+}
+
+function LanguageButton() {
+  const lang = useLang((s) => s.lang);
+  const next: Lang = lang === 'ro' ? 'en' : 'ro';
+  return (
+    <Tooltip content={lang === 'ro' ? 'Interface language: Română (switch to English)' : 'Interface language: English (switch to Română)'}>
+      <Button variant="ghost" size="sm" className="h-8 gap-1 px-2 text-[11.5px] font-semibold" aria-label="Language" data-testid="lang-toggle" onClick={() => void useLang.getState().setLang(next)}>
+        <Languages size={15} />
+        <span data-no-translate>{lang.toUpperCase()}</span>
+      </Button>
+    </Tooltip>
   );
 }
 

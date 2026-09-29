@@ -103,7 +103,7 @@ export function ToolsModal() {
                 void mergeFiles(list);
               }}
             >
-              Merge {files.length} files
+              {`Merge ${files.length} files`}
             </Button>
           </>
         ) : undefined
@@ -115,7 +115,7 @@ export function ToolsModal() {
             <div key={`${f.name}-${i}`} className="flex items-center gap-2 rounded-md border border-app px-2 py-1.5 text-[13px]">
               <span className="w-5 text-right text-xs text-muted">{i + 1}</span>
               <FileText size={14} className="text-brand-600" />
-              <span className="min-w-0 flex-1 truncate" data-testid="merge-item">
+              <span className="min-w-0 flex-1 truncate" data-testid="merge-item" data-no-translate>
                 {f.name}
               </span>
               <span className="text-[11px] text-muted">{(f.bytes.length / 1024).toFixed(0)} KB</span>

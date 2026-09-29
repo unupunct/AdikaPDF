@@ -130,6 +130,12 @@ export function useShortcuts(): void {
         s.setSearch({ open: true });
         return;
       }
+      // Find & replace (as in Word).
+      if (mod && !e.shiftKey && key === 'h' && s.pages.length) {
+        e.preventDefault();
+        s.setSearch({ open: true, replace: true });
+        return;
+      }
       if (mod && (key === '=' || key === '+')) {
         e.preventDefault();
         s.setZoom(s.zoom * 1.2);

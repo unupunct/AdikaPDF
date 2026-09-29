@@ -300,7 +300,7 @@ function ScanPanel({ append, imgOpts, setImgOpts, run }: { append: boolean; imgO
               await withBusy('Creating PDF…', async () => deliverPdf(await imagesToPdf(shots, imgOpts), 'Camera scan.pdf', append));
             })}
           >
-            Create PDF from {shots.length || ''} capture{shots.length === 1 ? '' : 's'}
+            {shots.length ? `Create PDF from ${shots.length} capture${shots.length === 1 ? '' : 's'}` : 'Create PDF'}
           </Button>
         </>
       )}

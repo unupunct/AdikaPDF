@@ -19,6 +19,7 @@ import {
   decodePDFRawStream,
   type PDFObject,
 } from 'pdf-lib';
+import { dropUnreachableObjects } from './prune';
 
 export interface CompressOptions {
   /** JPEG quality 0..1 */
@@ -437,6 +438,8 @@ export async function compressPdf(
     }
   }
 
+  // Unused objects (stripped metadata, orphaned pages) cost space and can hold old data.
+  dropUnreachableObjects(doc);
   const out = await doc.save({ useObjectStreams: true, updateFieldAppearances: false });
   if (out.length >= before) {
     return { bytes, before, after: before, imagesRecompressed: 0 };

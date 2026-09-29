@@ -1,6 +1,6 @@
 # Adika PDF Editor
 
-Privacy-first, offline Windows PDF editor (read, comment, edit, sign, organise, protect, OCR, convert). Version 1.5.0. MIT. Repo: https://github.com/unupunct/AdikaPDF (branch `main`).
+Privacy-first, offline Windows PDF editor (read, comment, edit, sign, organise, protect, OCR, convert). Version 1.6.0. MIT. Repo: https://github.com/unupunct/AdikaPDF (branch `main`).
 
 ## Architecture
 - **Tauri 2 desktop app.** Almost all logic runs in the WebView (React 18 + TypeScript + Vite 7 + Tailwind 4, state in zustand, canvas via Konva, rendering via pdf.js, writing via pdf-lib).
@@ -13,6 +13,10 @@ Privacy-first, offline Windows PDF editor (read, comment, edit, sign, organise, 
 - `src/components/`: ribbon, modals, sidebar, viewer, shell, inspector, ui primitives
 - `src/lib/pdf/`: format engines (convert, exportPdf, exportFormats, pdfa, ocr, compress, repair, xps, dxf, epub, email, annotations)
 - PDF -> Word/ODT/RTF/Markdown/Excel/CSV/EPUB share one page-layout analysis: `wordLayout.ts` (pure: paragraphs, alignment, lists, ruled/aligned tables, columns, image placement, running headers/footers), `docx.ts` (reads images/rules/colours from pdf.js via `collectDocxGraphics`, `planDocument`, writes .docx in flowing or exact mode), `docWriters.ts` (ODT, RTF, Markdown, rows, reflow blocks).
+- Text engine `src/lib/pdf/textRemoval.ts`: interprets page content streams (glyphs with Unicode and exact boxes), deletes letters inside areas, writes replacement text in the document's own font and reflows the line. Used by redaction (vector first, raster fallback when images/drawings/forms/unmeasurable fonts are under a box), Find & replace (`actions/findReplace.ts`, rebuilds the source immediately, undoable) and Edit text. `textSearch.ts` finds matches on it; `lib/patterns.ts` has the redaction patterns (IBAN mod 97, CNP, Luhn).
+- Saving drops unreferenced objects (`lib/pdf/prune.ts`): otherwise a redacted page's original stream stays in the file.
+- `lib/formDetect.ts` (Detect fields, on the rendered page), `lib/batch.ts` + `actions/batch.ts` (Batch), `lib/updates.ts` (opt-in GitHub release check; version from package.json via `__APP_VERSION__`).
+- Interface language: `lib/i18n.ts` translates the DOM at runtime from `src/locales/ro.json` + `ro.extra.ts` (English string -> Romanian; `{0}` patterns, plural `{0#one|few|many}`). New UI strings need a Romanian entry: `tests/i18nCoverage.test.ts` fails otherwise and `node scripts/i18n-extract.cjs . out.json` lists them. Mark user/document content with `data-no-translate`. E2E pins English at start.
 - `src/lib/crypto/`: `digitalSignature.ts` (PAdES-style signing and verification), `encrypt.ts` (AES-256)
 - `src/store/`: zustand stores (`usePDFStore.ts` is the main one, `tabs.ts`)
 - `tests/*.test.ts`: vitest unit tests. `tests/manual/`: harness that converts real PDFs to .docx/.odt/.rtf/.md/.csv/.xlsx/.epub for a round-trip check in Word (`W2D_IN=a.pdf;b.pdf W2D_OUT=dir npx vitest run --config tests/manual/vitest.config.ts`). `tests/e2e/`: drives the release exe over the WebView2 debug port (`ADIKA_E2E=1`). `tests/token/`: SoftHSM2 token tests (SoftHSM lives in the git-ignored `.tools/`).

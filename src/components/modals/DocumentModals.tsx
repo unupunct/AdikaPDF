@@ -10,6 +10,44 @@ import { protectDocument } from '@/actions/security';
 import type { PdfPermissions } from '@/lib/crypto/encrypt';
 import { AdikaLogo } from '@/components/shell/AdikaLogo';
 import { logsFolder, openLogsFolder } from '@/lib/log';
+import { APP_VERSION, checkForUpdates, useUpdates } from '@/lib/updates';
+import { openExternal } from '@/lib/platform';
+
+function UpdateInfo() {
+  const { status, latest, error, auto, setAuto } = useUpdates();
+  return (
+    <div className="mt-4 rounded-lg border border-app px-3 py-2 text-[11.5px]" data-testid="update-info">
+      <div className="flex items-center gap-2">
+        <span className="min-w-0 flex-1">
+          <span className="block font-semibold">Updates</span>
+          <span className="block text-muted" data-testid="update-status">
+            {status === 'checking'
+              ? 'Checking GitHub…'
+              : status === 'latest'
+                ? `You have the latest version (${APP_VERSION}).`
+                : status === 'available' && latest
+                  ? `Version ${latest.version} is available.`
+                  : status === 'error'
+                    ? `Could not check: ${error}`
+                    : 'Asks GitHub for the latest version; nothing else is sent.'}
+          </span>
+        </span>
+        {status === 'available' && latest ? (
+          <Button size="sm" variant="primary" onClick={() => void openExternal(latest.url)} data-testid="update-download">
+            Download
+          </Button>
+        ) : (
+          <Button size="sm" disabled={status === 'checking'} onClick={() => void checkForUpdates()} data-testid="update-check">
+            Check for updates
+          </Button>
+        )}
+      </div>
+      <div className="mt-1.5">
+        <Checkbox checked={auto} onChange={setAuto} label="Check automatically once a week" />
+      </div>
+    </div>
+  );
+}
 
 function LogsInfo() {
   const [path, setPath] = useState<string | null>(null);
@@ -629,7 +667,7 @@ export function AboutModal() {
   return (
     <Dialog open={open} onOpenChange={(o) => !o && close()} title="About" width={520} footer={<Button variant="primary" onClick={close}>Close</Button>}>
       <AdikaLogo className="mx-auto mb-3 h-14" />
-      <p className="mb-4 text-center text-xs text-muted">Version 1.1.0 · Privacy-first, offline PDF editor · MIT licence</p>
+      <p className="mb-4 text-center text-xs text-muted">Version {APP_VERSION} · Privacy-first, offline PDF editor · MIT licence</p>
       <table className="w-full text-xs">
         <tbody>
           {shortcuts.map(([k, v]) => (
@@ -640,6 +678,7 @@ export function AboutModal() {
           ))}
         </tbody>
       </table>
+      <UpdateInfo />
       <LogsInfo />
       <p className="mt-4 text-[11px] text-muted">
         Built with pdf.js (Mozilla), pdf-lib, Konva, node-forge, Tesseract.js, libheif (LGPL-3.0), postal-mime, msgreader, dxf-parser, Noto fonts (SIL OFL) and Tauri.

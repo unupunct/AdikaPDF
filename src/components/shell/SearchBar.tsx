@@ -1,5 +1,5 @@
-import { useEffect, useRef } from 'react';
-import { CaseSensitive, ChevronDown, ChevronUp, List, Loader2, WholeWord, X } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { CaseSensitive, ChevronDown, ChevronUp, List, Loader2, Replace, WholeWord, X } from 'lucide-react';
 import { usePDFStore } from '@/store/usePDFStore';
 import { searchDocument } from '@/lib/search';
 import { Button, Input } from '@/components/ui/primitives';
@@ -27,6 +27,23 @@ export function SearchBar() {
   const inputRef = useRef<HTMLInputElement>(null);
   const token = useRef({ cancelled: false });
   const timer = useRef<number | undefined>(undefined);
+  const showReplace = usePDFStore((s) => s.search.replace ?? false);
+  const [replacement, setReplacement] = useState('');
+  const [replacing, setReplacing] = useState(false);
+  const readOnly = usePDFStore((s) => !!s.readOnlyReason);
+
+  const doReplaceAll = async () => {
+    const q = usePDFStore.getState().search.query;
+    if (!q.trim() || replacing) return;
+    setReplacing(true);
+    try {
+      const { replaceAll } = await import('@/actions/findReplace');
+      const r = await replaceAll(q, replacement, usePDFStore.getState().searchOptions);
+      if (r.replaced) setSearch({ hits: [], active: 0 });
+    } finally {
+      setReplacing(false);
+    }
+  };
 
   useEffect(() => {
     if (search.open) inputRef.current?.select();
@@ -61,7 +78,11 @@ export function SearchBar() {
 
   if (!search.open) return null;
   return (
-    <div className="absolute right-5 top-3 z-20 flex items-center gap-1.5 rounded-lg border border-app bg-panel p-1.5 shadow-xl" data-testid="search-bar">
+    <div className="absolute right-5 top-3 z-20 flex flex-col gap-1.5 rounded-lg border border-app bg-panel p-1.5 shadow-xl" data-testid="search-bar">
+      <div className="flex items-center gap-1.5">
+      <Toggle label="Replace (Ctrl+H)" active={showReplace} testId="search-replace-toggle" onClick={() => setSearch({ replace: !showReplace })}>
+        <Replace size={15} />
+      </Toggle>
       <Input
         ref={inputRef}
         data-testid="search-input"
@@ -102,6 +123,27 @@ export function SearchBar() {
       <Button variant="ghost" size="icon" className="h-7 w-7" aria-label="Close search" onClick={() => setSearch({ open: false, hits: [] })}>
         <X size={15} />
       </Button>
+      </div>
+      {showReplace ? (
+        <div className="flex items-center gap-1.5 pl-[34px]">
+          <Input
+            data-testid="replace-input"
+            aria-label="Replace with"
+            placeholder="Replace with…"
+            value={replacement}
+            className="w-60"
+            onChange={(e) => setReplacement(e.target.value)}
+            onKeyDown={(e) => {
+              e.stopPropagation();
+              if (e.key === 'Enter') void doReplaceAll();
+              if (e.key === 'Escape') setSearch({ open: false, hits: [] });
+            }}
+          />
+          <Button size="sm" variant="primary" data-testid="replace-all" disabled={readOnly || replacing || !search.query.trim()} onClick={() => void doReplaceAll()} title="Replace every match; the old letters are deleted from the page when you save">
+            {replacing ? <Loader2 size={13} className="animate-spin" /> : null} Replace all
+          </Button>
+        </div>
+      ) : null}
     </div>
   );
 }

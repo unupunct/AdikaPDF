@@ -37,9 +37,11 @@ export function WelcomeScreen() {
               {recent.slice(0, 8).map((r) => (
                 <div key={r.path} className="group flex items-center gap-2 border-b border-app px-3 py-2 last:border-0 hover-app">
                   <button type="button" className="min-w-0 flex-1 text-left" onClick={() => void openRecent(r)} data-testid="recent-item">
-                    <div className="truncate text-[13px] font-medium">{r.name}</div>
+                    <div className="truncate text-[13px] font-medium" data-no-translate>
+                      {r.name}
+                    </div>
                     <div className="truncate text-[11px] text-muted">
-                      {r.path} · {r.pages} page{r.pages === 1 ? '' : 's'} · {new Date(r.openedAt).toLocaleDateString()}
+                      <span data-no-translate>{r.path}</span> · <span>{`${r.pages} page${r.pages === 1 ? '' : 's'}`}</span> · {new Date(r.openedAt).toLocaleDateString()}
                     </div>
                   </button>
                   <button type="button" aria-label={`Remove ${r.name} from recent files`} onClick={() => removeRecent(r.path)} className="hidden text-muted group-hover:block">

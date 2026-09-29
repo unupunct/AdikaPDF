@@ -25,8 +25,7 @@ import { compressPdf, type CompressOptions } from '@/lib/pdf/compress';
 import { convertToPdfADetailed, pdfaWarnings, type PdfAMeta } from '@/lib/pdf/pdfa';
 import type { DxfToPdfOptions } from '@/lib/pdf/dxf';
 export type { DxfToPdfOptions };
-import { buildPdf, flattenDocument } from '@/lib/pdf/exportPdf';
-import fontkit from '@pdf-lib/fontkit';
+import { buildPdf } from '@/lib/pdf/exportPdf';
 import { loadFontBytes } from '@/lib/fonts';
 
 // ================================================================ helpers
@@ -446,12 +445,8 @@ export async function runPdfA(meta: PdfAMeta): Promise<string[] | undefined> {
 export async function flattenCurrent(): Promise<void> {
   const out = await withBusy('Flattening…', async (progress) => {
     const bytes = await exportCurrentPdf({}, progress);
-    const doc = await PDFDocument.load(bytes);
-    doc.registerFontkit(fontkit);
-    // Full font: flattened field values may use any character (pdf-lib's subsetter is broken).
-    const font = await doc.embedFont(await loadFontBytes({ family: 'sans', bold: false, italic: false }), { subset: false });
-    flattenDocument(doc, font);
-    return doc.save({ useObjectStreams: true });
+    const { flattenBytes } = await import('@/lib/batch');
+    return flattenBytes(bytes, loadFontBytes);
   });
   if (out) await saveDerived(out, '-flattened', true);
 }

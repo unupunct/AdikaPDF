@@ -1,4 +1,6 @@
-import { BadgeCheck, BadgeX, ShieldAlert } from 'lucide-react';
+import { ArrowUpCircle, BadgeCheck, BadgeX, ShieldAlert, X } from 'lucide-react';
+import { useUpdates } from '@/lib/updates';
+import { openExternal } from '@/lib/platform';
 import { usePDFStore } from '@/store/usePDFStore';
 import { displaySize } from '@/lib/geometry';
 import { AUTO_SPEEDS, useAutoScroll } from '@/components/viewer/AutoScroll';
@@ -35,6 +37,8 @@ export function StatusBar() {
   const size = page ? displaySize(page) : null;
   const hint = tool.startsWith('field-') ? 'Click or drag to place a form field' : TOOL_HINTS[tool];
   const auto = useAutoScroll();
+  const upd = useUpdates();
+  const showUpdate = upd.status === 'available' && upd.latest && upd.dismissed !== upd.latest.version;
   const invalid = sigs.some((s) => s.integrity !== 'valid' || s.modifiedAfterSigning);
 
   return (
@@ -69,8 +73,18 @@ export function StatusBar() {
           data-testid="status-signatures"
         >
           {invalid ? <BadgeX size={13} /> : <BadgeCheck size={13} />}
-          {sigs.length} signature{sigs.length > 1 ? 's' : ''} · {invalid ? 'problem' : 'intact'}
+          {`${sigs.length} signature${sigs.length > 1 ? 's' : ''} · ${invalid ? 'problem' : 'intact'}`}
         </button>
+      ) : null}
+      {showUpdate && upd.latest ? (
+        <span className="flex items-center gap-1 font-medium text-brand-700 dark:text-brand-300" data-testid="status-update">
+          <button type="button" className="flex items-center gap-1 hover:underline" onClick={() => void openExternal(upd.latest!.url)} title="Open the release page to download the installer">
+            <ArrowUpCircle size={12} /> Update {upd.latest.version} available
+          </button>
+          <button type="button" aria-label="Dismiss" onClick={upd.dismiss} className="rounded p-0.5 hover-app">
+            <X size={10} />
+          </button>
+        </span>
       ) : null}
       <span className="flex items-center gap-1" title="All processing happens on this computer">
         <ShieldAlert size={12} className="text-accent-600" /> Offline &amp; private

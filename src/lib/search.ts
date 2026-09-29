@@ -54,7 +54,7 @@ export interface PageMatch {
 const WORD_CHAR = /[\p{L}\p{N}_]/u;
 
 /** Same length as the input: diacritics folded, optionally lower-cased. */
-function normalize(s: string, caseSensitive: boolean): string {
+export function normalizeForSearch(s: string, caseSensitive: boolean): string {
   let out = '';
   for (const ch of s) {
     const base = ch.normalize('NFD').replace(/[\u0300-\u036f]/g, '') || ch;
@@ -66,10 +66,10 @@ function normalize(s: string, caseSensitive: boolean): string {
 
 export function findInPage(runs: TextRun[], query: string, opts: SearchOptions = {}): PageMatch[] {
   const cs = !!opts.caseSensitive;
-  const q = normalize(query.trim(), cs).replace(/\s+/g, ' ');
+  const q = normalizeForSearch(query.trim(), cs).replace(/\s+/g, ' ');
   if (!q) return [];
   const { text, segments } = joinRuns(runs);
-  const hay = normalize(text, cs).replace(/\s/g, ' ');
+  const hay = normalizeForSearch(text, cs).replace(/\s/g, ' ');
   const results: PageMatch[] = [];
   let from = 0;
   for (;;) {

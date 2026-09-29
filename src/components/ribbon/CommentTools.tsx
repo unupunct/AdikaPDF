@@ -6,6 +6,7 @@ import { STAMP_PRESETS, stampDate, type StampTemplate } from '@/lib/objectFactor
 import { pickImagesAsDataUrls } from '@/actions/convert';
 import { compareWithFile, exportComments, importComments, summarizeCommentsAction } from '@/actions/pageTools';
 import { getAuthor } from '@/lib/author';
+import { translate } from '@/lib/i18n';
 import { I } from './ReaderTabs';
 import { cn } from '@/lib/cn';
 
@@ -48,7 +49,7 @@ export function StampMenu() {
       <MenuButton icon={<Stamp size={I} />} label="Stamp" active={active} disabled={!enabled} testId="btn-stamp" tip="Rubber stamps: Approved, Draft, Confidential… or your own picture" />
       <DropdownContent>
         {STAMP_PRESETS.map((p) => (
-          <DropdownItem key={p.name} onSelect={() => choose({ ...p, dynamic: false })}>
+          <DropdownItem key={p.name} onSelect={() => choose({ ...p, label: translate(p.label), dynamic: false })}>
             <span className="rounded border-2 px-1.5 text-[11px] font-bold" style={{ color: p.color, borderColor: p.color }}>
               {p.label}
             </span>
@@ -56,10 +57,10 @@ export function StampMenu() {
         ))}
         <DropdownSeparator />
         {STAMP_PRESETS.slice(0, 3).map((p) => (
-          <DropdownItem key={`dyn-${p.name}`} onSelect={() => choose({ ...p, dynamic: true })}>
+          <DropdownItem key={`dyn-${p.name}`} onSelect={() => choose({ ...p, label: translate(p.label), dynamic: true })}>
             <span className="flex flex-col rounded border-2 px-1.5 text-center leading-tight" style={{ color: p.color, borderColor: p.color }}>
               <span className="text-[11px] font-bold">{p.label}</span>
-              <span className="text-[9px]">
+              <span className="text-[9px]" data-no-translate>
                 {author ? `${author}, ` : ''}
                 {stampDate()}
               </span>

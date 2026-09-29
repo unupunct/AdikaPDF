@@ -113,6 +113,11 @@ export interface TextObject extends BaseObject {
   border?: string | null;
   /** Callout comment: the point the leader line points to, relative to (x, y). */
   callout?: { x: number; y: number } | null;
+  /**
+   * Replacement text (Edit text, Find & replace): page areas (display space)
+   * whose original letters are deleted from the page content when saving.
+   */
+  replaces?: Array<{ x: number; y: number; width: number; height: number }>;
 }
 
 /** Comment metadata shared by annotation-type objects. */

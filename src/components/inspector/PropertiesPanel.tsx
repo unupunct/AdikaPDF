@@ -631,7 +631,7 @@ function FormFill() {
           const disabled = readOnly || field.readOnly;
           return (
             <div key={key}>
-              <div className="mb-0.5 truncate text-[11px] font-medium" title={field.name}>
+              <div className="mb-0.5 truncate text-[11px] font-medium" title={field.name} data-no-translate>
                 {field.name}
               </div>
               {field.kind === 'checkbox' ? (

@@ -171,10 +171,16 @@ export function CommentsPanel() {
                 <div className="flex items-center gap-1.5 text-[11px]">
                   {icon(r.kind)}
                   <span className="font-semibold">{KIND_LABEL[r.kind] ?? r.kind}</span>
-                  <span className="min-w-0 flex-1 truncate text-muted">{r.author}</span>
+                  <span className="min-w-0 flex-1 truncate text-muted" data-no-translate>
+                    {r.author}
+                  </span>
                   {r.objectId ? <span className="rounded bg-brand-100 px-1 text-[9.5px] text-brand-700 dark:bg-brand-900/50 dark:text-brand-200">new</span> : null}
                 </div>
-                {r.text ? <div className="mt-0.5 line-clamp-3 break-words text-[12px]">{r.text}</div> : null}
+                {r.text ? (
+                  <div className="mt-0.5 line-clamp-3 break-words text-[12px]" data-no-translate>
+                    {r.text}
+                  </div>
+                ) : null}
                 {r.date ? <div className="mt-0.5 text-[10px] text-muted">{new Date(r.date).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}</div> : null}
               </button>
             </div>

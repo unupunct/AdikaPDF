@@ -1,7 +1,8 @@
 <p align="center"><img src="public/brand/adika-logo.svg" alt="Adika PDF Editor" width="420"></p>
 
 **Adika PDF Editor** is a privacy-first Windows PDF editor: edit, sign, organise, protect,
-OCR and convert PDFs entirely on your computer. Nothing is uploaded.
+OCR and convert PDFs entirely on your computer. Nothing is uploaded. The interface is in
+**English or Română** (button in the top bar; it follows the Windows language on first start).
 
 ## Features
 
@@ -12,15 +13,16 @@ OCR and convert PDFs entirely on your computer. Nothing is uploaded.
 | Comment | Foxit-style Comment tab: Hand, Select, Select text, sticky **Notes**, **Typewriter**, Highlight / Underline / Strikeout / Squiggly on selected text, drawing tools, comments list, author name. Saved as standard PDF annotations that Acrobat and other readers show and edit; **Stamps** (Approved, Draft, Confidential…, dynamic with name and date, or a picture), **Text box**, **Callout**, **Cloud**, **Polygon**, **Polyline**, **Attach file**, **Measure** distance / perimeter / area with a drawing scale (e.g. 1 cm = 2 m), saved as PDF measurements Acrobat and Foxit read; import/export comments as **XFDF / FDF**, **comment summary** PDF, **compare** two versions |
 | Tools | One-click hub (ribbon and start screen): PDF to Word, PDF to JPG, Word to PDF, JPG to PDF, Merge PDF, PDF to PPT, Compress PDF, PPT to PDF, PDF to Excel, Excel to PDF |
 | Print to PDF | A **"Adika PDF Editor" virtual printer**: print from a browser or any program and the pages open in Adika as a PDF (saved in `%LOCALAPPDATA%\Adika PDF Editor\Printed`) |
-| Edit | Click-to-edit existing text, text boxes (Noto fonts, full Unicode incl. ă â î ș ț), images with crop, rectangles, ellipses, lines, arrows, freehand ink, highlights, snapping guides, undo/redo; **links** to web pages or pages; **watermark** (text or picture), **header & footer** with page numbers, date and file name, **Bates numbering**, **background**, all removable |
+| Edit | **Find & replace** (Ctrl+H) across the document: the old letters are deleted from the page, the new text uses the document's own font when it has the letters and the rest of the line moves to make room; click-to-edit existing text (the original run is removed, not covered), text boxes (Noto fonts, full Unicode incl. ă â î ș ț), images with crop, rectangles, ellipses, lines, arrows, freehand ink, highlights, snapping guides, undo/redo; **links** to web pages or pages; **watermark** (text or picture), **header & footer** with page numbers, date and file name, **Bates numbering**, **background**, all removable |
 | Sign | Draw / type / upload signatures and initials; digital signatures (PAdES-style `adbe.pkcs7.detached`, SHA-256) with a `.pfx/.p12` ID, a self-signed ID, or a **USB token / smart card over PKCS#11**; optional RFC 3161 timestamp |
 | Verify | Integrity, whole-file coverage, certificate chain against the Windows trust store, OCSP/CRL revocation |
 | Organize | Drag-and-drop page grid, rotate, delete, duplicate, insert blank, merge, split, extract, **crop pages**, **edit bookmarks** (add, rename, move, nest) |
-| Forms | Create text, checkbox, radio, dropdown and signature fields; fill existing forms; CSV export (single or batch) |
-| Security | True redaction (content destroyed), AES-256 password protection with permissions, metadata sanitising |
+| Forms | **Detect fields**: turns a flat or scanned form into a fillable one (fill-in lines, empty boxes, checkboxes, named after their labels); create text, checkbox, radio, dropdown and signature fields; fill existing forms; CSV export (single or batch) |
+| Security | True redaction: the covered letters are deleted and the rest of the page stays text (pages with images or drawings under a box are rebuilt as an image); **Find & redact** e-mails, phone numbers, IBANs, CNPs, card numbers, dates or chosen words; AES-256 password protection with permissions, metadata sanitising |
 | Convert to PDF | Word / Excel / PowerPoint (via installed Microsoft Office, LibreOffice fallback), images (PNG/JPG/WebP/TIFF/GIF/BMP, **HEIC/HEIF** iPhone photos), HTML files and web pages, Markdown, text, **EPUB** e-books, **e-mails** (.eml, Outlook .msg, .mht — attachments kept inside the PDF), **XPS / OpenXPS** (vector), **DXF** CAD drawings (vector, CAD layers as PDF layers), WIA scanner, camera |
 | Convert from PDF | Word (.docx, flowing or exact layout: fonts, colours, tables, columns, images and headers/footers kept), **OpenDocument (.odt)**, **RTF**, Excel (table columns detected), **CSV**, PowerPoint, PNG/JPEG/TIFF, SVG, HTML5, **EPUB**, Markdown, text, **JSON** (text with positions, outline, metadata, form data) |
-| Optimise | Offline OCR in 10 languages (Română, English, Deutsch, Français, Español, Italiano, Magyar, Português, Nederlands, Polski) with a searchable Unicode text layer, compression, **PDF/A-1b, 2b and 3b** (3b can embed the source files), flatten |
+| Optimise | Offline OCR in 10 languages (Română, English, Deutsch, Français, Español, Italiano, Magyar, Português, Nederlands, Polski) with a searchable Unicode text layer, compression, **PDF/A-1b, 2b and 3b** (3b can embed the source files), flatten; **Batch**: OCR, compress, watermark, PDF/A, password, sanitise or flatten many files at once (results saved next to the originals) |
+| Updates | Optional update check (About → Check for updates, or once a week): asks GitHub for the latest version, nothing else is sent |
 
 ## Install
 

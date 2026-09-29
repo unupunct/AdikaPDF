@@ -308,7 +308,34 @@ fn edge_print_to_pdf(scratch: &Scratch, target: String) -> Result<PathBuf, Strin
             .arg(target),
         Duration::from_secs(120),
     )?;
+    wait_for_pdf(&out, Duration::from_secs(60))?;
     Ok(out)
+}
+
+/// While an Edge update is pending, msedge.exe hands the job to the updated
+/// browser process and exits before the PDF is written: wait until the file
+/// exists, has stopped growing and ends with %%EOF.
+fn wait_for_pdf(path: &Path, timeout: Duration) -> Result<(), String> {
+    let start = Instant::now();
+    let mut last: Option<u64> = None;
+    loop {
+        if let Ok(meta) = std::fs::metadata(path) {
+            let len = meta.len();
+            if len > 0 && last == Some(len) {
+                let complete = std::fs::read(path)
+                    .map(|b| b[b.len().saturating_sub(1024)..].windows(5).any(|w| w == b"%%EOF"))
+                    .unwrap_or(false);
+                if complete {
+                    return Ok(());
+                }
+            }
+            last = Some(len);
+        }
+        if start.elapsed() > timeout {
+            return Err("Microsoft Edge did not produce the PDF in time.".into());
+        }
+        std::thread::sleep(Duration::from_millis(250));
+    }
 }
 
 const SCAN_PS1: &str = r#"

@@ -22,6 +22,25 @@ function loadFont(v: FontVariant): Promise<Uint8Array> {
 const measure = (_v: FontVariant, size: number) => (s: string) => s.length * size * 0.5;
 const opts = { loadFont, measure };
 
+/** Inflate every stream in the file and look for `needle`. */
+async function anyStreamContains(bytes: Uint8Array, needle: string): Promise<boolean> {
+  const { PDFRawStream, decodePDFRawStream } = await import('pdf-lib');
+  const doc = await PDFDocument.load(bytes);
+  for (const [, obj] of doc.context.enumerateIndirectObjects()) {
+    if (!(obj instanceof PDFRawStream)) continue;
+    let data: Uint8Array;
+    try {
+      data = decodePDFRawStream(obj).decode();
+    } catch {
+      data = obj.contents;
+    }
+    const s = Buffer.from(data).toString('latin1');
+    const hex = Buffer.from(needle, 'latin1').toString('hex');
+    if (s.includes(needle) || s.toLowerCase().includes(hex)) return true;
+  }
+  return false;
+}
+
 async function makeSource(pages: Array<{ w: number; h: number; rotate?: number; label: string }>): Promise<SourceDoc> {
   const doc = await PDFDocument.create();
   const font = await doc.embedFont(StandardFonts.Helvetica);
@@ -295,8 +314,48 @@ describe('buildPdf', () => {
     expect(ops.fnArray.length).toBeGreaterThan(20);
   });
 
-  it('redacted pages are rebuilt from the raster only (no text left)', async () => {
+  it('redaction deletes the covered letters from the content and keeps the rest as text', async () => {
+    const a = await makeSource([{ w: 300, h: 200, label: 'SECRET and public' }]);
+    const [p] = refs(a, [{ w: 300, h: 200 }]);
+    // "SECRET" is about 45 pt wide at x = 20, baseline 40 pt from the top.
+    const input: ExportInput = {
+      sources: { [a.id]: a },
+      pages: [p],
+      objects: [{ id: 'rd', type: 'redact', pageId: p.id, x: 16, y: 26, width: 50, height: 18, rotation: 0, opacity: 1, fill: '#000000' }],
+      fieldValues: {},
+    };
+    let asked = 0;
+    const out = await buildPdf(input, { ...opts, rasterizeRedactedPage: async () => ((asked++, { bytes: new Uint8Array(), format: 'jpeg' })) });
+    expect(asked).toBe(0);
+    const text = (await pageTexts(out))[0].items.map((i) => i.str).join('');
+    expect(text).not.toContain('SECRET');
+    expect(text).toContain('and public');
+    expect(await anyStreamContains(out, 'SECRET')).toBe(false);
+    // The black box is drawn in the page content.
+    const ops = await (await (await openWithPdfjs(out)).getPage(1)).getOperatorList();
+    expect(ops.fnArray.length).toBeGreaterThan(5);
+  });
+
+  it('replaced text: the old letters are deleted and the new text drawn, no cover needed', async () => {
+    const a = await makeSource([{ w: 300, h: 200, label: 'Name: Ion Popescu' }]);
+    const [p] = refs(a, [{ w: 300, h: 200 }]);
+    const t: TextObject = { id: 't', type: 'text', pageId: p.id, x: 55, y: 28, width: 120, height: 16, rotation: 0, opacity: 1, text: 'Maria Ionescu', fontFamily: 'sans', bold: false, italic: false, fontSize: 12, color: '#000000', align: 'left', lineHeight: 1.2, background: null, replaces: [{ x: 56, y: 28, width: 70, height: 16 }] };
+    const out = await buildPdf({ sources: { [a.id]: a }, pages: [p], objects: [t], fieldValues: {} }, opts);
+    const text = (await pageTexts(out))[0].items.map((i) => i.str).join(' ');
+    expect(text).toContain('Name:');
+    expect(text).toContain('Maria Ionescu');
+    expect(text).not.toContain('Popescu');
+    expect(await anyStreamContains(out, 'Popescu')).toBe(false);
+  });
+
+  it('redaction over an image falls back to rebuilding the page from a raster (no text left)', async () => {
     const a = await makeSource([{ w: 200, h: 200, label: 'SECRET' }]);
+    {
+      const d = await PDFDocument.load(a.bytes);
+      const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
+      d.getPage(0).drawImage(await d.embedPng(png), { x: 10, y: 150, width: 100, height: 30 });
+      a.bytes = await d.save();
+    }
     const [p] = refs(a, [{ w: 200, h: 200 }]);
     const jpeg = new Uint8Array(
       Buffer.from(
@@ -312,10 +371,12 @@ describe('buildPdf', () => {
     };
     let asked = 0;
     const out = await buildPdf(input, { ...opts, rasterizeRedactedPage: async () => ((asked++, { bytes: jpeg, format: 'jpeg' })) });
-    expect(asked).toBe(1);
+    expect(asked).toBe(1); // the image under the box cannot be cleaned glyph by glyph
     const result = await pageTexts(out);
     expect(result[0].items.map((i) => i.str).join('')).toBe('');
     expect(Buffer.from(out).includes(Buffer.from('SECRET'))).toBe(false);
+    // Not even in a compressed stream left over from the original page.
+    expect(await anyStreamContains(out, 'SECRET')).toBe(false);
   });
 
   it('flattens form fields into page content', async () => {

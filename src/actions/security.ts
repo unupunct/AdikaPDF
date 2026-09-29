@@ -16,17 +16,8 @@ export async function protectDocument(userPassword: string, ownerPassword: strin
 export async function sanitizeDocument(): Promise<void> {
   const out = await withBusy('Removing hidden data…', async (progress) => {
     const bytes = await exportCurrentPdf({}, progress);
-    const { compressPdf } = await import('@/lib/pdf/compress');
-    // Metadata stripping without touching image quality.
-    const r = await compressPdf(bytes, { imageQuality: 1, maxImageDpi: 10000, stripMetadata: true });
-    const doc = await PDFDocument.load(r.bytes);
-    doc.setTitle('');
-    doc.setAuthor('');
-    doc.setSubject('');
-    doc.setKeywords([]);
-    doc.setCreator('');
-    doc.setProducer('Adika PDF Editor');
-    return doc.save();
+    const { sanitizeBytes } = await import('@/lib/batch');
+    return sanitizeBytes(bytes);
   });
   if (out) await saveDerived(out, '-sanitized', true);
 }
