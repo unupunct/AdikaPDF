@@ -302,6 +302,8 @@ export interface FieldObject extends BaseObject {
   required: boolean;
   fontSize: number;
   multiline: boolean;
+  /** Text fields: format, allowed range and calculation (saved as Acrobat form actions). */
+  logic?: import('@/lib/formLogic').FieldLogic;
 }
 
 export type EditorObject =

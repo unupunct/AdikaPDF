@@ -41,6 +41,52 @@ export function registerBatchFormTests(test, ctx) {
     await page.waitForFunction(() => window.__adika.store.getState().toasts.some((t) => /No form fields found/.test(t.message)), null, { timeout: 30000 });
   });
 
+  test('smart form: totals update while filling, numbers are formatted, wrong input is explained', async () => {
+    const { PDFHexString, PDFName } = await import('pdf-lib');
+    const d = await PD.create();
+    const p = d.addPage([595, 842]);
+    const form = d.getForm();
+    const js = (code) => d.context.register(d.context.obj({ S: 'JavaScript', JS: PDFHexString.fromText(code) }));
+    const add = (name, y, aa, required = false) => {
+      const f = form.createTextField(name);
+      f.addToPage(p, { x: 100, y, width: 160, height: 22 });
+      if (required) f.enableRequired();
+      if (aa) f.acroField.dict.set(PDFName.of('AA'), d.context.obj(Object.fromEntries(Object.entries(aa).map(([k, v]) => [k, js(v)]))));
+      return f;
+    };
+    add('Qty', 700, { F: 'AFNumber_Format(0, 2, 0, 0, "", false);', V: 'AFRange_Validate(true, 1, true, 99);' }, true);
+    add('Price', 660, { F: 'AFNumber_Format(2, 2, 0, 0, " lei", false);' }, true);
+    add('Total', 620, { F: 'AFNumber_Format(2, 2, 0, 0, " lei", false);', C: 'AFSimple_Calculate("PRD", new Array("Qty", "Price"));' });
+    const path = join(dir, 'order-form.pdf');
+    writeFileSync(path, await d.save());
+    await open(path);
+    await S(() => window.__adika.store.setState({ inspectorOpen: true, selectedIds: [] }));
+    await page.waitForSelector('[data-testid="form-fill"]');
+    const left0 = await page.textContent('[data-testid="form-required-left"]');
+    assert(/2 required fields still empty/.test(left0), `required fields counted (${left0})`);
+    const input = (n) => `[data-testid="form-fill"] input[aria-label="${n}"]`;
+    // Out of range: explained, not taken.
+    await page.fill(input('Qty'), '150');
+    await page.press(input('Qty'), 'Enter');
+    const err = await page.textContent('[data-testid="form-input-error"]');
+    assert(/from 1 to 99/.test(err), `range message (${err})`);
+    await page.fill(input('Qty'), '3');
+    await page.press(input('Qty'), 'Enter');
+    await page.fill(input('Price'), '1.234,5');
+    await page.press(input('Price'), 'Enter');
+    await page.waitForFunction(() => Object.entries(window.__adika.store.getState().fieldValues).some(([k, v]) => k.endsWith('::Total') && v === '3703.5'), null, { timeout: 5000 });
+    await page.click('[data-testid="form-fill"]'); // blur
+    const shown = await page.$eval(input('Total'), (el) => ({ v: el.value, disabled: el.disabled }));
+    assert(shown.v === '3.703,50 lei' && shown.disabled, `total calculated and formatted (${JSON.stringify(shown)})`);
+    const price = await page.$eval(input('Price'), (el) => el.value);
+    assert(price === '1.234,50 lei', `price shown formatted (${price})`);
+    assert(!(await page.$('[data-testid="form-required-left"]')), 'no required field left');
+    await page.keyboard.press('Control+Shift+s');
+    await idle();
+    const saved = (await PD.load(readFileSync(await savedFile(/order-form\.pdf$/)))).getForm();
+    assert(saved.getTextField('Total').getText() === '3703.5' && saved.getTextField('Price').getText() === '1234.5', 'plain values saved (the format action shows them)');
+  });
+
   test('batch: watermark several files at once, results next to the originals, bad files reported', async () => {
     const paths = [];
     for (const n of ['raport-a', 'raport-b']) {
