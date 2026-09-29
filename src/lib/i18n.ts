@@ -198,7 +198,7 @@ export const useLang = create<{ lang: Lang; setLang: (l: Lang) => Promise<void> 
 // ------------------------------------------------------------------ DOM
 
 const SKIP = '[data-no-translate], .textLayer, .annotationLayer, textarea, script, style, [contenteditable="true"], [contenteditable=""]';
-const ATTRS = ['title', 'placeholder', 'aria-label'];
+const ATTRS = ['title', 'placeholder', 'aria-label', 'data-tip'];
 /** What React wrote (src) and what we show (out), per text node / attribute. */
 const texts = new Map<Text, { src: string; out: string }>();
 const attrs = new Map<Element, Map<string, { src: string; out: string }>>();
@@ -251,6 +251,11 @@ function walk(root: Node) {
     if (n.nodeType === Node.TEXT_NODE) doText(n as Text);
     else for (const a of ATTRS) doAttr(n as Element, a);
   }
+}
+
+/** The English text of an attribute the translator changed (or its current value). */
+export function originalAttr(el: Element, name: string): string | null {
+  return attrs.get(el)?.get(name)?.src ?? el.getAttribute(name);
 }
 
 function prune() {

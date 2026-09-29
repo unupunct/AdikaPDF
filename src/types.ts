@@ -16,6 +16,7 @@ export type ToolId =
   | 'pan'
   | 'text'
   | 'editText'
+  | 'editImage'
   | 'image'
   | 'rect'
   | 'ellipse'
@@ -301,6 +302,8 @@ export interface FieldObject extends BaseObject {
   required: boolean;
   fontSize: number;
   multiline: boolean;
+  /** Text fields: format, allowed range and calculation (saved as Acrobat form actions). */
+  logic?: import('@/lib/formLogic').FieldLogic;
 }
 
 export type EditorObject =
@@ -398,6 +401,12 @@ export interface SignatureValidation {
   revocationStatus?: 'good' | 'revoked' | 'unknown' | 'not-checked';
   revocationDetails?: string;
   modifiedAfterSigning?: boolean;
+  /** Validation data for the whole chain is saved in the file (long-term validation). */
+  ltv?: boolean;
+  /** This signature certifies the document: 1 no changes, 2 form filling and signing, 3 also comments. */
+  certified?: 1 | 2 | 3 | null;
+  /** What later revisions changed (when the signature does not cover the whole file). */
+  laterChanges?: { ltv: boolean; signatures: boolean; form: boolean; other: boolean } | null;
   /** e.g. "RSA-2048 / SHA-256". */
   algorithm?: string;
 }

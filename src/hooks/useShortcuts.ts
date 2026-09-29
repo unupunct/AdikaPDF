@@ -2,7 +2,6 @@
 import { useEffect } from 'react';
 import { usePDFStore } from '@/store/usePDFStore';
 import { closeDocumentAction, openDialog, saveDocument } from '@/actions/document';
-import { printDocument } from '@/actions/print';
 import { cycleTab } from '@/store/tabs';
 import { readCurrentPage, readToEnd, stopReading, togglePauseReading } from '@/actions/readingAids';
 import { useAutoScroll } from '@/components/viewer/AutoScroll';
@@ -100,7 +99,7 @@ export function useShortcuts(): void {
       }
       if (mod && key === 'p') {
         e.preventDefault();
-        void printDocument();
+        s.openModal('print');
         return;
       }
       if (mod && key === 'g') {
@@ -128,6 +127,18 @@ export function useShortcuts(): void {
       if (mod && key === 'f') {
         e.preventDefault();
         s.setSearch({ open: true });
+        return;
+      }
+      // Split view.
+      if (mod && key === '\\' && s.pages.length) {
+        e.preventDefault();
+        void import('@/components/viewer/SplitView').then((m) => m.toggleSplit());
+        return;
+      }
+      // Tool search.
+      if (mod && !e.shiftKey && key === 'k') {
+        e.preventDefault();
+        void import('@/components/shell/CommandPalette').then((m) => m.usePalette.setState({ open: true }));
         return;
       }
       // Find & replace (as in Word).

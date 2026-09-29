@@ -9,6 +9,7 @@ mod logging;
 mod print_watcher;
 mod net;
 mod pkcs11;
+mod recovery;
 
 use percent_encoding::percent_decode_str;
 use std::path::PathBuf;
@@ -128,6 +129,10 @@ pub fn run() {
             logging::logs_path,
             logging::open_logs_folder,
             e2e_mode,
+            recovery::recovery_write,
+            recovery::recovery_read,
+            recovery::recovery_list,
+            recovery::recovery_remove,
             convert::converter_availability,
             convert::office_to_pdf,
             convert::html_to_pdf,

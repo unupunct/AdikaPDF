@@ -67,10 +67,10 @@ import { CommentFileMenu, StampMenu } from './CommentTools';
 import { ReadAloudGroup, ReadingToolsGroup } from './ReadingTools';
 import { MeasureGroup } from './MeasureTools';
 import { useAutoScroll } from '@/components/viewer/AutoScroll';
+import { toggleSplit, useSplit } from '@/components/viewer/SplitView';
 import { getAuthor, setAuthor } from '@/lib/author';
 import { usePDFStore } from '@/store/usePDFStore';
 import { closeDocumentAction, openDialog, openPdfPath, saveDocument } from '@/actions/document';
-import { printDocument } from '@/actions/print';
 import { DropdownContent, DropdownItem, DropdownMenu, DropdownSeparator, DropdownTrigger, Tooltip } from '@/components/ui/primitives';
 import { clearRecent, getRecent, removeRecent, type RecentFile } from '@/lib/recent';
 import { findPageByInput, usePageLabels } from '@/hooks/usePageLabels';
@@ -108,6 +108,7 @@ export function Big({ icon, label, onClick, active, disabled, tip, testId }: Btn
         type="button"
         data-testid={testId}
         aria-label={label}
+        data-tip={tip}
         aria-pressed={active}
         disabled={disabled}
         onClick={onClick}
@@ -130,6 +131,7 @@ export function Small({ icon, label, onClick, active, disabled, tip, testId }: B
         type="button"
         data-testid={testId}
         aria-label={label || tip}
+        data-tip={tip}
         aria-pressed={active}
         disabled={disabled}
         onClick={onClick}
@@ -269,7 +271,7 @@ export function HomeTab() {
       <Group label="File">
         <Big icon={<FolderOpen size={I} />} label="Open" onClick={() => void openDialog()} tip="Open a PDF (Ctrl+O)" testId="btn-open" />
         <Big icon={<Save size={I} />} label="Save" disabled={!editable} onClick={() => void saveDocument(false)} tip="Save (Ctrl+S)" testId="btn-save" />
-        <Big icon={<Printer size={I} />} label="Print" disabled={!hasDoc} onClick={() => void printDocument()} tip="Print (Ctrl+P)" testId="btn-print" />
+        <Big icon={<Printer size={I} />} label="Print" disabled={!hasDoc} onClick={() => usePDFStore.getState().openModal('print')} tip="Print (Ctrl+P): several pages per sheet, booklet, poster" testId="btn-print" />
         <Stack>
           <Small icon={<SaveAll size={i} />} label="Save as…" disabled={!editable} onClick={() => void saveDocument(true)} tip="Save a copy (Ctrl+Shift+S)" testId="btn-save-as" />
           <RecentMenu />
@@ -345,6 +347,11 @@ export function rotateView(delta: 90 | -90): void {
   s.setView({ viewRotation: normalizeRotation(s.viewRotation + delta) });
 }
 
+function SplitButton({ disabled }: { disabled: boolean }) {
+  const on = useSplit((s) => s.open);
+  return <Big icon={<Columns2 size={I} />} label="Split" active={on} disabled={disabled} onClick={toggleSplit} tip="Split view: another part of this document, or another open document, side by side (Ctrl+\)" testId="btn-split-view" />;
+}
+
 function AutoScrollButton({ disabled }: { disabled: boolean }) {
   const on = useAutoScroll((s) => s.on);
   return (
@@ -384,6 +391,7 @@ export function ViewTab() {
         <Big icon={s.fullscreen ? <Minimize size={I} /> : <Maximize size={I} />} label="Full screen" active={s.fullscreen} onClick={() => void toggleFullscreen()} tip="Full screen (F11)" testId="btn-fullscreen" />
         <Big icon={<MonitorPlay size={I} />} label="Present" disabled={!hasDoc} onClick={startPresentation} tip="Presentation mode (F5)" testId="btn-present" />
         <AutoScrollButton disabled={!hasDoc} />
+        <SplitButton disabled={!hasDoc} />
       </Group>
       <ReadAloudGroup />
       <ReadingToolsGroup />

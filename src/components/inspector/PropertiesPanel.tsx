@@ -8,6 +8,7 @@ import { AlignCenter, AlignLeft, AlignRight, BadgeCheck, BadgeX, Bold, Italic, L
 import { usePDFStore, type FieldValue } from '@/store/usePDFStore';
 import type { EditorObject, FieldObject, FontFamily, ImageObject, LinkObject, MeasureObject, TextObject } from '@/types';
 import { measureValue } from '@/lib/measure';
+import { calcOrder, calculate, checkInput, displayValue, formulaFields, parseNumber, type FieldLogic } from '@/lib/formLogic';
 import { ScaleEditor } from '@/components/ribbon/MeasureTools';
 import { Button, Checkbox, ColorSwatch, Field, Input, Select, Textarea } from '@/components/ui/primitives';
 import { FONT_LABELS } from '@/lib/fonts';
@@ -447,6 +448,9 @@ function ImageProps({ obj, update }: { obj: ImageObject; update: (p: Partial<Ima
         <Num label="Bottom" value={bottom} min={0} max={95 - top} onChange={(v) => setCrop(left, top, right, v)} />
       </div>
       <div className="mt-2 flex gap-1.5">
+        <Button size="sm" onClick={() => void import('@/actions/imageEdit').then((m) => m.replacePicture(obj))} data-testid="replace-picture">
+          Replace picture…
+        </Button>
         <Button size="sm" onClick={() => setCrop(0, 0, 0, 0)}>
           Reset crop
         </Button>
@@ -471,6 +475,7 @@ function FieldProps({ obj, update }: { obj: FieldObject; update: (p: Partial<Fie
           </Field>
           <Checkbox checked={obj.multiline} label="Multiple lines" onChange={(multiline) => update({ multiline })} />
           <Num label="Font size (0 = auto)" value={obj.fontSize} min={0} max={72} onChange={(fontSize) => update({ fontSize })} />
+          <SmartFieldProps obj={obj} update={update} />
         </>
       ) : null}
       {obj.fieldKind === 'radio' ? (
@@ -491,6 +496,141 @@ function FieldProps({ obj, update }: { obj: FieldObject; update: (p: Partial<Fie
       ) : null}
       {obj.fieldKind !== 'signature' ? <Checkbox checked={obj.required} label="Required" onChange={(required) => update({ required })} /> : null}
     </Section>
+  );
+}
+
+/** Format, allowed range and calculation of a text field (saved as Acrobat form actions). */
+function SmartFieldProps({ obj, update }: { obj: FieldObject; update: (p: Partial<FieldObject>) => void }) {
+  // Select the (stable) objects array and derive from it: a selector returning a new
+  // array each time would re-render forever.
+  const objects = usePDFStore((s) => s.objects);
+  const others = useMemo(() => objects.filter((o): o is FieldObject => o.type === 'field' && o.fieldKind === 'text' && o.id !== obj.id).map((o) => o.name), [objects, obj.id]);
+  const logic = obj.logic ?? {};
+  const set = (p: Partial<FieldLogic>) => update({ logic: { ...logic, ...p } });
+  const fmt = logic.format ?? null;
+  const kind = fmt?.kind ?? 'none';
+  const calc = logic.calc ?? null;
+  const calcKind = calc?.op ?? 'none';
+  const sepOptions = [
+    { value: '2', label: '1.234,56' },
+    { value: '3', label: '1234,56' },
+    { value: '0', label: '1,234.56' },
+    { value: '1', label: '1234.56' },
+  ];
+  const [formulaError, setFormulaError] = useState<string | null>(null);
+  return (
+    <div className="mt-3 border-t border-app pt-2" data-testid="smart-field">
+      <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted">Format, range & calculation</div>
+      <Field label="Format">
+        <Select
+          value={kind}
+          ariaLabel="Field format"
+          options={[
+            { value: 'none', label: 'None (any text)' },
+            { value: 'number', label: 'Number' },
+            { value: 'currency', label: 'Currency' },
+            { value: 'percent', label: 'Percent' },
+            { value: 'date', label: 'Date' },
+          ]}
+          onChange={(v: string) =>
+            set({
+              format:
+                v === 'none'
+                  ? null
+                  : v === 'date'
+                    ? { kind: 'date', pattern: 'dd.mm.yyyy' }
+                    : v === 'percent'
+                      ? { kind: 'percent', decimals: 0, sep: 2 }
+                      : { kind: 'number', decimals: 2, sep: 2, currency: v === 'currency' ? ' lei' : '', currencyBefore: false },
+            })
+          }
+        />
+      </Field>
+      {fmt && fmt.kind !== 'date' ? (
+        <div className="grid grid-cols-2 gap-2">
+          <Num label="Decimals" value={fmt.decimals} min={0} max={6} onChange={(decimals) => set({ format: { ...fmt, decimals } })} />
+          <Field label="Separators">
+            <Select value={String(fmt.sep)} ariaLabel="Separators" options={sepOptions} onChange={(v: string) => set({ format: { ...fmt, sep: Number(v) as 0 | 1 | 2 | 3 } })} />
+          </Field>
+        </div>
+      ) : null}
+      {fmt?.kind === 'number' && fmt.currency !== '' ? (
+        <Field label="Currency symbol (with its space)">
+          <Input value={fmt.currency} onChange={(e) => set({ format: { ...fmt, currency: e.target.value, currencyBefore: /^\S/.test(e.target.value) && !/^\s/.test(e.target.value) && e.target.value.trim().length === 1 } })} data-testid="field-currency" />
+        </Field>
+      ) : null}
+      {fmt?.kind === 'date' ? (
+        <Field label="Date pattern">
+          <Select
+            value={fmt.pattern}
+            ariaLabel="Date pattern"
+            options={['dd.mm.yyyy', 'dd/mm/yyyy', 'yyyy-mm-dd', 'mm/dd/yyyy', 'd.m.yyyy'].map((p) => ({ value: p, label: p }))}
+            onChange={(pattern: string) => set({ format: { kind: 'date', pattern } })}
+          />
+        </Field>
+      ) : null}
+      {fmt && fmt.kind !== 'date' ? (
+        <div className="grid grid-cols-2 gap-2">
+          <Field label="Minimum">
+            <Input value={logic.range?.min ?? ''} placeholder="—" onChange={(e) => set({ range: { min: e.target.value === '' ? null : Number(e.target.value.replace(',', '.')), max: logic.range?.max ?? null } })} />
+          </Field>
+          <Field label="Maximum">
+            <Input value={logic.range?.max ?? ''} placeholder="—" onChange={(e) => set({ range: { min: logic.range?.min ?? null, max: e.target.value === '' ? null : Number(e.target.value.replace(',', '.')) } })} />
+          </Field>
+        </div>
+      ) : null}
+      <Field label="Value">
+        <Select
+          value={calcKind}
+          ariaLabel="Calculation"
+          options={[
+            { value: 'none', label: 'Typed by the person filling in' },
+            { value: 'sum', label: 'Sum of fields' },
+            { value: 'product', label: 'Product of fields' },
+            { value: 'average', label: 'Average of fields' },
+            { value: 'min', label: 'Smallest of fields' },
+            { value: 'max', label: 'Largest of fields' },
+            { value: 'formula', label: 'Formula' },
+          ]}
+          onChange={(v: string) =>
+            set({ calc: v === 'none' ? null : v === 'formula' ? { op: 'formula', formula: calc && calc.op !== 'formula' ? calc.fields.join(' + ') : '' } : { op: v as 'sum', fields: calc && calc.op !== 'formula' ? calc.fields : [] } })
+          }
+        />
+      </Field>
+      {calc && calc.op !== 'formula' ? (
+        <div className="mb-2 flex max-h-32 flex-col gap-1 overflow-auto rounded border border-app p-1.5">
+          {others.length ? (
+            others.map((n) => (
+              <Checkbox
+                key={n}
+                checked={calc.fields.includes(n)}
+                label={<span data-no-translate>{n}</span>}
+                onChange={(on) => set({ calc: { op: calc.op, fields: on ? [...calc.fields, n] : calc.fields.filter((x) => x !== n) } })}
+              />
+            ))
+          ) : (
+            <p className="text-[11px] text-muted">Add other text fields first.</p>
+          )}
+        </div>
+      ) : null}
+      {calc?.op === 'formula' ? (
+        <Field label="Formula (field names, + − × ÷ and brackets)">
+          <Input
+            value={calc.formula}
+            placeholder="Qty * Price"
+            data-testid="field-formula"
+            onChange={(e) => {
+              const formula = e.target.value;
+              const used = formulaFields(formula, others);
+              setFormulaError(used === null ? 'This formula cannot be read.' : used.filter((u) => !others.includes(u)).length ? `Unknown field: ${used.filter((u) => !others.includes(u)).join(', ')}` : null);
+              set({ calc: { op: 'formula', formula } });
+            }}
+          />
+        </Field>
+      ) : null}
+      {formulaError && calc?.op === 'formula' ? <p className="-mt-1 mb-2 text-[11px] text-rose-600">{formulaError}</p> : null}
+      <p className="text-[11px] text-muted">Saved as standard form actions: Acrobat, Foxit and Adika format, check and calculate the field while it is filled in.</p>
+    </div>
   );
 }
 
@@ -619,11 +759,36 @@ function FormFill() {
 
   if (fields.length === 0) return null;
   const setValue = (sourceId: string, name: string, value: FieldValue) => {
-    usePDFStore.getState().setFieldValue(`${sourceId}::${name}`, value);
-    void setViewerFieldValue(sourceId, name, value).then(() => usePDFStore.getState().bumpRenderEpoch());
+    // The value, then every calculated field of that document (totals after their parts).
+    const patch: Record<string, FieldValue> = { [`${sourceId}::${name}`]: value };
+    const mine = fields.filter((f) => f.sourceId === sourceId);
+    const current = (n: string) => {
+      const k = `${sourceId}::${n}`;
+      const f = mine.find((x) => x.field.name === n);
+      return k in patch ? patch[k] : k in fieldValues ? fieldValues[k] : f?.field.value;
+    };
+    const logic = Object.fromEntries(mine.map((f) => [f.field.name, f.field.logic ?? {}]));
+    const names = mine.map((f) => f.field.name);
+    for (const n of calcOrder(logic)) {
+      const l = logic[n];
+      const v = calculate(l.calc!, names, (x) => parseNumber(current(x) as string));
+      const dec = l.format && l.format.kind !== 'date' ? l.format.decimals + (l.format.kind === 'percent' ? 2 : 0) : 6;
+      patch[`${sourceId}::${n}`] = Number.isFinite(v) ? String(Math.round(v * 10 ** dec) / 10 ** dec) : '';
+    }
+    usePDFStore.getState().setFieldValues(patch);
+    for (const [k, v] of Object.entries(patch)) void setViewerFieldValue(sourceId, k.slice(sourceId.length + 2), v).then(() => usePDFStore.getState().bumpRenderEpoch());
   };
+  const missing = fields.filter(({ sourceId, field }) => {
+    if (!field.required) return false;
+    const k = `${sourceId}::${field.name}`;
+    const v = k in fieldValues ? fieldValues[k] : field.value;
+    return v === '' || v === false || (Array.isArray(v) && !v.length);
+  }).length;
   return (
     <Section title={`Form fields (${fields.length})`}>
+      {missing ? (
+        <p className="mb-2 text-[11px] text-rose-600" data-testid="form-required-left">{`${missing} required field${missing === 1 ? '' : 's'} still empty`}</p>
+      ) : null}
       <div className="flex flex-col gap-2" data-testid="form-fill">
         {fields.map(({ sourceId, field }) => {
           const key = `${sourceId}::${field.name}`;
@@ -631,8 +796,12 @@ function FormFill() {
           const disabled = readOnly || field.readOnly;
           return (
             <div key={key}>
-              <div className="mb-0.5 truncate text-[11px] font-medium" title={field.name} data-no-translate>
-                {field.name}
+              <div className="mb-0.5 flex items-baseline gap-1 text-[11px] font-medium">
+                <span className="truncate" title={field.name} data-no-translate>
+                  {field.name}
+                </span>
+                {field.required ? <span className="text-rose-600" title="Required">*</span> : null}
+                {field.logic?.calc ? <span className="truncate font-normal text-muted">{field.logic.calc.op === 'formula' ? `= ${field.logic.calc.formula}` : `= ${field.logic.calc.op}(${field.logic.calc.fields.join(', ')})`}</span> : null}
               </div>
               {field.kind === 'checkbox' ? (
                 <Checkbox checked={value === true} disabled={disabled} label={value === true ? 'Checked' : 'Unchecked'} onChange={(v) => setValue(sourceId, field.name, v)} />
@@ -653,7 +822,7 @@ function FormFill() {
                   onChange={(v) => setValue(sourceId, field.name, v ? [v] : [])}
                 />
               ) : (
-                <CommitInput multiline={field.multiline} disabled={disabled} value={String(value ?? '')} onCommit={(v) => setValue(sourceId, field.name, v)} label={field.name} />
+                <CommitInput multiline={field.multiline} disabled={disabled || !!field.logic?.calc} value={String(value ?? '')} logic={field.logic} onCommit={(v) => setValue(sourceId, field.name, v)} label={field.name} />
               )}
             </div>
           );
@@ -664,16 +833,28 @@ function FormFill() {
 }
 
 /** Commits on blur/Enter so typing doesn't flood the undo history. */
-function CommitInput({ value, onCommit, multiline, disabled, label }: { value: string; onCommit: (v: string) => void; multiline: boolean; disabled: boolean; label: string }) {
+function CommitInput({ value, onCommit, multiline, disabled, label, logic }: { value: string; onCommit: (v: string) => void; multiline: boolean; disabled: boolean; label: string; logic?: FieldLogic }) {
+  // Formatted while not editing ("1.234,50 lei"), the plain value while typing.
+  const [editing, setEditing] = useState(false);
   const [text, setText] = useState(value);
-  useEffect(() => setText(value), [value]);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    if (!editing) setText(value);
+  }, [value, editing]);
+  const shown = editing ? text : displayValue(logic?.format, value);
   const commit = () => {
-    if (text !== value) onCommit(text);
+    setEditing(false);
+    const r = checkInput(logic, text);
+    setError(r.error);
+    if (r.error) return;
+    if (r.value !== value) onCommit(r.value);
   };
-  return multiline ? (
-    <Textarea aria-label={label} rows={2} disabled={disabled} value={text} onChange={(e) => setText(e.target.value)} onBlur={commit} />
-  ) : (
-    <Input aria-label={label} disabled={disabled} value={text} onChange={(e) => setText(e.target.value)} onBlur={commit} onKeyDown={(e) => e.key === 'Enter' && commit()} />
+  const common = { 'aria-label': label, disabled, value: shown, onFocus: () => setEditing(true), onChange: (e: { target: { value: string } }) => setText(e.target.value), onBlur: commit };
+  return (
+    <>
+      {multiline ? <Textarea rows={2} {...common} /> : <Input {...common} data-testid="form-input" onKeyDown={(e) => e.key === 'Enter' && commit()} />}
+      {error ? <p className="mt-0.5 text-[11px] text-rose-600" data-testid="form-input-error">{error}</p> : null}
+    </>
   );
 }
 

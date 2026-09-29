@@ -29,6 +29,7 @@ import {
   PDFRadioGroup,
   PDFRef,
   PDFStream,
+  PDFHexString,
   PDFString,
   PDFTextField,
   StandardFonts,
@@ -77,6 +78,8 @@ import { writeAttachment, writeLink, writeMeasure, writePoly, writeStamp } from 
 import { writeOutline } from './outline';
 import { dropUnreachableObjects } from './prune';
 import { removeGlyphs, type Box, type LineEdit } from './textRemoval';
+import { readFieldLogic, writeCalcOrder, writeFieldLogic } from './formScripts';
+import { calcOrder, calculate, displayValue, parseNumber } from '@/lib/formLogic';
 import type { FieldValue } from '@/store/usePDFStore';
 
 export interface ExportInput {
@@ -242,6 +245,8 @@ interface DrawContext {
   images: Map<string, PDFImage>;
   opts: Required<Pick<ExportOptions, 'measure' | 'loadFont'>>;
   fieldFont: PDFFont | null;
+  /** Names of the fields created from objects (for formulas). */
+  fieldNames: string[];
 }
 
 function variantKey(v: FontVariant): string {
@@ -507,6 +512,7 @@ async function addFormField(ctx: DrawContext, page: PDFPage, pm: Matrix, rotatio
       if (o.required) f.enableRequired();
       f.addToPage(page, { ...rect, ...look, font: ctx.fieldFont ?? undefined });
       f.setFontSize(o.fontSize || 0);
+      if (o.logic && (o.logic.format || o.logic.range || o.logic.calc)) writeFieldLogic(ctx.doc, f, o.logic, ctx.fieldNames);
       break;
     }
     case 'checkbox': {
@@ -758,7 +764,7 @@ export async function buildPdf(input: ExportInput, options: ExportOptions = {}):
 
   // 5. Objects.
   const needsFieldFont = objects.some((o) => o.type === 'field') || formTouched;
-  const ctx: DrawContext = { doc, fonts: new Map(), fontTexts: collectFontTexts(objects), images: new Map(), opts, fieldFont: null };
+  const ctx: DrawContext = { doc, fonts: new Map(), fontTexts: collectFontTexts(objects), images: new Map(), opts, fieldFont: null, fieldNames: objects.filter((o): o is FieldObject => o.type === 'field').map((o) => o.name) };
   if (needsFieldFont) {
     // Full (non-subset) font so recipients can type any character later.
     ctx.fieldFont = await doc.embedFont(await opts.loadFont({ family: 'sans', bold: false, italic: false }), { subset: false });
@@ -863,12 +869,48 @@ export async function buildPdf(input: ExportInput, options: ExportOptions = {}):
   const form = doc.getForm();
   if (form.getFields().length > 0) {
     const acro = lookupDict(doc, doc.catalog.get(PDFName.of('AcroForm')));
+    const logic = readFieldLogic(doc);
+    writeCalcOrder(doc, logic);
+    // Calculated fields get their values now, so the file is right even where form scripts do not run.
+    const names = form.getFields().map((f) => f.getName());
+    for (const name of calcOrder(logic)) {
+      const l = logic[name];
+      const get = (n: string) => {
+        try {
+          return parseNumber(form.getTextField(n).getText() ?? '');
+        } catch {
+          return NaN;
+        }
+      };
+      const v = calculate(l.calc!, names, get);
+      const dec = l.format && l.format.kind !== 'date' ? l.format.decimals + (l.format.kind === 'percent' ? 2 : 0) : 6;
+      try {
+        form.getTextField(name).setText(Number.isFinite(v) ? String(Math.round(v * 10 ** dec) / 10 ** dec) : '');
+      } catch {
+        /* not a text field */
+      }
+    }
     if (ctx.fieldFont) {
+      // Formatted fields show "1.234,50 lei" on the page but keep the plain value (1234.5) as the PDF standard asks.
+      const raw = new Map<PDFTextField, string>();
+      for (const [name, l] of Object.entries(logic)) {
+        if (!l.format) continue;
+        try {
+          const f = form.getTextField(name);
+          const v = f.getText() ?? '';
+          if (!v) continue;
+          raw.set(f, v);
+          f.setText(displayValue(l.format, v));
+        } catch {
+          /* not a text field */
+        }
+      }
       try {
         form.updateFieldAppearances(ctx.fieldFont);
       } catch {
         /* a field with an odd appearance stream: keep its original look */
       }
+      for (const [f, v] of raw) f.acroField.dict.set(PDFName.of('V'), PDFHexString.fromText(v));
     }
     acro?.set(PDFName.of('NeedAppearances'), PDFBool.False);
   }

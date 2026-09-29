@@ -1,4 +1,5 @@
-import { Info, Languages, Moon, PanelLeft, PanelRight, Sun } from 'lucide-react';
+import { Info, Languages, Moon, PanelLeft, PanelRight, Search, Sun } from 'lucide-react';
+import { usePalette } from './CommandPalette';
 import { useLang, type Lang } from '@/lib/i18n';
 import { usePDFStore } from '@/store/usePDFStore';
 import { Button, Tooltip } from '@/components/ui/primitives';
@@ -30,6 +31,16 @@ export function TopBar() {
         )}
       </div>
       <div className="flex items-center gap-1">
+        <button
+          type="button"
+          data-testid="palette-open"
+          onClick={() => usePalette.setState({ open: true })}
+          className="mr-2 flex h-8 w-56 items-center gap-2 rounded-md border border-app bg-panel-2 px-2.5 text-[12px] text-muted hover-app"
+        >
+          <Search size={14} />
+          <span className="flex-1 text-left">Search tools…</span>
+          <kbd className="text-[10px]">Ctrl+K</kbd>
+        </button>
         <Tooltip content="Toggle page thumbnails">
           <Button variant="ghost" size="icon" aria-label="Toggle thumbnails" disabled={!hasDoc} onClick={s.toggleSidebar}>
             <PanelLeft size={17} />

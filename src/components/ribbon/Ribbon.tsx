@@ -58,6 +58,10 @@ import {
   SendToBack,
   FileKey2,
   Link2,
+  ListTree,
+  ImageDown,
+  ImagePlay,
+  Replace,
   Crop,
   Droplets,
   PanelBottom,
@@ -81,7 +85,7 @@ function openMarks(tab: 'watermark' | 'header' | 'background') {
 import { CommentTab, HomeTab, ViewTab } from './ReaderTabs';
 import type { ExportFormat } from '@/actions/convert';
 
-const TABS: Array<{ id: RibbonTab; label: string }> = [
+export const RIBBON_TABS: Array<{ id: RibbonTab; label: string }> = [
   { id: 'home', label: 'Home' },
   { id: 'view', label: 'View' },
   { id: 'edit', label: 'Edit' },
@@ -93,6 +97,30 @@ const TABS: Array<{ id: RibbonTab; label: string }> = [
   { id: 'convert', label: 'Convert' },
 ];
 
+/** The buttons of one ribbon tab (also rendered off-screen by the tool search). */
+export function TabContent({ tab }: { tab: RibbonTab }) {
+  switch (tab) {
+    case 'home':
+      return <HomeTab />;
+    case 'view':
+      return <ViewTab />;
+    case 'comment':
+      return <CommentTab />;
+    case 'edit':
+      return <EditTab />;
+    case 'sign':
+      return <SignTab />;
+    case 'organize':
+      return <OrganizeTab />;
+    case 'forms':
+      return <FormsTab />;
+    case 'security':
+      return <SecurityTab />;
+    case 'convert':
+      return <ConvertTab />;
+  }
+}
+
 export function Ribbon() {
   const tab = usePDFStore((s) => s.ribbonTab);
   const setTab = usePDFStore((s) => s.setRibbonTab);
@@ -100,7 +128,7 @@ export function Ribbon() {
   return (
     <div className="shrink-0 border-b border-app bg-panel">
       <div role="tablist" aria-label="Ribbon" className="flex h-8 items-end gap-0.5 px-2">
-        {TABS.map((t) => (
+        {RIBBON_TABS.map((t) => (
           <button
             key={t.id}
             role="tab"
@@ -119,15 +147,7 @@ export function Ribbon() {
         ))}
       </div>
       <div data-testid="ribbon" className={cn('flex h-[84px] items-stretch gap-0 overflow-x-auto border-t border-app px-1.5 py-1.5', !hasDoc && tab !== 'home' && tab !== 'convert' && tab !== 'view' && 'opacity-60')}>
-        {tab === 'home' && <HomeTab />}
-        {tab === 'view' && <ViewTab />}
-        {tab === 'comment' && <CommentTab />}
-        {tab === 'edit' && <EditTab />}
-        {tab === 'sign' && <SignTab />}
-        {tab === 'organize' && <OrganizeTab />}
-        {tab === 'forms' && <FormsTab />}
-        {tab === 'security' && <SecurityTab />}
-        {tab === 'convert' && <ConvertTab />}
+        <TabContent tab={tab} />
       </div>
     </div>
   );
@@ -161,6 +181,7 @@ function Big({ icon, label, onClick, active, disabled, tip, testId }: BtnProps) 
         type="button"
         data-testid={testId}
         aria-label={label}
+        data-tip={tip}
         aria-pressed={active}
         disabled={disabled}
         onClick={onClick}
@@ -183,6 +204,7 @@ function Small({ icon, label, onClick, active, disabled, tip, testId }: BtnProps
         type="button"
         data-testid={testId}
         aria-label={label}
+        data-tip={tip}
         aria-pressed={active}
         disabled={disabled}
         onClick={onClick}
@@ -257,6 +279,7 @@ function EditTab() {
     <>
       <Group label="Text">
         <ToolBtn tool="editText" icon={<TextCursorInput size={I} />} label="Edit text" tip="Click any existing text to replace it" />
+        <ToolBtn tool="editImage" icon={<ImagePlay size={I} />} label="Edit image" tip="Click a picture in the page to move, resize, rotate, replace or delete it" />
         <ToolBtn tool="text" icon={<Type size={I} />} label="Add text" tip="Click to add a text box (T)" />
       </Group>
       <Group label="Insert">
@@ -371,6 +394,13 @@ function OrganizeTab() {
         <Stack>
           <Small icon={<FilePlus2 size={i} />} label="Insert blank" disabled={!editable} onClick={() => s.insertBlankPage(idx + 1)} testId="btn-insert-blank" />
           <Small icon={<SquareStack size={i} />} label="Duplicate page" disabled={!editable || !current} onClick={() => current && s.duplicatePages([current])} />
+          <Small icon={<Replace size={i} />} label="Replace pages" disabled={!editable} onClick={() => s.openModal('replacePages')} testId="btn-replace-pages" />
+        </Stack>
+      </Group>
+      <Group label="Structure">
+        <Stack>
+          <Small icon={<ListTree size={i} />} label="Bookmarks from headings" disabled={!editable} onClick={() => void import('@/actions/pageOps').then((m) => m.bookmarksFromHeadings())} testId="btn-auto-bookmarks" />
+          <Small icon={<Link2 size={i} />} label="Links from web addresses" disabled={!editable} onClick={() => void import('@/actions/pageOps').then((m) => m.linksFromUrls())} testId="btn-auto-links" />
         </Stack>
       </Group>
       <Group label="Page setup">
@@ -481,6 +511,7 @@ function ConvertTab() {
         <Big icon={<Presentation size={I} />} label="PowerPoint" disabled={!hasDoc} onClick={() => openExport('pptx')} />
         <Stack>
           <Small icon={<FileImage size={i} />} label="Images" disabled={!hasDoc} onClick={() => openExport('png')} />
+          <Small icon={<ImageDown size={i} />} label="Export pictures (ZIP)" disabled={!hasDoc} onClick={() => void import('@/actions/pageOps').then((m) => m.exportImages())} testId="btn-export-images" />
           <Small icon={<PenTool size={i} />} label="SVG" disabled={!hasDoc} onClick={() => openExport('svg')} />
           <Small icon={<FileCode2 size={i} />} label="HTML / Markdown" disabled={!hasDoc} onClick={() => openExport('html')} />
         </Stack>

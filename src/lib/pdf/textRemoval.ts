@@ -546,7 +546,7 @@ interface Interpretation {
   src: Uint8Array;
 }
 
-function pageContent(doc: PDFDocument, page: PDFPage): Uint8Array {
+export function pageContent(doc: PDFDocument, page: PDFPage): Uint8Array {
   const contents = page.node.get(PDFName.of('Contents'));
   const target = contents instanceof PDFRef ? doc.context.lookup(contents) : contents;
   const parts: Uint8Array[] = [];
@@ -570,7 +570,7 @@ function pageContent(doc: PDFDocument, page: PDFPage): Uint8Array {
   return out;
 }
 
-function resourcesOf(page: PDFPage): PDFDict | undefined {
+export function resourcesOf(page: PDFPage): PDFDict | undefined {
   let node: PDFDict | undefined = page.node;
   for (let depth = 0; node && depth < 32; depth++) {
     const r = node.lookup(PDFName.of('Resources'));

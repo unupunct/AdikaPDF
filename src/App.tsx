@@ -11,6 +11,8 @@ import { WelcomeScreen } from '@/components/shell/WelcomeScreen';
 import { SearchBar } from '@/components/shell/SearchBar';
 import { Toasts, BusyOverlay, DropOverlay } from '@/components/shell/Overlays';
 import { Modals } from '@/components/modals/Modals';
+import { CommandPalette } from '@/components/shell/CommandPalette';
+import { SplitView, useSplit } from '@/components/viewer/SplitView';
 import { useShortcuts } from '@/hooks/useShortcuts';
 import { useFileDrop } from '@/hooks/useFileDrop';
 import { useAutoReload } from '@/hooks/useAutoReload';
@@ -22,6 +24,8 @@ import { ensureFontsLoaded } from '@/lib/fonts';
 import { ensurePrintWatcher, initialFiles, onForwardedFiles } from '@/lib/platform';
 import { openPdfPath } from '@/actions/document';
 import { maybeAutoCheck } from '@/lib/updates';
+import { isDesktop } from '@/lib/platform';
+import { askConfirm } from '@/store/useDialogs';
 
 export default function App() {
   const hasDoc = usePDFStore((s) => s.pages.length > 0);
@@ -32,6 +36,7 @@ export default function App() {
   const dragging = useFileDrop();
   const presentation = usePDFStore((s) => s.presentation);
   const fullscreen = usePDFStore((s) => s.fullscreen);
+  const split = useSplit((s) => s.open);
   useShortcuts();
   useAutoReload();
 
@@ -57,10 +62,49 @@ export default function App() {
     });
     void ensurePrintWatcher();
     maybeAutoCheck();
+    // Crash recovery: offer what an earlier run left, then back up from now on.
+    void import('@/lib/recovery').then(async (r) => {
+      const items = await r.listBackups();
+      r.startAutoBackup();
+      if (items.length) {
+        const { useRecoverList } = await import('@/components/modals/RecoverModal');
+        useRecoverList.setState({ items });
+        usePDFStore.getState().openModal('recover');
+      }
+    });
     return () => {
       void off.then((f) => f());
     };
   }, [fontsReady]);
+
+  // Closing the window: ask about unsaved work (the WebView's beforeunload does not run
+  // when the desktop window closes), then remove this session's backups.
+  useEffect(() => {
+    if (!isDesktop) return;
+    let off: (() => void) | undefined;
+    void import('@tauri-apps/api/window').then(({ getCurrentWindow }) => {
+      const win = getCurrentWindow();
+      void win
+        .onCloseRequested(async (e) => {
+          e.preventDefault();
+          const n = dirtyTabCount();
+          if (n > 0) {
+            const ok = await askConfirm({
+              title: 'Close Adika PDF Editor?',
+              message: n === 1 ? 'A document has unsaved changes. Close without saving?' : `${n} documents have unsaved changes. Close without saving?`,
+              confirmLabel: 'Close without saving',
+              danger: true,
+            });
+            if (!ok) return;
+          }
+          const { discardSessionBackups } = await import('@/lib/recovery');
+          await discardSessionBackups().catch(() => undefined);
+          await win.destroy();
+        })
+        .then((f) => (off = f));
+    });
+    return () => off?.();
+  }, []);
 
   // Warn before closing the window with unsaved work.
   useEffect(() => {
@@ -104,12 +148,14 @@ export default function App() {
               <WelcomeScreen />
             )}
           </main>
+          {hasDoc && split ? <SplitView /> : null}
           {hasDoc && inspectorOpen ? <PropertiesPanel /> : null}
         </div>
         {fullscreen ? null : <StatusBar />}
         {presentation && hasDoc ? <PresentationView /> : null}
         {hasDoc ? <SelectionToolbar /> : null}
         <Modals />
+        <CommandPalette />
         <Toasts />
         <BusyOverlay />
         {dragging ? <DropOverlay /> : null}

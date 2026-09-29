@@ -71,7 +71,9 @@ export type ModalId =
   | 'pageMarks'
   | 'compare'
   | 'find-redact'
-  | 'batch';
+  | 'batch'
+  | 'recover'
+  | 'replacePages';
 
 export interface Toast {
   id: string;
@@ -190,6 +192,8 @@ interface PDFState extends UndoableState {
   copySelection: () => void;
   paste: () => void;
   setFieldValue: (key: string, value: FieldValue) => void;
+  /** Several field values in one undo step (a value and the totals it changes). */
+  setFieldValues: (patch: Record<string, FieldValue>) => void;
 
   // Pages
   rotatePages: (pageIds: string[], delta: Rotation) => void;
@@ -561,6 +565,7 @@ export const usePDFStore = create<PDFState>()((set, get) => ({
   },
 
   setFieldValue: (key, value) => get().commit((s) => ({ fieldValues: { ...s.fieldValues, [key]: value } })),
+  setFieldValues: (patch) => get().commit((s) => ({ fieldValues: { ...s.fieldValues, ...patch } })),
 
   // ------------------------------------------------------------ pages
 

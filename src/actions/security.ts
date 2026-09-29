@@ -4,6 +4,7 @@ import { usePDFStore } from '@/store/usePDFStore';
 import { exportCurrentPdf, primarySourceBytes, saveDerived, suggestedName, withBusy } from './document';
 import { encryptPdf, type PdfPermissions } from '@/lib/crypto/encrypt';
 import { saveBytes } from '@/lib/platform';
+import type { FieldLogic } from '@/lib/formLogic';
 
 export async function protectDocument(userPassword: string, ownerPassword: string, permissions: PdfPermissions): Promise<void> {
   const out = await withBusy('Encrypting with AES-256…', async (progress) => {
@@ -29,6 +30,9 @@ export interface FormFieldInfo {
   options: string[];
   readOnly: boolean;
   multiline: boolean;
+  required: boolean;
+  /** Format / range / calculation read from the field's Acrobat actions. */
+  logic?: FieldLogic;
 }
 
 /** Existing AcroForm fields of a PDF (for the fill-in panel and CSV export). */
@@ -40,8 +44,10 @@ export async function readFormFields(bytes: Uint8Array): Promise<FormFieldInfo[]
     return [];
   }
   const out: FormFieldInfo[] = [];
+  const { readFieldLogic } = await import('@/lib/pdf/formScripts');
+  const logic = readFieldLogic(doc);
   for (const f of doc.getForm().getFields()) {
-    const base = { name: f.getName(), readOnly: f.isReadOnly(), options: [] as string[], multiline: false };
+    const base = { name: f.getName(), readOnly: f.isReadOnly(), options: [] as string[], multiline: false, required: f.isRequired(), logic: logic[f.getName()] };
     if (f instanceof PDFTextField) out.push({ ...base, kind: 'text', value: f.getText() ?? '', multiline: f.isMultiline() });
     else if (f instanceof PDFCheckBox) out.push({ ...base, kind: 'checkbox', value: f.isChecked() });
     else if (f instanceof PDFRadioGroup) out.push({ ...base, kind: 'radio', value: f.getSelected() ?? '', options: f.getOptions() });
