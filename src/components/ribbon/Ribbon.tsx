@@ -69,6 +69,7 @@ import {
   Hash,
   KeyRound,
   Mails,
+  Accessibility,
 } from 'lucide-react';
 import { usePDFStore } from '@/store/usePDFStore';
 import type { RibbonTab, ToolId } from '@/types';
@@ -476,6 +477,9 @@ function SecurityTab() {
       <Group label="Protection">
         <Big icon={<Lock size={I} />} label="Password" disabled={!hasDoc} onClick={() => s.openModal('password')} tip="AES-256 encryption and permissions" testId="btn-protect" />
         <Big icon={<ShieldOff size={I} />} label="Sanitize" disabled={!hasDoc} onClick={() => void import('@/actions/security').then((m) => m.sanitizeDocument())} tip="Remove metadata, XMP and hidden info" />
+      </Group>
+      <Group label="Accessibility">
+        <Big icon={<Accessibility size={I} />} label="Accessibility" disabled={!hasDoc} onClick={() => s.openModal('accessibility')} tip="Check and fix what screen readers need: tags, reading order, title, language, picture descriptions (PDF/UA)" testId="btn-accessibility" />
       </Group>
       <Group label="Signatures">
         <Big icon={<ShieldCheck size={I} />} label="Verify" disabled={!hasDoc} onClick={() => s.openModal('verify')} />

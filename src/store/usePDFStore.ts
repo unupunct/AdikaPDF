@@ -74,6 +74,7 @@ export type ModalId =
   | 'find-redact'
   | 'batch'
   | 'mailmerge'
+  | 'accessibility'
   | 'recover'
   | 'replacePages';
 

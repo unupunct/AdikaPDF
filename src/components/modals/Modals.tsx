@@ -11,6 +11,7 @@ import { CropModal, LinkModal, PageMarksModal } from './PageToolModals';
 import { FindRedactModal } from './FindRedactModal';
 import { BatchModal } from './BatchModal';
 import { MailMergeModal } from './MailMergeModal';
+import { AccessibilityModal } from './AccessibilityModal';
 import { RecoverModal } from './RecoverModal';
 import { PrintModal } from './PrintModal';
 import { ReplacePagesModal } from './ReplacePagesModal';
@@ -40,6 +41,7 @@ export function Modals() {
       <FindRedactModal />
       <BatchModal />
       <MailMergeModal />
+      <AccessibilityModal />
       <RecoverModal />
       <PrintModal />
       <ReplacePagesModal />

@@ -27,6 +27,7 @@ import { registerPageTests } from './pages.part.mjs';
 import { registerViewToolTests } from './viewtools.part.mjs';
 import { registerEidasTests, makeStoreTestPfx } from './eidas.part.mjs';
 import { registerMergeTests } from './merge.part.mjs';
+import { registerAccessTests } from './access.part.mjs';
 
 const only = process.argv.slice(2).filter((a) => !a.startsWith('--'));
 const shots = process.argv.includes('--shots');
@@ -837,6 +838,7 @@ registerViewToolTests(test, { S, page, open, assert, F });
 registerPageTests(test, { S, page, dir, open, idle, savedFile, assert, pdfText, join, writeFileSync, F, pdfjs, FONT_DATA });
 registerEidasTests(test, { S, page, open, idle, savedFile, assert, F });
 registerMergeTests(test, { S, page, dir, open, idle, savedFile, assert, pdfText, join, writeFileSync });
+registerAccessTests(test, { S, page, dir, open, idle, savedFile, assert, join, writeFileSync });
 
 test('dark mode toggle and welcome after close', async () => {
   await page.click('[data-testid="theme-toggle"]');
