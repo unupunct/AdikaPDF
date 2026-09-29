@@ -600,6 +600,44 @@ test('digital signature with a self-signed ID, then verification', async () => {
   assert(tv[0].integrity === 'invalid', `tampering detected (${tv[0].integrity})`);
 });
 
+test('certify, then a second signature on the signed file: both stay valid', async () => {
+  await open(F.sample);
+  await tab('sign');
+  await page.click('[data-testid="btn-cert-sign"]');
+  await page.click('text=Create self-signed ID');
+  await page.fill('[data-testid="selfsigned-name"]', 'Ana Certifica');
+  await page.click('[data-testid="selfsigned-create"]');
+  await page.waitForSelector('[data-testid="identity-card"]', { timeout: 30000 });
+  await page.selectOption('select[aria-label="Certify"]', '2');
+  await page.click('[data-testid="cert-sign-now"]');
+  await idle();
+  await page.waitForFunction(() => window.__adika.store.getState().signatureStatus.length === 1, null, { timeout: 15000 });
+  const first = await S(() => window.__adika.store.getState().signatureStatus[0]);
+  assert(first.certified === 2 && first.integrity === 'valid', `certified signature (${JSON.stringify({ c: first.certified, i: first.integrity })})`);
+  // The signed file is open: sign it again.
+  await page.click('[data-testid="btn-cert-sign"]');
+  await page.click('text=Create self-signed ID');
+  await page.fill('[data-testid="selfsigned-name"]', 'Bogdan Aproba');
+  await page.click('[data-testid="selfsigned-create"]');
+  await page.waitForSelector('[data-testid="identity-card"]', { timeout: 30000 });
+  assert(!(await page.$('select[aria-label="Certify"]')), 'certify is offered only for the first signature');
+  await page.click('[data-testid="cert-sign-now"]');
+  await idle();
+  await page.waitForFunction(() => window.__adika.store.getState().signatureStatus.length === 2, null, { timeout: 15000 });
+  const both = await S(() => window.__adika.store.getState().signatureStatus.map((s) => ({ n: s.signerName, i: s.integrity, m: s.modifiedAfterSigning, later: s.laterChanges, c: s.certified })));
+  const a = both.find((s) => s.n.includes('Ana'));
+  const b = both.find((s) => s.n.includes('Bogdan'));
+  assert(a && a.i === 'valid' && !a.m && a.later?.signatures && a.c === 2, `first (certified) signature still valid (${JSON.stringify(a)})`);
+  assert(b && b.i === 'valid' && !b.m, `second signature valid (${JSON.stringify(b)})`);
+  await page.click('[data-testid="btn-verify"]');
+  await page.waitForSelector('[data-testid="signature-card"]', { timeout: 15000 });
+  const text = await page.textContent('[data-testid="verify-modal"]');
+  assert(/Allowed changes after signing: more signatures/.test(text) && /form filling and signing allowed/.test(text), 'verify dialog explains it');
+  await page.keyboard.press('Escape');
+  const status = await page.textContent('[data-testid="status-signatures"]');
+  assert(/2 signatures · intact/.test(status), `status bar (${status})`);
+});
+
 test('token signing dialog lists PKCS#11 drivers gracefully', async () => {
   await open(F.second);
   await tab('sign');

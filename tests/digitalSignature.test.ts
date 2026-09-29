@@ -229,14 +229,17 @@ describe('self-signed identity + sign/verify round trip', () => {
     expect(r.message).toMatch(/incremental update/);
   });
 
-  it('refuses to re-sign a signed PDF unless allowed, then gives a unique field name', async () => {
-    await expect(signPdf(signed, { identity, pageIndex: 0, rect: [0, 0, 0, 0] })).rejects.toThrow(/already has 1 digital signature/);
-    const twice = await signPdf(signed, { identity, pageIndex: 1, rect: [0, 0, 0, 0], allowInvalidatingExisting: true });
+  it('a second signature is appended (the first stays valid); rewriting on purpose still breaks it', async () => {
+    const twice = await signPdf(signed, { identity, pageIndex: 1, rect: [0, 0, 0, 0] });
     const rs = await verify(twice);
     expect(rs.map((r) => r.fieldName).sort()).toEqual(['Signature1', 'Signature2']);
     const byName = Object.fromEntries(rs.map((r) => [r.fieldName, r]));
     expect(byName.Signature2.integrity).toBe('valid');
-    expect(byName.Signature1.integrity).toBe('invalid'); // rewritten file broke it
+    expect(byName.Signature1.integrity).toBe('valid');
+    expect(byName.Signature1.modifiedAfterSigning).toBe(false);
+    const rewritten = await signPdf(signed, { identity, pageIndex: 1, rect: [0, 0, 0, 0], allowInvalidatingExisting: true });
+    const r2 = Object.fromEntries((await verify(rewritten)).map((r) => [r.fieldName, r]));
+    expect(r2.Signature1.integrity).toBe('invalid'); // the rewritten file broke it
   });
 
   it('unsigned PDF has no signatures; garbage signature is reported, not thrown', async () => {

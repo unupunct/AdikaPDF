@@ -9,6 +9,7 @@ import { exportCurrentPdf, primarySourceBytes, refreshSignatureStatus, saveDeriv
 import {
   identityFromCertificateDer,
   signPdf,
+  addValidationData,
   signerFromIdentity,
   verifyPdfSignatures,
   type ExternalSigner,
@@ -30,6 +31,10 @@ export interface SignMeta {
   location: string;
   contactInfo: string;
   tsaUrl: string | null;
+  /** Certify the document (first signature): 1 no changes, 2 forms and signing, 3 also comments. */
+  certify?: 0 | 1 | 2 | 3;
+  /** Store the chain and OCSP/CRL answers in the file (long-term validation; needs internet). */
+  ltv?: boolean;
 }
 
 /** Converts a display-space rect on page `pageIndex` of `bytes` to PDF user space. */
@@ -161,12 +166,48 @@ async function signWith(
       tsaUrl: meta.tsaUrl,
       fetchImpl: isDesktop ? nativeFetch : undefined,
       allowInvalidatingExisting: false,
+      // Only the first signature can certify (the option is hidden for signed files).
+      certify: meta.certify && !hadSignatures ? meta.certify : undefined,
     });
   });
   if (!out) return;
-  await saveDerived(out, '-signed', true);
+  let final = out;
+  if (meta.ltv) {
+    const ltv = await withBusy('Adding long-term validation data…', async () => {
+      try {
+        return await addValidationData(out, { trustedRoots: await trustedRoots(), httpGet: isDesktop ? httpGet : undefined, httpPost: isDesktop ? httpPost : undefined });
+      } catch (e) {
+        store.toast(`Signed, but the validation data could not be added: ${e instanceof Error ? e.message : String(e)}`, 'info');
+        return null;
+      }
+    });
+    if (ltv) {
+      final = ltv.bytes;
+      if (!ltv.complete) store.toast(`Signed. Long-term validation is incomplete: ${ltv.notes.join(' ')}`, 'info');
+    }
+  }
+  await saveDerived(final, '-signed', true);
   await refreshSignatureStatus();
 }
+
+/** Verify → Add long-term validation: stores the validation data in an already signed PDF (the signatures stay valid). */
+export async function addLongTermValidation(): Promise<void> {
+  const store = usePDFStore.getState();
+  const bytes = primarySourceBytes();
+  if (!bytes || !store.signatureStatus.length) return;
+  if (store.dirty) {
+    store.toast('Save or undo the changes first: validation data is added to the signed file as it is.', 'info');
+    return;
+  }
+  const res = await withBusy('Fetching validation data…', async () =>
+    addValidationData(bytes, { trustedRoots: await trustedRoots(), httpGet: isDesktop ? httpGet : undefined, httpPost: isDesktop ? httpPost : undefined }),
+  );
+  if (!res) return;
+  await saveDerived(res.bytes, '-ltv', true);
+  await refreshSignatureStatus();
+  usePDFStore.getState().toast(res.complete ? 'Long-term validation data added: the signatures can be verified offline, years from now.' : `Validation data added, but incomplete: ${res.notes.join(' ')}`, res.complete ? 'success' : 'info');
+}
+
 
 /** fetch() shim routed through the native HTTP command (no CORS for TSAs). */
 const nativeFetch: typeof fetch = async (input, init) => {

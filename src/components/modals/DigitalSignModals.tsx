@@ -5,9 +5,9 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { BadgeCheck, BadgeX, FileKey2, FolderOpen, KeyRound, Loader2, RefreshCw, ShieldAlert, ShieldCheck, Usb } from 'lucide-react';
 import { usePDFStore } from '@/store/usePDFStore';
-import { Button, Callout, Checkbox, Dialog, Field, Input, Tabs } from '@/components/ui/primitives';
+import { Button, Callout, Checkbox, Dialog, Field, Input, Tabs, Select } from '@/components/ui/primitives';
 import { PlacementPicker, resolvePlacement, useSelectedSignatureTarget, type PlacementState } from './PlacementPicker';
-import { signWithIdentity, signWithToken, verifyCurrentSignatures, type SignMeta } from '@/actions/sign';
+import { addLongTermValidation, signWithIdentity, signWithToken, verifyCurrentSignatures, type SignMeta } from '@/actions/sign';
 import { createSelfSignedIdentity, exportP12, loadP12, type SigningIdentity } from '@/lib/crypto/digitalSignature';
 import { errorMessage } from '@/actions/document';
 import { isDesktop, pickFiles, pickPaths, pkcs11DetectModules, pkcs11ListTokens, saveBytes, type Pkcs11Module, type TokenCertificate, type TokenInfo } from '@/lib/platform';
@@ -30,6 +30,7 @@ function usePlacement(): [PlacementState, (p: PlacementState) => void] {
 
 function MetaFields({ meta, onChange }: { meta: SignMeta; onChange: (m: SignMeta) => void }) {
   const [useTsa, setUseTsa] = useState(meta.tsaUrl !== null);
+  const signed = usePDFStore((s) => s.signatureStatus.length > 0);
   return (
     <>
       <div className="grid grid-cols-2 gap-3">
@@ -53,6 +54,24 @@ function MetaFields({ meta, onChange }: { meta: SignMeta; onChange: (m: SignMeta
           <Input value={meta.tsaUrl ?? ''} onChange={(e) => onChange({ ...meta, tsaUrl: e.target.value })} />
         </Field>
       ) : null}
+      <Checkbox checked={!!meta.ltv} label="Add long-term validation data (LTV: the signature can be verified offline for years; needs internet)" onChange={(ltv) => onChange({ ...meta, ltv })} />
+      {!signed ? (
+        <Field label="Certify this document">
+          <Select
+            value={String(meta.certify ?? 0)}
+            ariaLabel="Certify"
+            onChange={(v: string) => onChange({ ...meta, certify: Number(v) as 0 | 1 | 2 | 3 })}
+            options={[
+              { value: '0', label: 'No: an approval signature' },
+              { value: '1', label: 'Certify: no changes allowed' },
+              { value: '2', label: 'Certify: filling in forms and signing allowed' },
+              { value: '3', label: 'Certify: forms, signing and comments allowed' },
+            ]}
+          />
+        </Field>
+      ) : (
+        <p className="text-[11px] text-muted">This PDF is already signed: the new signature is added after the existing ones, which stay valid.</p>
+      )}
     </>
   );
 }
@@ -414,6 +433,11 @@ export function VerifyModal() {
         <>
           <Checkbox checked={checkRevocation} onChange={setCheckRevocation} label="Check revocation online (OCSP / CRL)" disabled={!isDesktop} />
           <div className="flex-1" />
+          {status.length && status.some((s) => !s.ltv) ? (
+            <Button onClick={() => void addLongTermValidation().then(() => setRan(true))} disabled={!isDesktop} data-testid="verify-add-ltv" title="Store the certificate chains and OCSP / CRL answers in the file (the signatures stay valid)">
+              Add long-term validation
+            </Button>
+          ) : null}
           <Button onClick={() => void verifyCurrentSignatures(checkRevocation).then(() => setRan(true))} data-testid="verify-run">
             <RefreshCw size={14} /> Verify again
           </Button>
@@ -459,7 +483,15 @@ function SignatureCard({ sig }: { sig: SignatureValidation }) {
         <Row label="Document integrity">
           {sig.integrity === 'valid' ? 'Unchanged since signing' : sig.integrity === 'invalid' ? 'MODIFIED — signature broken' : 'Could not be checked'}
         </Row>
-        <Row label="Covers whole file">{sig.coversWholeFile ? 'Yes' : 'No — content was added after this signature'}</Row>
+        <Row label="Covers whole file">
+          {sig.coversWholeFile
+            ? 'Yes'
+            : !sig.modifiedAfterSigning && sig.laterChanges
+              ? `Allowed changes after signing: ${[sig.laterChanges.ltv ? 'validation data' : '', sig.laterChanges.signatures ? 'more signatures' : '', sig.laterChanges.form ? 'form filling' : ''].filter(Boolean).join(', ')}`
+              : 'No — content was changed after this signature'}
+        </Row>
+        {sig.certified ? <Row label="Certified">{['', 'Yes — no changes allowed', 'Yes — form filling and signing allowed', 'Yes — forms, signing and comments allowed'][sig.certified]}</Row> : null}
+        <Row label="Long-term validation">{sig.ltv ? 'Yes — validation data saved in the file' : 'No'}</Row>
         <Row label="Signer identity">
           {sig.chainStatus === 'trusted'
             ? 'Trusted (chain to a Windows root)'
