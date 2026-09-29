@@ -85,7 +85,7 @@ function openMarks(tab: 'watermark' | 'header' | 'background') {
 import { CommentTab, HomeTab, ViewTab } from './ReaderTabs';
 import type { ExportFormat } from '@/actions/convert';
 
-const TABS: Array<{ id: RibbonTab; label: string }> = [
+export const RIBBON_TABS: Array<{ id: RibbonTab; label: string }> = [
   { id: 'home', label: 'Home' },
   { id: 'view', label: 'View' },
   { id: 'edit', label: 'Edit' },
@@ -97,6 +97,30 @@ const TABS: Array<{ id: RibbonTab; label: string }> = [
   { id: 'convert', label: 'Convert' },
 ];
 
+/** The buttons of one ribbon tab (also rendered off-screen by the tool search). */
+export function TabContent({ tab }: { tab: RibbonTab }) {
+  switch (tab) {
+    case 'home':
+      return <HomeTab />;
+    case 'view':
+      return <ViewTab />;
+    case 'comment':
+      return <CommentTab />;
+    case 'edit':
+      return <EditTab />;
+    case 'sign':
+      return <SignTab />;
+    case 'organize':
+      return <OrganizeTab />;
+    case 'forms':
+      return <FormsTab />;
+    case 'security':
+      return <SecurityTab />;
+    case 'convert':
+      return <ConvertTab />;
+  }
+}
+
 export function Ribbon() {
   const tab = usePDFStore((s) => s.ribbonTab);
   const setTab = usePDFStore((s) => s.setRibbonTab);
@@ -104,7 +128,7 @@ export function Ribbon() {
   return (
     <div className="shrink-0 border-b border-app bg-panel">
       <div role="tablist" aria-label="Ribbon" className="flex h-8 items-end gap-0.5 px-2">
-        {TABS.map((t) => (
+        {RIBBON_TABS.map((t) => (
           <button
             key={t.id}
             role="tab"
@@ -123,15 +147,7 @@ export function Ribbon() {
         ))}
       </div>
       <div data-testid="ribbon" className={cn('flex h-[84px] items-stretch gap-0 overflow-x-auto border-t border-app px-1.5 py-1.5', !hasDoc && tab !== 'home' && tab !== 'convert' && tab !== 'view' && 'opacity-60')}>
-        {tab === 'home' && <HomeTab />}
-        {tab === 'view' && <ViewTab />}
-        {tab === 'comment' && <CommentTab />}
-        {tab === 'edit' && <EditTab />}
-        {tab === 'sign' && <SignTab />}
-        {tab === 'organize' && <OrganizeTab />}
-        {tab === 'forms' && <FormsTab />}
-        {tab === 'security' && <SecurityTab />}
-        {tab === 'convert' && <ConvertTab />}
+        <TabContent tab={tab} />
       </div>
     </div>
   );
@@ -165,6 +181,7 @@ function Big({ icon, label, onClick, active, disabled, tip, testId }: BtnProps) 
         type="button"
         data-testid={testId}
         aria-label={label}
+        data-tip={tip}
         aria-pressed={active}
         disabled={disabled}
         onClick={onClick}
@@ -187,6 +204,7 @@ function Small({ icon, label, onClick, active, disabled, tip, testId }: BtnProps
         type="button"
         data-testid={testId}
         aria-label={label}
+        data-tip={tip}
         aria-pressed={active}
         disabled={disabled}
         onClick={onClick}

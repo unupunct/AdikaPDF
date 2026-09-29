@@ -14,7 +14,7 @@ export async function launchApp({ args = [], port = 9333, exe = EXE, recoveryDir
     ...process.env,
     ADIKA_E2E: '1',
     ADIKA_RECOVERY_DIR: recoveryDir,
-    WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${port}`,
+    WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${port}${process.env.ADIKA_EXTRA_WV2_ARGS ? ` ${process.env.ADIKA_EXTRA_WV2_ARGS}` : ''}`,
   };
   const proc = spawn(exe, args, { env, stdio: process.env.ADIKA_STDERR ? ['ignore', 'ignore', 'inherit'] : 'ignore' });
   let exited = false;

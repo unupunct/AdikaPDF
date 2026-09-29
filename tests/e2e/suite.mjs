@@ -24,6 +24,7 @@ import { registerReplaceTests } from './replace.part.mjs';
 import { registerBatchFormTests } from './batchforms.part.mjs';
 import { registerLanguageTests } from './language.part.mjs';
 import { registerPageTests } from './pages.part.mjs';
+import { registerViewToolTests } from './viewtools.part.mjs';
 
 const only = process.argv.slice(2).filter((a) => !a.startsWith('--'));
 const shots = process.argv.includes('--shots');
@@ -787,6 +788,7 @@ registerMeasureTests(test, { S, page, open, idle, savedFile, assert, F, pdfjs, F
 registerReplaceTests(test, { S, page, dir, open, idle, savedFile, assert, pdfText, join, writeFileSync, F });
 registerBatchFormTests(test, { S, page, dir, open, idle, savedFile, assert, pdfText, join, writeFileSync });
 registerLanguageTests(test, { S, page, open, assert, F });
+registerViewToolTests(test, { S, page, open, assert, F });
 registerPageTests(test, { S, page, dir, open, idle, savedFile, assert, pdfText, join, writeFileSync, F, pdfjs, FONT_DATA });
 
 test('dark mode toggle and welcome after close', async () => {

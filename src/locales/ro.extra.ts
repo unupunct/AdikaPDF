@@ -111,6 +111,28 @@ export const RO_EXTRA: Record<string, string> = {
   'The picture can now be moved, resized or rotated; replace it in Properties, or press Delete to remove it.': 'Imaginea poate fi acum mutată, redimensionată sau rotită; o puteți înlocui din Proprietăți sau șterge cu tasta Delete.',
   'Replace picture…': 'Înlocuire imagine…',
 
+  // Tool search and split view.
+  'Search tools…': 'Căutare instrumente…',
+  'Search tools and commands…': 'Căutați instrumente și comenzi…',
+  'Ctrl+K': 'Ctrl+K',
+  Esc: 'Esc',
+  'Nothing found.': 'Nu s-a găsit nimic.',
+  'Type what you want to do, e.g. compress, watermark, signature, OCR.': 'Scrieți ce vreți să faceți, de ex. comprimare, filigran, semnătură, OCR.',
+  'Find & replace': 'Căutare și înlocuire',
+  'Replace text everywhere (Ctrl+H)': 'Înlocuiți textul peste tot (Ctrl+H)',
+  'Dark mode': 'Mod întunecat',
+  'Switch between light and dark': 'Comutați între luminos și întunecat',
+  'Interface language: English / Română': 'Limba interfeței: English / Română',
+  'Version, updates, shortcuts and logs': 'Versiune, actualizări, comenzi rapide și jurnale',
+  Split: 'Împărțire ecran',
+  'Split view: another part of this document, or another open document, side by side (Ctrl+\\)': 'Ecran împărțit: altă parte a acestui document sau alt document deschis, alături (Ctrl+\\)',
+  'Document in the split pane': 'Documentul din panoul alăturat',
+  'This document': 'Acest document',
+  'Zoom out': 'Micșorare',
+  'Zoom in': 'Mărire',
+  'Follow the main view': 'Urmărește vizualizarea principală',
+  'Close split view': 'Închidere ecran împărțit',
+
   // Find & redact patterns.
   'E-mail addresses': 'Adrese de e-mail',
   'Phone numbers': 'Numere de telefon',

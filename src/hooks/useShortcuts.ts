@@ -129,6 +129,18 @@ export function useShortcuts(): void {
         s.setSearch({ open: true });
         return;
       }
+      // Split view.
+      if (mod && key === '\\' && s.pages.length) {
+        e.preventDefault();
+        void import('@/components/viewer/SplitView').then((m) => m.toggleSplit());
+        return;
+      }
+      // Tool search.
+      if (mod && !e.shiftKey && key === 'k') {
+        e.preventDefault();
+        void import('@/components/shell/CommandPalette').then((m) => m.usePalette.setState({ open: true }));
+        return;
+      }
       // Find & replace (as in Word).
       if (mod && !e.shiftKey && key === 'h' && s.pages.length) {
         e.preventDefault();

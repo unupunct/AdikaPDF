@@ -11,6 +11,8 @@ import { WelcomeScreen } from '@/components/shell/WelcomeScreen';
 import { SearchBar } from '@/components/shell/SearchBar';
 import { Toasts, BusyOverlay, DropOverlay } from '@/components/shell/Overlays';
 import { Modals } from '@/components/modals/Modals';
+import { CommandPalette } from '@/components/shell/CommandPalette';
+import { SplitView, useSplit } from '@/components/viewer/SplitView';
 import { useShortcuts } from '@/hooks/useShortcuts';
 import { useFileDrop } from '@/hooks/useFileDrop';
 import { useAutoReload } from '@/hooks/useAutoReload';
@@ -34,6 +36,7 @@ export default function App() {
   const dragging = useFileDrop();
   const presentation = usePDFStore((s) => s.presentation);
   const fullscreen = usePDFStore((s) => s.fullscreen);
+  const split = useSplit((s) => s.open);
   useShortcuts();
   useAutoReload();
 
@@ -145,12 +148,14 @@ export default function App() {
               <WelcomeScreen />
             )}
           </main>
+          {hasDoc && split ? <SplitView /> : null}
           {hasDoc && inspectorOpen ? <PropertiesPanel /> : null}
         </div>
         {fullscreen ? null : <StatusBar />}
         {presentation && hasDoc ? <PresentationView /> : null}
         {hasDoc ? <SelectionToolbar /> : null}
         <Modals />
+        <CommandPalette />
         <Toasts />
         <BusyOverlay />
         {dragging ? <DropOverlay /> : null}
