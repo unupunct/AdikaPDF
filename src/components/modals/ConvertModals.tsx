@@ -278,10 +278,15 @@ function ScanPanel({ append, imgOpts, setImgOpts, run }: { append: boolean; imgO
       <ImageOptions value={imgOpts} onChange={setImgOpts} />
       {mode === 'scanner' ? (
         <>
-          <p className="mb-3 text-xs text-muted">Uses the Windows scanner dialog (choose colour, resolution and area there). After each page you can scan another.</p>
-          <Button variant="primary" disabled={!isDesktop} onClick={() => void run(() => scanToPdf(imgOpts, append))}>
-            <ScanLine size={15} /> Start scanning
-          </Button>
+          <p className="mb-3 text-xs text-muted">Scan to PDF chooses the scanner, feeder, colour and resolution, cleans the pages up and can split the batch into several PDFs. The Windows scanner dialog is still available here.</p>
+          <div className="flex gap-2">
+            <Button variant="primary" onClick={() => usePDFStore.getState().openModal('scan')} data-testid="import-open-scan">
+              <ScanLine size={15} /> Scan to PDF…
+            </Button>
+            <Button disabled={!isDesktop} onClick={() => void run(() => scanToPdf(imgOpts, append))}>
+              Windows scanner dialog
+            </Button>
+          </div>
         </>
       ) : (
         <>

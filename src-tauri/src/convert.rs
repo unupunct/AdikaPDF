@@ -14,10 +14,10 @@ use std::os::windows::process::CommandExt;
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
 /// A scratch directory removed on drop, so failed conversions leave nothing.
-struct Scratch(PathBuf);
+pub(crate) struct Scratch(PathBuf);
 
 impl Scratch {
-    fn new() -> Result<Self, String> {
+    pub(crate) fn new() -> Result<Self, String> {
         let nanos = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_nanos())
@@ -26,7 +26,7 @@ impl Scratch {
         std::fs::create_dir_all(&dir).map_err(|e| format!("Could not create temp folder: {e}"))?;
         Ok(Self(dir))
     }
-    fn path(&self, name: &str) -> PathBuf {
+    pub(crate) fn path(&self, name: &str) -> PathBuf {
         self.0.join(name)
     }
 }
@@ -44,7 +44,7 @@ fn hidden(cmd: &mut Command) -> &mut Command {
 }
 
 /// Runs a process with a hard timeout; returns stderr text on failure.
-fn run_with_timeout(cmd: &mut Command, timeout: Duration) -> Result<(), String> {
+pub(crate) fn run_with_timeout(cmd: &mut Command, timeout: Duration) -> Result<(), String> {
     let mut child = hidden(cmd).spawn().map_err(|e| format!("Could not start converter: {e}"))?;
     let start = Instant::now();
     loop {

@@ -19,6 +19,7 @@ import {
   exportToPptx,
   exportToXlsx,
   extractStructuredText,
+  renderPageToCanvas,
 } from '@/lib/pdf/convert';
 import { makeSearchable, ocrPages } from '@/lib/pdf/ocr';
 import { compressPdf, type CompressOptions } from '@/lib/pdf/compress';
@@ -493,7 +494,46 @@ export async function extractPages(pageNumbers: number[], suffix = '-extract'): 
 }
 
 /** Splits into chunks of `every` pages, or at explicit ranges like "1-3,4-10". */
-export async function splitDocument(ranges: number[][]): Promise<void> {
+/**
+ * Split at blank pages and / or Adika separator sheets (their barcode may
+ * name the next part). The blank pages and sheets themselves are left out.
+ */
+export async function splitAtSeparators(opts: { atBlank: boolean }): Promise<void> {
+  const groups = await withBusy('Looking for separator pages…', async (progress) => {
+    const [{ pageRole, splitPages }, { cleanupPage, binarize, toGray }, { readCode128 }] = await Promise.all([
+      import('@/lib/scan/scanPdf'),
+      import('@/lib/scan/cleanup'),
+      import('@/lib/barcode/code128'),
+    ]);
+    const pdf = await openPdf(await exportCurrentPdf({}, progress));
+    try {
+      const roles = [];
+      for (let n = 1; n <= pdf.numPages; n++) {
+        progress(`Checking page ${n} of ${pdf.numPages}`, n / pdf.numPages);
+        const { canvas } = await renderPageToCanvas(pdf, n, 100);
+        const d = (canvas.getContext('2d') as CanvasRenderingContext2D).getImageData(0, 0, canvas.width, canvas.height);
+        canvas.width = canvas.height = 0;
+        const img = { data: d.data, width: d.width, height: d.height };
+        const r = cleanupPage(img, { edges: true });
+        roles.push(pageRole(readCode128(binarize(toGray(r.img)), r.img.width, r.img.height), r.blank));
+      }
+      return splitPages(roles, { atBlank: opts.atBlank, dropBlank: opts.atBlank });
+    } finally {
+      await pdf.loadingTask.destroy();
+    }
+  });
+  if (!groups) return;
+  if (groups.length <= 1) {
+    usePDFStore.getState().toast(opts.atBlank ? 'No blank pages or separator sheets were found.' : 'No separator sheets were found.', 'info');
+    return;
+  }
+  await splitDocument(
+    groups.map((g) => g.pages.map((i) => i + 1)),
+    groups.map((g) => g.name),
+  );
+}
+
+export async function splitDocument(ranges: number[][], names: Array<string | null> = []): Promise<void> {
   const s = usePDFStore.getState();
   const base = baseName();
   const outputs = await withBusy('Splitting…', async (progress) => {
@@ -506,7 +546,8 @@ export async function splitDocument(ranges: number[][]): Promise<void> {
         { sources: s.sources, pages, objects: s.objects.filter((o) => ids.has(o.pageId)), fieldValues: s.fieldValues },
         { rasterizeRedactedPage: (p, r) => import('./document').then((m) => m.rasterizeWithRedactions(p, r)) },
       );
-      files.push({ name: `${base}-part${i + 1}.pdf`, bytes });
+      const named = names[i]?.replace(/[<>:"/\\|?*\u0000-\u001f]/g, '_').trim();
+      files.push({ name: named ? `${named}.pdf` : `${base}-part${i + 1}.pdf`, bytes });
     }
     return files;
   });

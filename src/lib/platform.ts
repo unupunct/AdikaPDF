@@ -245,6 +245,35 @@ export async function scanPage(): Promise<Uint8Array> {
   return new Uint8Array(await invoke<ArrayBuffer>('scan_wia'));
 }
 
+export interface ScannerInfo {
+  id: string;
+  name: string;
+  /** Has a document feeder. */
+  feeder: boolean;
+}
+
+/** WIA scanners connected to this computer. */
+export async function wiaDevices(): Promise<ScannerInfo[]> {
+  if (!isDesktop) return [];
+  return invoke<ScannerInfo[]>('wia_devices');
+}
+
+/** Scans with the given settings, without the driver dialog: one page from the flatbed, every page from the feeder. */
+export async function wiaScan(opts: { device: string; dpi: number; mode: 'color' | 'gray' | 'bw'; source: 'flatbed' | 'feeder' | 'duplex'; widthMm: number; heightMm: number }): Promise<Uint8Array[]> {
+  if (!isDesktop) throw new DesktopOnlyError('Scanning');
+  const buf = new Uint8Array(await invoke<ArrayBuffer>('wia_scan', { device: opts.device, dpi: opts.dpi, mode: opts.mode, source: opts.source, widthMm: opts.widthMm, heightMm: opts.heightMm }));
+  const view = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
+  const count = view.getUint32(0, true);
+  const pages: Uint8Array[] = [];
+  let o = 4;
+  for (let i = 0; i < count; i++) {
+    const len = view.getUint32(o, true);
+    pages.push(buf.slice(o + 4, o + 4 + len));
+    o += 4 + len;
+  }
+  return pages;
+}
+
 // ---------------------------------------------------------------- network
 
 export async function httpGet(url: string): Promise<Uint8Array> {

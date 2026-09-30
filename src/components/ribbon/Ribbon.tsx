@@ -502,11 +502,12 @@ function ConvertTab() {
     <>
       <Group label="Create PDF from">
         <Big icon={<FileType2 size={I} />} label="Office" onClick={() => openImport('office')} tip="Word, Excel, PowerPoint (uses Microsoft Office on this PC)" testId="btn-import-office" />
+        <Big icon={<ScanLine size={I} />} label="Scan" onClick={() => s.openModal('scan')} tip="Scan to PDF: flatbed or document feeder, cleanup, blank pages and separator sheets, OCR" testId="btn-scan" />
         <Big icon={<FileImage size={I} />} label="Images" onClick={() => openImport('images')} tip="PNG, JPG, WebP, TIFF, GIF, BMP" testId="btn-import-images" />
         <Stack>
           <Small icon={<FileCode2 size={i} />} label="HTML / URL" onClick={() => openImport('html')} />
           <Small icon={<FileText size={i} />} label="Markdown / text" onClick={() => openImport('markdown')} />
-          <Small icon={<Camera size={i} />} label="Scanner / camera" onClick={() => openImport('scan')} />
+          <Small icon={<Camera size={i} />} label="Camera" onClick={() => openImport('scan')} />
         </Stack>
         <Stack>
           <Small icon={<BookCopy size={i} />} label="EPUB / e-mail / XPS" onClick={() => openImport('documents')} testId="btn-import-documents" />

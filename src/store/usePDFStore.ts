@@ -76,6 +76,7 @@ export type ModalId =
   | 'mailmerge'
   | 'accessibility'
   | 'readingview'
+  | 'scan'
   | 'recover'
   | 'replacePages';
 

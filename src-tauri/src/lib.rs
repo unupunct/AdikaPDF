@@ -12,6 +12,7 @@ mod pkcs11;
 mod recovery;
 mod appdata;
 mod certstore;
+mod scanner;
 
 use percent_encoding::percent_decode_str;
 use std::path::PathBuf;
@@ -143,6 +144,8 @@ pub fn run() {
             convert::office_to_pdf,
             convert::html_to_pdf,
             convert::scan_wia,
+            scanner::wia_devices,
+            scanner::wia_scan,
             net::http_request,
             net::system_certificates,
             pkcs11::pkcs11_detect_modules,

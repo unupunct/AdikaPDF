@@ -14,7 +14,7 @@ export async function pickBatchFiles(): Promise<string[]> {
   return pickPaths([{ name: 'PDF documents', extensions: ['pdf'] }], true);
 }
 
-async function ocrBytes(bytes: Uint8Array, lang: string): Promise<Uint8Array> {
+export async function ocrBytes(bytes: Uint8Array, lang: string): Promise<Uint8Array> {
   const [{ openPdf }, { ocrPages, makeSearchable }] = await Promise.all([import('@/lib/pdf/pdfService'), import('@/lib/pdf/ocr')]);
   const pdf = await openPdf(bytes.slice());
   try {
