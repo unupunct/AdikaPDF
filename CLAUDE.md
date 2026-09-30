@@ -1,10 +1,10 @@
 # Adika PDF Editor
 
-Privacy-first, offline Windows PDF editor (read, comment, edit, sign, organise, protect, OCR, convert). Version 1.7.0. MIT. Repo: https://github.com/unupunct/AdikaPDF (branch `main`).
+Privacy-first, offline Windows PDF editor (read, comment, edit, sign, organise, protect, OCR, convert). Version 1.8.0. MIT. Repo: https://github.com/unupunct/AdikaPDF (branch `main`).
 
 ## Architecture
 - **Tauri 2 desktop app.** Almost all logic runs in the WebView (React 18 + TypeScript + Vite 7 + Tailwind 4, state in zustand, canvas via Konva, rendering via pdf.js, writing via pdf-lib).
-- **Rust side (`src-tauri/src/`)** is thin: file I/O with raw IPC bodies (`lib.rs`), Windows certificate store listing and CNG/CryptoAPI signing (`certstore.rs`; E2E imports a throwaway .pfx in memory via `ADIKA_WINSTORE_TEST_PFX`), app cache files (`appdata.rs`, `%LOCALAPPDATA%Adika PDF EditorData` or `ADIKA_DATA_DIR`), Office/HTML/WIA conversion (`convert.rs`), HTTP + Windows cert store for OCSP/CRL/timestamps (`net.rs`), PKCS#11 token signing (`pkcs11.rs`), logs and crash reports (`logging.rs`), and the virtual-printer watcher (`print_watcher.rs`, started with a special CLI flag, no window).
+- **Rust side (`src-tauri/src/`)** is thin: file I/O with raw IPC bodies (`lib.rs`), Windows certificate store listing and CNG/CryptoAPI signing (`certstore.rs`; E2E imports a throwaway .pfx in memory via `ADIKA_WINSTORE_TEST_PFX`), app cache files (`appdata.rs`, `%LOCALAPPDATA%\Adika PDF Editor\Data` or `ADIKA_DATA_DIR`), Office/HTML/WIA conversion (`convert.rs`), HTTP + Windows cert store for OCSP/CRL/timestamps (`net.rs`), PKCS#11 token signing (`pkcs11.rs`), logs and crash reports (`logging.rs`), and the virtual-printer watcher (`print_watcher.rs`, started with a special CLI flag, no window).
 - Single-instance plugin: a second launch forwards PDF paths to the running window (`adika://open-files` event).
 - Installer: NSIS (`src-tauri/windows/hooks.nsh`, `printer.ps1` creates the "Adika PDF Editor" printer on top of Microsoft Print To PDF and enables the Print Spooler).
 
