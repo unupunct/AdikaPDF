@@ -533,6 +533,73 @@ export async function splitAtSeparators(opts: { atBlank: boolean }): Promise<voi
   );
 }
 
+/** Split at the top-level bookmarks: each part starts at a bookmark and takes its title as name. */
+export async function splitByBookmarks(): Promise<void> {
+  const s = usePDFStore.getState();
+  const tree = s.outline ?? (await (await import('@/lib/pdf/outlineTree')).toEditable(Object.values(s.sources), s.pages));
+  const starts: Array<{ title: string; index: number }> = [];
+  for (const b of tree) {
+    const index = s.pages.findIndex((p) => p.id === b.pageId);
+    if (index >= 0 && !starts.some((x) => x.index === index)) starts.push({ title: b.title, index });
+  }
+  starts.sort((a, b) => a.index - b.index);
+  if (starts.length < 2 && !(starts.length === 1 && starts[0].index > 0)) {
+    s.toast('The document needs at least two top-level bookmarks on different pages.', 'info');
+    return;
+  }
+  const ranges: number[][] = [];
+  const names: Array<string | null> = [];
+  if (starts[0].index > 0) {
+    ranges.push(Array.from({ length: starts[0].index }, (_, i) => i + 1));
+    names.push(null);
+  }
+  starts.forEach((st, k) => {
+    const end = k + 1 < starts.length ? starts[k + 1].index : s.pages.length;
+    ranges.push(Array.from({ length: end - st.index }, (_, i) => st.index + i + 1));
+    names.push(st.title);
+  });
+  await splitDocument(ranges, names);
+}
+
+/** Split into parts of at most `maxMb` (a page larger than that is a part on its own). */
+export async function splitBySize(maxMb: number): Promise<void> {
+  const s = usePDFStore.getState();
+  const limit = Math.max(0.1, maxMb) * 1024 * 1024;
+  const sizes = await withBusy('Measuring the pages…', async (progress) => {
+    const out: number[] = [];
+    for (let i = 0; i < s.pages.length; i++) {
+      progress(`Page ${i + 1} of ${s.pages.length}`, (i + 1) / s.pages.length);
+      const page = s.pages[i];
+      const bytes = await buildPdf(
+        { sources: s.sources, pages: [page], objects: s.objects.filter((o) => o.pageId === page.id), fieldValues: s.fieldValues },
+        { rasterizeRedactedPage: (p, r) => import('./document').then((m) => m.rasterizeWithRedactions(p, r)) },
+      );
+      out.push(bytes.length);
+    }
+    return out;
+  });
+  if (!sizes) return;
+  // Shared fonts and images are counted once per page here, so the parts come out a little smaller than the limit.
+  const ranges: number[][] = [];
+  let cur: number[] = [];
+  let total = 0;
+  sizes.forEach((sz, i) => {
+    if (cur.length && total + sz > limit) {
+      ranges.push(cur);
+      cur = [];
+      total = 0;
+    }
+    cur.push(i + 1);
+    total += sz;
+  });
+  if (cur.length) ranges.push(cur);
+  if (ranges.length === 1) {
+    s.toast(`The whole document fits in ${maxMb} MB: nothing to split.`, 'info');
+    return;
+  }
+  await splitDocument(ranges);
+}
+
 export async function splitDocument(ranges: number[][], names: Array<string | null> = []): Promise<void> {
   const s = usePDFStore.getState();
   const base = baseName();

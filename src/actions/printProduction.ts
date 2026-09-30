@@ -22,7 +22,7 @@ export async function preflightCurrent(profile: PreflightProfile): Promise<Prefl
 }
 
 /** Browser codecs for the colour conversion (photos). */
-const hooks: ConvertHooks = {
+export const colorHooks: ConvertHooks = {
   decodeJpeg: async (bytes) => {
     try {
       const bmp = await createImageBitmap(new Blob([bytes.slice().buffer as ArrayBuffer], { type: 'image/jpeg' }));
@@ -70,7 +70,7 @@ export async function convertCurrentToPdfX(level: PdfXLevel): Promise<string[] |
       return await convertToPdfX(bytes, {
         level,
         title,
-        hooks,
+        hooks: colorHooks,
         rasterCmyk: async (i, dpi) => {
           progress(`Rasterising page ${i + 1}…`, null);
           const { canvas } = await renderPageToCanvas(pdf, i + 1, dpi);
@@ -91,7 +91,7 @@ export async function convertCurrentToPdfX(level: PdfXLevel): Promise<string[] |
 export async function convertCurrentColors(target: 'gray' | 'cmyk'): Promise<string[] | undefined> {
   const out = await withBusy(target === 'gray' ? 'Converting to grey…' : 'Converting to CMYK…', async (progress) => {
     const { convertColors } = await import('@/lib/print/convertColors');
-    return convertColors(await exportCurrentPdf({}, progress), target, hooks);
+    return convertColors(await exportCurrentPdf({}, progress), target, colorHooks);
   });
   if (!out) return undefined;
   await saveDerived(out.bytes, target === 'gray' ? '-grayscale' : '-cmyk', true);

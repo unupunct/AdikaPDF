@@ -13,7 +13,7 @@ import { PDFDocument, StandardFonts, degrees, rgb } from 'pdf-lib';
 import * as pdfjs from 'pdfjs-dist/legacy/build/pdf.mjs';
 import { Document, Packer, Paragraph, HeadingLevel, Table, TableRow, TableCell, TextRun } from 'docx';
 import JSZip from 'jszip';
-import { launchApp, tempDir } from './harness.mjs';
+import { launchApp, tempDir, EXE } from './harness.mjs';
 import { registerFormatTests } from './formats.part.mjs';
 import { makeReaderFixture, registerReaderTests } from './reader.part.mjs';
 import { makeCommentFixture, registerCommentTests } from './comments.part.mjs';
@@ -31,6 +31,7 @@ import { registerAccessTests } from './access.part.mjs';
 import { registerVisualTests } from './visual.part.mjs';
 import { registerScanTests } from './scan.part.mjs';
 import { registerPrintProdTests } from './printprod.part.mjs';
+import { registerAutomationTests } from './automation.part.mjs';
 
 const only = process.argv.slice(2).filter((a) => !a.startsWith('--'));
 const shots = process.argv.includes('--shots');
@@ -845,6 +846,7 @@ registerAccessTests(test, { S, page, dir, open, idle, savedFile, assert, join, w
 registerVisualTests(test, { S, page, dir, open, idle, savedFile, assert, pdfText, join, writeFileSync, F });
 registerScanTests(test, { S, page, dir, open, idle, savedFile, assert, join, writeFileSync, FONT_DATA });
 registerPrintProdTests(test, { S, page, dir, open, idle, savedFile, assert, join, writeFileSync, FONT_DATA });
+registerAutomationTests(test, { S, page, dir, open, idle, savedFile, assert, pdfText, join, writeFileSync, EXE });
 
 test('dark mode toggle and welcome after close', async () => {
   await page.click('[data-testid="theme-toggle"]');

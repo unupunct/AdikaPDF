@@ -274,6 +274,48 @@ export async function wiaScan(opts: { device: string; dpi: number; mode: 'color'
   return pages;
 }
 
+// ---------------------------------------------------------------- folders and command line
+
+export interface DirEntry {
+  name: string;
+  path: string;
+  isDir: boolean;
+  size: number;
+  /** Milliseconds since 1970. */
+  modified: number;
+}
+
+export async function listDir(path: string): Promise<DirEntry[]> {
+  if (!isDesktop) throw new DesktopOnlyError('Reading folders');
+  return invoke<DirEntry[]>('list_dir', { path });
+}
+
+/** Moves a file (never overwriting); returns where it went. */
+export async function moveFile(from: string, to: string): Promise<string> {
+  return invoke<string>('move_file', { from, to });
+}
+
+export async function makeDir(path: string): Promise<void> {
+  await invoke('make_dir', { path });
+}
+
+export async function cliArgs(): Promise<string[]> {
+  if (!isDesktop) return [];
+  return invoke<string[]>('cli_args');
+}
+
+export async function cliCwd(): Promise<string> {
+  return invoke<string>('cli_cwd');
+}
+
+export async function cliPrint(line: string, error = false): Promise<void> {
+  await invoke('cli_print', { line, error });
+}
+
+export async function cliExit(code: number): Promise<void> {
+  await invoke('cli_exit', { code });
+}
+
 // ---------------------------------------------------------------- network
 
 export async function httpGet(url: string): Promise<Uint8Array> {

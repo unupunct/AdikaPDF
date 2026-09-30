@@ -46,7 +46,8 @@ export async function runBatch(
     onProgress(i, paths.length, baseName(input));
     try {
       const bytes = await readFile(input);
-      const ctx = { fileName: baseName(input), loadFont: loadFontBytes, ocr: ocrBytes };
+      const { colorHooks } = await import('./printProduction');
+      const ctx = { fileName: baseName(input), loadFont: loadFontBytes, ocr: ocrBytes, colorHooks };
       const r = sequence ? await runSequence(bytes, sequence.steps, ctx) : await runBatchOp(bytes, job as BatchOp, ctx);
       const output = await outputPath(input, suffix, async (p) => (await fileStamp(p)) !== null);
       await writeFile(output, r.bytes);

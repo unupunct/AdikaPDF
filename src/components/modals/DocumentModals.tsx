@@ -4,7 +4,7 @@ import { Copy, FilePlus2, Merge, RotateCcw, RotateCw, Trash2 } from 'lucide-reac
 import { usePDFStore } from '@/store/usePDFStore';
 import { Button, Callout, Checkbox, Dialog, Field, Input, Select, Tabs } from '@/components/ui/primitives';
 import { PageThumbnail } from '@/components/sidebar/PageThumbnail';
-import { extractPages, parseRanges, runCompress, runOcr, runPdfA, splitAtSeparators, splitDocument } from '@/actions/convert';
+import { extractPages, parseRanges, runCompress, runOcr, runPdfA, splitAtSeparators, splitByBookmarks, splitBySize, splitDocument } from '@/actions/convert';
 import { mergeDialog } from '@/actions/document';
 import { protectDocument } from '@/actions/security';
 import type { PdfPermissions } from '@/lib/crypto/encrypt';
@@ -268,7 +268,8 @@ export function OrganizerModal() {
 export function SplitModal() {
   const open = usePDFStore((s) => s.modal === 'split');
   const count = usePDFStore((s) => s.pages.length);
-  const [mode, setMode] = useState<'every' | 'ranges' | 'extract' | 'separators'>('every');
+  const [mode, setMode] = useState<'every' | 'ranges' | 'extract' | 'separators' | 'bookmarks' | 'size'>('every');
+  const [maxMb, setMaxMb] = useState(10);
   const [atBlank, setAtBlank] = useState(true);
   const [every, setEvery] = useState(1);
   const [ranges, setRanges] = useState('1-2, 3-');
@@ -283,6 +284,12 @@ export function SplitModal() {
         for (let i = 1; i <= count; i += n) chunks.push(Array.from({ length: Math.min(n, count - i + 1) }, (_, k) => i + k));
         close();
         await splitDocument(chunks);
+      } else if (mode === 'bookmarks') {
+        close();
+        await splitByBookmarks();
+      } else if (mode === 'size') {
+        close();
+        await splitBySize(maxMb);
       } else if (mode === 'separators') {
         close();
         await splitAtSeparators({ atBlank });
@@ -305,7 +312,7 @@ export function SplitModal() {
       open={open}
       onOpenChange={(o) => !o && close()}
       title="Split or extract pages"
-      width={480}
+      width={620}
       testId="split-modal"
       footer={
         <>
@@ -322,11 +329,19 @@ export function SplitModal() {
         tabs={[
           { value: 'every', label: 'Every N pages' },
           { value: 'ranges', label: 'By ranges' },
+          { value: 'bookmarks', label: 'Bookmarks' },
+          { value: 'size', label: 'Size' },
           { value: 'separators', label: 'At separators' },
           { value: 'extract', label: 'Extract' },
         ]}
       />
-      {mode === 'separators' ? (
+      {mode === 'bookmarks' ? (
+        <p className="mb-2 text-xs text-muted">One file per top-level bookmark (chapter), named after it. Pages before the first bookmark become a file of their own.</p>
+      ) : mode === 'size' ? (
+        <Field label="Largest file (MB)" hint="For e-mail limits: parts are filled page by page up to this size.">
+          <Input type="number" min={0.5} step={0.5} value={maxMb} onChange={(e) => setMaxMb(Number(e.target.value) || 10)} data-testid="split-max-mb" />
+        </Field>
+      ) : mode === 'separators' ? (
         <>
           <p className="mb-2 text-xs text-muted">Splits a scanned batch at Adika separator sheets (their barcode names the next part; print them from Scan to PDF) and, if you want, at blank pages. The separator and blank pages are left out.</p>
           <Checkbox checked={atBlank} onChange={setAtBlank} label="Blank pages also start a new part" />

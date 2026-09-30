@@ -66,10 +66,17 @@ void (async () => {
   };
 })();
 
+// Command line batch (`--batch`): runs without the interface, then exits.
+const commandLine: Promise<boolean> =
+  '__TAURI_INTERNALS__' in window
+    ? import('./actions/automation').then((m) => m.runCommandLine()).catch((e) => (console.error('Command line failed', e), false))
+    : Promise.resolve(false);
+
 // Interface language first (no flash of English), then watch the DOM and render.
 void applyLang(useLang.getState().lang)
   .catch((e) => console.error('Language loading failed', e))
-  .finally(() => {
+  .finally(async () => {
+    if (await commandLine) return;
     startDomTranslation();
     createRoot(document.getElementById('root')!).render(
       <StrictMode>
