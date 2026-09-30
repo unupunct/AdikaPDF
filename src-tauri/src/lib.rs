@@ -163,6 +163,7 @@ pub fn run() {
             appdata::appdata_read,
             certstore::winstore_list,
             certstore::winstore_sign,
+            certstore::winstore_decrypt,
             convert::converter_availability,
             convert::office_to_pdf,
             convert::html_to_pdf,

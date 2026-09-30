@@ -79,6 +79,7 @@ export type ModalId =
   | 'scan'
   | 'printprod'
   | 'foldersearch'
+  | 'certencrypt'
   | 'recover'
   | 'replacePages';
 

@@ -72,6 +72,25 @@ export async function openPdfBytes(bytes: Uint8Array, name: string, path: string
 async function openIntoCurrentTab(bytes: Uint8Array, name: string, path: string | null): Promise<boolean> {
   let password: string | undefined;
   let incorrect = false;
+  // Encrypted for certificates: opened with the private key of one of them.
+  const { isPubSecEncrypted } = await import('@/lib/crypto/pubsec');
+  if (isPubSecEncrypted(bytes)) {
+    const { decryptWithCertificate, pubSecRecipients } = await import('@/lib/crypto/pubsec');
+    const { askCertificateKey } = await import('@/store/useDialogs');
+    const recipients = await pubSecRecipients(bytes).catch(() => []);
+    let error: string | null = null;
+    for (;;) {
+      const key = await askCertificateKey(name, recipients, error);
+      if (!key) return false;
+      try {
+        bytes = await withBusyThrow(`Opening ${name} with your certificate…`, () => decryptWithCertificate(bytes, key));
+        break;
+      } catch (e) {
+        error = errorMessage(e);
+      }
+    }
+    usePDFStore.getState().toast('Opened with your certificate. Saving writes an unprotected copy unless you encrypt it again (Security → Certificate).', 'info');
+  }
   for (;;) {
     try {
       await withBusyThrow(`Opening ${name}…`, () => usePDFStore.getState().loadDocument(bytes, name, path, password));

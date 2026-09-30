@@ -18,12 +18,38 @@ interface ConfirmPrompt {
   resolve: (ok: boolean) => void;
 }
 
+interface CertKeyPrompt {
+  fileName: string;
+  /** Who the document is encrypted for (issuer and serial number). */
+  recipients: string[];
+  error: string | null;
+  resolve: (key: import('@/lib/crypto/pubsec').RecipientKey | null) => void;
+}
+
 interface DialogState {
   password: PasswordPrompt | null;
   confirm: ConfirmPrompt | null;
+  certKey: CertKeyPrompt | null;
 }
 
-export const useDialogs = create<DialogState>()(() => ({ password: null, confirm: null }));
+export const useDialogs = create<DialogState>()(() => ({ password: null, confirm: null, certKey: null }));
+
+/** Asks which certificate (Windows store or digital ID file) opens a document encrypted for certificates. */
+export function askCertificateKey(fileName: string, recipients: string[], error: string | null = null): Promise<import('@/lib/crypto/pubsec').RecipientKey | null> {
+  return new Promise((resolve) => {
+    useDialogs.setState({
+      certKey: {
+        fileName,
+        recipients,
+        error,
+        resolve: (v) => {
+          useDialogs.setState({ certKey: null });
+          resolve(v);
+        },
+      },
+    });
+  });
+}
 
 export function askPassword(fileName: string, incorrect: boolean): Promise<string | null> {
   return new Promise((resolve) => {

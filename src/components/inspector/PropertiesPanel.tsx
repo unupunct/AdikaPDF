@@ -494,8 +494,118 @@ function FieldProps({ obj, update }: { obj: FieldObject; update: (p: Partial<Fie
           </Field>
         </>
       ) : null}
-      {obj.fieldKind !== 'signature' ? <Checkbox checked={obj.required} label="Required" onChange={(required) => update({ required })} /> : null}
+      {obj.fieldKind === 'button' ? <ButtonProps obj={obj} update={update} /> : null}
+      {obj.fieldKind === 'barcode' ? <BarcodeProps obj={obj} update={update} /> : null}
+      {obj.fieldKind !== 'signature' && obj.fieldKind !== 'button' && obj.fieldKind !== 'barcode' ? <Checkbox checked={obj.required} label="Required" onChange={(required) => update({ required })} /> : null}
     </Section>
+  );
+}
+
+/** Other field names of the document (for button targets and barcode templates). */
+function useFieldNames(except: string): string[] {
+  const objects = usePDFStore((s) => s.objects);
+  return useMemo(() => [...new Set(objects.filter((o): o is FieldObject => o.type === 'field' && o.fieldKind !== 'button' && o.fieldKind !== 'barcode' && o.name !== except).map((o) => o.name))], [objects, except]);
+}
+
+function ButtonProps({ obj, update }: { obj: FieldObject; update: (p: Partial<FieldObject>) => void }) {
+  const names = useFieldNames(obj.name);
+  const a = obj.action ?? { kind: 'print' as const };
+  const setKind = (kind: string) => {
+    const next =
+      kind === 'submit'
+        ? { kind: 'submit' as const, email: '', subject: 'Completed form' }
+        : kind === 'url'
+          ? { kind: 'url' as const, url: 'https://' }
+          : kind === 'showhide'
+            ? { kind: 'showhide' as const, fields: [], hide: false }
+            : kind === 'page'
+              ? { kind: 'page' as const, page: 1 }
+              : { kind: kind as 'reset' | 'print' };
+    update({ action: next });
+  };
+  return (
+    <>
+      <Field label="Caption">
+        <Input value={obj.value} onChange={(e) => update({ value: e.target.value })} data-testid="button-caption" />
+      </Field>
+      <Field label="When clicked">
+        <Select
+          value={a.kind}
+          ariaLabel="Button action"
+          onChange={setKind}
+          options={[
+            { value: 'submit', label: 'E-mail the filled form' },
+            { value: 'reset', label: 'Clear the form' },
+            { value: 'print', label: 'Print' },
+            { value: 'url', label: 'Open a web page' },
+            { value: 'showhide', label: 'Show or hide fields' },
+            { value: 'page', label: 'Go to a page' },
+          ]}
+        />
+      </Field>
+      {a.kind === 'submit' ? (
+        <>
+          <Field label="Send to (e-mail)">
+            <Input value={a.email} placeholder="name@example.com" onChange={(e) => update({ action: { ...a, email: e.target.value } })} data-testid="button-email" />
+          </Field>
+          <Field label="Subject">
+            <Input value={a.subject} onChange={(e) => update({ action: { ...a, subject: e.target.value } })} />
+          </Field>
+        </>
+      ) : null}
+      {a.kind === 'url' ? (
+        <Field label="Address">
+          <Input value={a.url} onChange={(e) => update({ action: { ...a, url: e.target.value } })} />
+        </Field>
+      ) : null}
+      {a.kind === 'page' ? <Num label="Page" value={a.page} min={1} max={9999} onChange={(page) => update({ action: { ...a, page } })} /> : null}
+      {a.kind === 'showhide' ? (
+        <>
+          <Select value={a.hide ? 'hide' : 'show'} ariaLabel="Show or hide" onChange={(v: string) => update({ action: { ...a, hide: v === 'hide' } })} options={[{ value: 'show', label: 'Show' }, { value: 'hide', label: 'Hide' }]} />
+          <div className="mt-1 max-h-32 overflow-auto rounded border border-app p-1">
+            {names.length ? (
+              names.map((n) => (
+                <Checkbox key={n} checked={a.fields.includes(n)} label={n} onChange={(v) => update({ action: { ...a, fields: v ? [...a.fields, n] : a.fields.filter((x) => x !== n) } })} />
+              ))
+            ) : (
+              <p className="text-[11px] text-muted">Add the fields first.</p>
+            )}
+          </div>
+        </>
+      ) : null}
+    </>
+  );
+}
+
+function BarcodeProps({ obj, update }: { obj: FieldObject; update: (p: Partial<FieldObject>) => void }) {
+  const names = useFieldNames(obj.name);
+  const b = obj.barcode ?? { symbology: 'qr' as const, template: '' };
+  return (
+    <>
+      <Field label="Type">
+        <Select
+          value={b.symbology}
+          ariaLabel="Barcode type"
+          onChange={(v: 'qr' | 'code128') => update({ barcode: { ...b, symbology: v } })}
+          options={[
+            { value: 'qr', label: 'QR code' },
+            { value: 'code128', label: 'Code 128 (letters and digits)' },
+          ]}
+        />
+      </Field>
+      <Field label="Content" hint="{Field name} is replaced by the field's value when the form is saved.">
+        <Textarea rows={4} value={b.template} onChange={(e) => update({ barcode: { ...b, template: e.target.value } })} data-testid="barcode-template" />
+      </Field>
+      {names.length ? (
+        <div className="flex flex-wrap gap-1">
+          {names.map((n) => (
+            <button key={n} type="button" className="rounded border border-app px-1.5 text-[11px] hover-app" onClick={() => update({ barcode: { ...b, template: `${b.template}{${n}}` } })} data-no-translate>
+              {`{${n}}`}
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </>
   );
 }
 

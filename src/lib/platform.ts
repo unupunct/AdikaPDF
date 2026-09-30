@@ -384,6 +384,12 @@ export async function winstoreList(): Promise<StoreCertificate[]> {
   return invoke<StoreCertificate[]>('winstore_list');
 }
 
+/** Decrypts an RSA-encrypted content key with the certificate's private key (opening documents encrypted for it). */
+export async function winstoreDecrypt(thumbprint: string, data: Uint8Array): Promise<Uint8Array> {
+  if (!isDesktop) throw new DesktopOnlyError('The Windows certificate store');
+  return base64ToBytes(await invoke<string>('winstore_decrypt', { thumbprint, dataBase64: bytesToBase64(data) }));
+}
+
 /** Signs SHA-256(data) with the certificate's key; Windows asks for a PIN if needed. */
 export async function winstoreSign(thumbprint: string, data: Uint8Array): Promise<Uint8Array> {
   if (!isDesktop) throw new DesktopOnlyError('Signing with the Windows certificate store');

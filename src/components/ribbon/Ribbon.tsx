@@ -71,6 +71,8 @@ import {
   Mails,
   Accessibility,
   Printer,
+  MousePointerClick,
+  QrCode,
 } from 'lucide-react';
 import { usePDFStore } from '@/store/usePDFStore';
 import type { RibbonTab, ToolId } from '@/types';
@@ -445,6 +447,8 @@ function FormsTab() {
         <ToolBtn tool="field-radio" icon={<CircleDot size={I} />} label="Radio" tip="Radio buttons placed in a row join the same group" />
         <ToolBtn tool="field-dropdown" icon={<ListChecks size={I} />} label="Dropdown" />
         <ToolBtn tool="field-signature" icon={<PenLine size={I} />} label="Signature" />
+        <ToolBtn tool="field-button" icon={<MousePointerClick size={I} />} label="Button" tip="A button that e-mails the form, resets it, prints, opens a web page, shows or hides fields" />
+        <ToolBtn tool="field-barcode" icon={<QrCode size={I} />} label="Barcode" tip="A QR or Code 128 barcode made from the field values when the form is saved" />
       </Group>
       <Group label="Data">
         <Big icon={<TableProperties size={I} />} label="Fill form" disabled={!hasDoc} onClick={() => usePDFStore.setState({ inspectorOpen: true, selectedIds: [] })} tip="Fill existing form fields in the right panel" />
@@ -477,6 +481,7 @@ function SecurityTab() {
       </Group>
       <Group label="Protection">
         <Big icon={<Lock size={I} />} label="Password" disabled={!hasDoc} onClick={() => s.openModal('password')} tip="AES-256 encryption and permissions" testId="btn-protect" />
+        <Big icon={<KeyRound size={I} />} label="Certificate" disabled={!hasDoc} onClick={() => s.openModal('certencrypt')} tip="Encrypt for chosen people's certificates: no shared password" testId="btn-certencrypt" />
         <Big icon={<ShieldOff size={I} />} label="Sanitize" disabled={!hasDoc} onClick={() => void import('@/actions/security').then((m) => m.sanitizeDocument())} tip="Remove metadata, XMP and hidden info" />
       </Group>
       <Group label="Accessibility">

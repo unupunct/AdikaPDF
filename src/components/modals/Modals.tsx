@@ -16,6 +16,7 @@ import { ReadingView } from '@/components/viewer/ReadingView';
 import { ScanModal } from './ScanModal';
 import { PrintProductionModal } from './PrintProductionModal';
 import { FolderSearchModal } from './FolderSearchModal';
+import { CertEncryptModal, CertKeyDialog } from './CertEncryptModals';
 import { RecoverModal } from './RecoverModal';
 import { PrintModal } from './PrintModal';
 import { ReplacePagesModal } from './ReplacePagesModal';
@@ -50,6 +51,8 @@ export function Modals() {
       <ScanModal />
       <PrintProductionModal />
       <FolderSearchModal />
+      <CertEncryptModal />
+      <CertKeyDialog />
       <RecoverModal />
       <PrintModal />
       <ReplacePagesModal />

@@ -32,6 +32,7 @@ import { registerVisualTests } from './visual.part.mjs';
 import { registerScanTests } from './scan.part.mjs';
 import { registerPrintProdTests } from './printprod.part.mjs';
 import { registerAutomationTests } from './automation.part.mjs';
+import { registerForms2Tests } from './forms2.part.mjs';
 
 const only = process.argv.slice(2).filter((a) => !a.startsWith('--'));
 const shots = process.argv.includes('--shots');
@@ -847,6 +848,7 @@ registerVisualTests(test, { S, page, dir, open, idle, savedFile, assert, pdfText
 registerScanTests(test, { S, page, dir, open, idle, savedFile, assert, join, writeFileSync, FONT_DATA });
 registerPrintProdTests(test, { S, page, dir, open, idle, savedFile, assert, join, writeFileSync, FONT_DATA });
 registerAutomationTests(test, { S, page, dir, open, idle, savedFile, assert, pdfText, join, writeFileSync, EXE });
+registerForms2Tests(test, { S, page, dir, open, idle, savedFile, assert, join, writeFileSync, drag, setTool, FONT_DATA, pfxPath: process.env.ADIKA_WINSTORE_TEST_PFX });
 
 test('dark mode toggle and welcome after close', async () => {
   await page.click('[data-testid="theme-toggle"]');

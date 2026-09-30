@@ -74,6 +74,7 @@ import { loadFontBytes, type FontVariant } from '@/lib/fonts';
 import { layoutText, canvasMeasure, type Measure } from '@/lib/textLayout';
 import { embedFontForText } from './fontEmbed';
 import { writeFreeText, writeMarkup, writeNote } from './annotations';
+import { addReviewReply, type ReviewState } from './review';
 import { writeAttachment, writeLink, writeMeasure, writePoly, writeStamp } from './commentAnnots';
 import { writeOutline } from './outline';
 import { dropUnreachableObjects } from './prune';
@@ -247,6 +248,8 @@ interface DrawContext {
   fieldFont: PDFFont | null;
   /** Names of the fields created from objects (for formulas). */
   fieldNames: string[];
+  /** The fields created from objects (barcode templates read their values). */
+  fieldObjects: FieldObject[];
 }
 
 function variantKey(v: FontVariant): string {
@@ -488,6 +491,48 @@ function drawPen(page: PDFPage, pm: Matrix, o: PenObject): void {
 
 // ---------------------------------------------------------------- forms
 
+/** The value of a form field as text (fields created from objects first, then the document's own). */
+function fieldText(ctx: DrawContext, name: string): string | null {
+  const obj = ctx.fieldObjects.find((f) => f.name === name && f.fieldKind !== 'button' && f.fieldKind !== 'barcode');
+  try {
+    const f = ctx.doc.getForm().getField(name);
+    if (f instanceof PDFTextField) return f.getText() ?? '';
+    if (f instanceof PDFCheckBox) return f.isChecked() ? 'Yes' : 'No';
+    if (f instanceof PDFDropdown || f instanceof PDFOptionList) return f.getSelected().join(', ');
+    if (f instanceof PDFRadioGroup) return f.getSelected() ?? '';
+  } catch {
+    /* not (yet) in the document */
+  }
+  if (obj) return obj.fieldKind === 'checkbox' ? (obj.value === 'checked' ? 'Yes' : 'No') : obj.value;
+  return null;
+}
+
+/** The PDF action of a button. */
+function buttonAction(doc: PDFDocument, o: FieldObject): PDFDict | null {
+  const a = o.action;
+  const ctx = doc.context;
+  if (!a) return null;
+  switch (a.kind) {
+    case 'submit': {
+      // SubmitPDF (bit 9): the whole filled form is sent, as most mail programs can attach it.
+      const url = `mailto:${a.email.trim()}${a.subject ? `?subject=${encodeURIComponent(a.subject)}` : ''}`;
+      return ctx.obj({ Type: 'Action', S: 'SubmitForm', F: { FS: 'URL', F: PDFString.of(url) }, Flags: 256 }) as PDFDict;
+    }
+    case 'reset':
+      return ctx.obj({ Type: 'Action', S: 'ResetForm' }) as PDFDict;
+    case 'print':
+      return ctx.obj({ Type: 'Action', S: 'Named', N: 'Print' }) as PDFDict;
+    case 'url':
+      return ctx.obj({ Type: 'Action', S: 'URI', URI: PDFString.of(a.url) }) as PDFDict;
+    case 'showhide':
+      return ctx.obj({ Type: 'Action', S: 'Hide', T: ctx.obj(a.fields.map((f) => PDFString.of(f))), H: a.hide }) as PDFDict;
+    case 'page': {
+      const target = doc.getPages()[Math.max(0, Math.min(doc.getPageCount() - 1, a.page - 1))];
+      return target ? (ctx.obj({ Type: 'Action', S: 'GoTo', D: [target.ref, PDFName.of('Fit')] }) as PDFDict) : null;
+    }
+  }
+}
+
 function uniqueFieldName(doc: PDFDocument, wanted: string): string {
   const names = new Set(doc.getForm().getFields().map((f) => f.getName()));
   const base = wanted.trim().replace(/\./g, '_') || 'Field';
@@ -540,6 +585,27 @@ async function addFormField(ctx: DrawContext, page: PDFPage, pm: Matrix, rotatio
       if (o.value && options.includes(o.value)) f.select(o.value);
       if (o.required) f.enableRequired();
       f.addToPage(page, { ...rect, ...look, font: ctx.fieldFont ?? undefined });
+      break;
+    }
+    case 'button': {
+      const f = form.createButton(uniqueFieldName(ctx.doc, o.name));
+      f.addToPage(o.value || 'Button', page, { ...rect, borderColor: rgb(0.2, 0.45, 0.75), borderWidth: 1, backgroundColor: rgb(0.88, 0.95, 1), textColor: rgb(0.03, 0.2, 0.4), font: ctx.fieldFont ?? undefined });
+      const action = buttonAction(ctx.doc, o);
+      if (action) for (const w of f.acroField.getWidgets()) w.dict.set(PDFName.of('A'), action);
+      break;
+    }
+    case 'barcode': {
+      const { barcodeRects, fillTemplate } = await import('@/lib/barcode/draw');
+      const spec = o.barcode ?? { symbology: 'qr' as const, template: '' };
+      const text = fillTemplate(spec.template, (name) => fieldText(ctx, name));
+      page.drawRectangle({ x: r.x, y: r.y, width: r.width, height: r.height, color: rgb(1, 1, 1) });
+      let rects: ReturnType<typeof barcodeRects>;
+      try {
+        rects = barcodeRects(spec.symbology, text || ' ', r.width / Math.max(1, r.height));
+      } catch {
+        rects = []; // too long for a QR code
+      }
+      for (const q of rects) page.drawRectangle({ x: r.x + q.x * r.width, y: r.y + r.height - (q.y + q.h) * r.height, width: q.w * r.width + 0.02, height: q.h * r.height + 0.02, color: rgb(0, 0, 0) });
       break;
     }
     case 'signature': {
@@ -764,7 +830,7 @@ export async function buildPdf(input: ExportInput, options: ExportOptions = {}):
 
   // 5. Objects.
   const needsFieldFont = objects.some((o) => o.type === 'field') || formTouched;
-  const ctx: DrawContext = { doc, fonts: new Map(), fontTexts: collectFontTexts(objects), images: new Map(), opts, fieldFont: null, fieldNames: objects.filter((o): o is FieldObject => o.type === 'field').map((o) => o.name) };
+  const ctx: DrawContext = { doc, fonts: new Map(), fontTexts: collectFontTexts(objects), images: new Map(), opts, fieldFont: null, fieldNames: objects.filter((o): o is FieldObject => o.type === 'field').map((o) => o.name), fieldObjects: objects.filter((o): o is FieldObject => o.type === 'field') };
   if (needsFieldFont) {
     // Full (non-subset) font so recipients can type any character later.
     ctx.fieldFont = await doc.embedFont(await opts.loadFont({ family: 'sans', bold: false, italic: false }), { subset: false });
@@ -784,6 +850,23 @@ export async function buildPdf(input: ExportInput, options: ExportOptions = {}):
     const rotation: Rotation = rasterized ? 0 : totalRotation(ref);
     const pm = displayToPdfMatrix(rotation, visibleBox(page));
     for (const o of list) {
+      const review = (o as { reviewStatus?: ReviewState }).reviewStatus;
+      const annotsBefore = review ? (page.node.Annots()?.size() ?? 0) : 0;
+      await writeObject(o);
+      if (review && review !== 'None') {
+        // The comment's annotation: the first one added for it that is not its popup.
+        const annots = page.node.Annots();
+        for (let k = annotsBefore; annots && k < annots.size(); k++) {
+          const ref = annots.get(k);
+          const d = annots.lookup(k);
+          if (ref instanceof PDFRef && d instanceof PDFDict && d.lookup(PDFName.of('Subtype')) !== PDFName.of('Popup')) {
+            addReviewReply(ctx.doc, page, ref, review, (o as { author?: string }).author ?? '');
+            break;
+          }
+        }
+      }
+    }
+    async function writeObject(o: EditorObject): Promise<void> {
       switch (o.type) {
         case 'text':
           if (replacerNative.has(o.id)) break; // already written into the page content

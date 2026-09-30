@@ -31,6 +31,8 @@ export type ToolId =
   | 'field-radio'
   | 'field-dropdown'
   | 'field-signature'
+  | 'field-button'
+  | 'field-barcode'
   | 'note'
   | 'typewriter'
   | 'markup-highlight'
@@ -127,6 +129,8 @@ export interface CommentMeta {
   /** ISO timestamps. */
   createdAt: string;
   modifiedAt: string;
+  /** Review status, saved as a review-state reply. */
+  reviewStatus?: import('@/lib/pdf/review').ReviewState;
 }
 
 /** Sticky note (PDF /Text annotation): an icon on the page with a popup text. */
@@ -287,7 +291,16 @@ export interface SignatureObject extends BaseObject {
   kind: 'signature' | 'initials';
 }
 
-export type FieldKind = 'text' | 'checkbox' | 'radio' | 'dropdown' | 'signature';
+export type FieldKind = 'text' | 'checkbox' | 'radio' | 'dropdown' | 'signature' | 'button' | 'barcode';
+
+/** What a button does when clicked (saved as a standard PDF action). */
+export type FieldAction =
+  | { kind: 'submit'; email: string; subject: string }
+  | { kind: 'reset' }
+  | { kind: 'print' }
+  | { kind: 'url'; url: string }
+  | { kind: 'showhide'; fields: string[]; hide: boolean }
+  | { kind: 'page'; page: number };
 
 export interface FieldObject extends BaseObject {
   type: 'field';
@@ -304,6 +317,10 @@ export interface FieldObject extends BaseObject {
   multiline: boolean;
   /** Text fields: format, allowed range and calculation (saved as Acrobat form actions). */
   logic?: import('@/lib/formLogic').FieldLogic;
+  /** Buttons: the click action (the caption is `value`). */
+  action?: FieldAction;
+  /** Barcode fields: what they encode ({Field} placeholders take the field values when saving). */
+  barcode?: { symbology: 'qr' | 'code128'; template: string };
 }
 
 export type EditorObject =

@@ -436,3 +436,61 @@ describe('embedded fonts render (regression: pdf-lib subsetting corrupted glyphs
     expect(out.length).toBeLessThan(400_000);
   });
 });
+
+describe('buttons and barcode fields', () => {
+  it('writes button actions and a QR code made from the field values', async () => {
+    const { createCanvas } = await import('@napi-rs/canvas');
+    const jsQR = (await import('jsqr')).default;
+    const { PDFName } = await import('pdf-lib');
+    const a = await makeSource([{ w: 300, h: 400, label: 'Invoice' }]);
+    const [p] = refs(a, [{ w: 300, h: 400 }]);
+    const f = (kind: FieldObject['fieldKind'], name: string, y: number, extra: Partial<FieldObject> = {}): FieldObject => ({
+      id: `f_${name}`,
+      type: 'field',
+      pageId: p.id,
+      fieldKind: kind,
+      x: 20,
+      y,
+      rotation: 0,
+      opacity: 1,
+      width: 120,
+      height: 24,
+      name,
+      value: '',
+      options: [],
+      required: false,
+      fontSize: 11,
+      multiline: false,
+      ...extra,
+    });
+    const objects: EditorObject[] = [
+      f('text', 'Client', 40, { value: 'Ana Popescu' }),
+      f('text', 'Total', 70, { value: '2500' }),
+      f('button', 'Send', 110, { value: 'Send', action: { kind: 'submit', email: 'office@example.com', subject: 'Order' } }),
+      f('button', 'Clear', 140, { value: 'Clear', action: { kind: 'reset' } }),
+      f('button', 'Hide', 170, { value: 'Hide', action: { kind: 'showhide', fields: ['Total'], hide: true } }),
+      f('button', 'Print', 200, { value: 'Print', action: { kind: 'print' } }),
+      f('barcode', 'QR', 240, { width: 120, height: 120, barcode: { symbology: 'qr', template: '{Client};{Total}' } }),
+    ];
+    const out = await buildPdf({ sources: { [a.id]: a }, pages: [p], objects, fieldValues: {} }, opts);
+    const doc = await PDFDocument.load(out);
+    const action = (name: string) => String(doc.getForm().getField(name).acroField.getWidgets()[0].dict.lookup(PDFName.of('A')));
+    expect(action('Send')).toMatch(/\/S \/SubmitForm[\s\S]*mailto:office@example\.com\?subject=Order[\s\S]*\/Flags 256/);
+    expect(action('Clear')).toMatch(/\/S \/ResetForm/);
+    expect(action('Hide')).toMatch(/\/S \/Hide[\s\S]*\(Total\)[\s\S]*\/H true/);
+    expect(action('Print')).toMatch(/\/S \/Named[\s\S]*\/N \/Print/);
+    // Render the page and read the QR code back.
+    const task = pdfjs.getDocument({ data: out.slice(), verbosity: 0 });
+    const page = await (await task.promise).getPage(1);
+    const vp = page.getViewport({ scale: 3 });
+    const c = createCanvas(Math.ceil(vp.width), Math.ceil(vp.height));
+    const g = c.getContext('2d');
+    g.fillStyle = '#fff';
+    g.fillRect(0, 0, c.width, c.height);
+    await page.render({ canvasContext: g as never, viewport: vp, canvas: null as never }).promise;
+    const img = g.getImageData(0, 0, c.width, c.height);
+    const code = jsQR(new Uint8ClampedArray(img.data), c.width, c.height);
+    expect(code?.data).toBe('Ana Popescu;2500');
+    await task.destroy();
+  });
+});

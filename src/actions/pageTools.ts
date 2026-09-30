@@ -118,6 +118,32 @@ export async function importComments(): Promise<boolean> {
   });
 }
 
+// ------------------------------------------------------------------ review
+
+/** Comments of several reviewers' copies of this document, merged in (duplicates skipped). */
+export async function mergeReviewCopies(): Promise<boolean> {
+  const files = await pickFiles(PDF_FILTER, true);
+  if (!files.length) return false;
+  busyNow('Merging comments');
+  const { mergeCommentCopies } = await import('@/lib/pdf/review');
+  return applyInPlace('Merging comments', async (bytes) => {
+    const r = await mergeCommentCopies(bytes, files.map((f) => ({ name: f.name, bytes: f.bytes })), loadFontBytes);
+    const failed = r.report.files.filter((f) => f.error);
+    if (!r.report.added) {
+      usePDFStore.getState().toast(failed.length ? `No comments merged: ${failed.map((f) => `${f.name} (${f.error})`).join('; ')}.` : 'The copies have no comments that are not already here.', 'info');
+      return null;
+    }
+    const per = r.report.files.filter((f) => !f.error).map((f) => `${f.name}: ${f.added}`).join(', ');
+    return { bytes: r.bytes, summary: `Merged ${r.report.added} comment${r.report.added === 1 ? '' : 's'} (${per})${failed.length ? `; not merged: ${failed.map((f) => f.name).join(', ')}` : ''}.` };
+  });
+}
+
+/** Review status of a comment stored in the file. */
+export async function setFileCommentStatus(pageIndex: number, match: { subtype: string; rect: number[]; contents: string }, state: import('@/lib/pdf/review').ReviewState): Promise<boolean> {
+  const [{ setReviewStateAt }, { getAuthor }] = await Promise.all([import('@/lib/pdf/review'), import('@/lib/author')]);
+  return applyInPlace('Setting the review status', async (bytes) => ({ bytes: await setReviewStateAt(bytes, pageIndex, match, state, getAuthor()), summary: `Status: ${state}.` }));
+}
+
 // ------------------------------------------------------------------ comment summary
 
 export async function summarizeCommentsAction(): Promise<void> {
