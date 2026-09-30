@@ -77,6 +77,7 @@ export type ModalId =
   | 'accessibility'
   | 'readingview'
   | 'scan'
+  | 'printprod'
   | 'recover'
   | 'replacePages';
 

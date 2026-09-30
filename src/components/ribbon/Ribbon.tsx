@@ -70,6 +70,7 @@ import {
   KeyRound,
   Mails,
   Accessibility,
+  Printer,
 } from 'lucide-react';
 import { usePDFStore } from '@/store/usePDFStore';
 import type { RibbonTab, ToolId } from '@/types';
@@ -535,6 +536,9 @@ function ConvertTab() {
         <Big icon={<FileArchive size={I} />} label="Compress" disabled={!hasDoc} onClick={() => s.openModal('compress')} testId="btn-compress" />
         <Big icon={<FileCheck2 size={I} />} label="PDF/A" disabled={!hasDoc} onClick={() => s.openModal('pdfa')} tip="Archival PDF/A-2b" />
         <Big icon={<Stamp size={I} />} label="Flatten" disabled={!hasDoc} onClick={() => void flattenCurrent()} />
+      </Group>
+      <Group label="Print shop">
+        <Big icon={<Printer size={I} />} label="Print production" disabled={!hasDoc} onClick={() => s.openModal('printprod')} tip="PDF/X preflight and conversion, grey or CMYK colours, ink preview, bleed and printer marks" testId="btn-printprod" />
       </Group>
       <Group label="Many files">
         <Big icon={<FileStack size={I} />} label="Batch" onClick={() => s.openModal('batch')} tip="OCR, compress, watermark, page numbers, PDF/A, protect, sanitize or flatten many PDFs at once, one operation or a saved sequence of steps" testId="btn-batch" />

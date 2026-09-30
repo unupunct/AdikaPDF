@@ -14,6 +14,7 @@ import { MailMergeModal } from './MailMergeModal';
 import { AccessibilityModal } from './AccessibilityModal';
 import { ReadingView } from '@/components/viewer/ReadingView';
 import { ScanModal } from './ScanModal';
+import { PrintProductionModal } from './PrintProductionModal';
 import { RecoverModal } from './RecoverModal';
 import { PrintModal } from './PrintModal';
 import { ReplacePagesModal } from './ReplacePagesModal';
@@ -46,6 +47,7 @@ export function Modals() {
       <AccessibilityModal />
       <ReadingView />
       <ScanModal />
+      <PrintProductionModal />
       <RecoverModal />
       <PrintModal />
       <ReplacePagesModal />
