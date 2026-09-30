@@ -25,6 +25,10 @@ import { registerBatchFormTests } from './batchforms.part.mjs';
 import { registerLanguageTests } from './language.part.mjs';
 import { registerPageTests } from './pages.part.mjs';
 import { registerViewToolTests } from './viewtools.part.mjs';
+import { registerEidasTests, makeStoreTestPfx } from './eidas.part.mjs';
+import { registerMergeTests } from './merge.part.mjs';
+import { registerAccessTests } from './access.part.mjs';
+import { registerVisualTests } from './visual.part.mjs';
 
 const only = process.argv.slice(2).filter((a) => !a.startsWith('--'));
 const shots = process.argv.includes('--shots');
@@ -147,6 +151,9 @@ function assert(cond, msg) {
 
 // ------------------------------------------------------------------ app helpers
 
+// A certificate the app sees as if it were in the Windows store (imported in memory, key never persisted).
+process.env.ADIKA_WINSTORE_TEST_PFX = makeStoreTestPfx(join(dir, 'winstore-test.pfx'), 'adika-e2e');
+process.env.ADIKA_WINSTORE_TEST_PASSWORD = 'adika-e2e';
 const app = await launchApp();
 const { page } = app;
 page.on('console', (m) => {
@@ -830,6 +837,10 @@ registerBatchFormTests(test, { S, page, dir, open, idle, savedFile, assert, pdfT
 registerLanguageTests(test, { S, page, open, assert, F });
 registerViewToolTests(test, { S, page, open, assert, F });
 registerPageTests(test, { S, page, dir, open, idle, savedFile, assert, pdfText, join, writeFileSync, F, pdfjs, FONT_DATA });
+registerEidasTests(test, { S, page, open, idle, savedFile, assert, F });
+registerMergeTests(test, { S, page, dir, open, idle, savedFile, assert, pdfText, join, writeFileSync });
+registerAccessTests(test, { S, page, dir, open, idle, savedFile, assert, join, writeFileSync });
+registerVisualTests(test, { S, page, dir, open, idle, savedFile, assert, pdfText, join, writeFileSync, F });
 
 test('dark mode toggle and welcome after close', async () => {
   await page.click('[data-testid="theme-toggle"]');

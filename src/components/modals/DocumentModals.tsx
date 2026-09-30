@@ -493,6 +493,7 @@ export function OcrModal() {
   const [range, setRange] = useState('1-');
   const [dpi, setDpi] = useState(300);
   const [langs, setLangs] = useState<string[]>(() => loadOcrLangs());
+  const [output, setOutput] = useState<'searchable' | 'sans' | 'serif'>('searchable');
   const [error, setError] = useState<string | null>(null);
 
   const toggleLang = (code: string) => {
@@ -505,7 +506,7 @@ export function OcrModal() {
       const pageNumbers = scope === 'all' ? Array.from({ length: count }, (_, i) => i + 1) : scope === 'current' ? [Math.max(1, current)] : [...new Set(parseRanges(range, count).flat())];
       saveOcrLangs(langs);
       close();
-      await runOcr({ pageNumbers, dpi, lang: langs.join('+') });
+      await runOcr({ pageNumbers, dpi, lang: langs.join('+'), editable: output === 'searchable' ? undefined : { family: output } });
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
@@ -516,7 +517,7 @@ export function OcrModal() {
       open={open}
       onOpenChange={(o) => !o && close()}
       title="Recognise text (OCR)"
-      description="Adds an invisible, searchable and selectable text layer to scanned pages. Runs offline."
+      description="Makes scanned pages searchable, or turns their text into editable text. Runs offline."
       width={480}
       testId="ocr-modal"
       footer={
@@ -536,6 +537,18 @@ export function OcrModal() {
           <Input value={range} onChange={(e) => setRange(e.target.value)} />
         </Field>
       ) : null}
+      <Field label="Result" hint={output === 'searchable' ? 'The scan stays as it is; invisible text makes it searchable and copyable.' : 'The scanned text is replaced by real text in a similar font, size and colour, which can be edited. Pictures and signatures stay.'}>
+        <Select
+          value={output}
+          onChange={setOutput}
+          ariaLabel="OCR result"
+          options={[
+            { value: 'searchable', label: 'Searchable (invisible text layer)' },
+            { value: 'serif', label: 'Editable text, serif font (letters, contracts)' },
+            { value: 'sans', label: 'Editable text, sans-serif font (forms, reports)' },
+          ]}
+        />
+      </Field>
       <Field label="Resolution" hint="300 DPI is best for typical scans; 400 for small print.">
         <Select value={String(dpi)} onChange={(v) => setDpi(Number(v))} ariaLabel="OCR resolution" options={[{ value: '200', label: '200 DPI (fast)' }, { value: '300', label: '300 DPI (recommended)' }, { value: '400', label: '400 DPI (small text)' }]} />
       </Field>

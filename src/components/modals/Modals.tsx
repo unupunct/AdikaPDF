@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useDialogs } from '@/store/useDialogs';
 import { Button, Callout, Dialog, Field, Input } from '@/components/ui/primitives';
 import { SignatureModal } from './SignatureModal';
-import { CertificateModal, TokenModal, VerifyModal } from './DigitalSignModals';
+import { CertificateModal, StoreCertModal, TokenModal, VerifyModal } from './DigitalSignModals';
 import { AboutModal, CompressModal, OcrModal, OrganizerModal, PasswordModal, PdfaModal, SplitModal } from './DocumentModals';
 import { ExportModal, ImportModal } from './ConvertModals';
 import { PropertiesModal } from './PropertiesModal';
@@ -10,6 +10,9 @@ import { ToolsModal } from './ToolsModal';
 import { CropModal, LinkModal, PageMarksModal } from './PageToolModals';
 import { FindRedactModal } from './FindRedactModal';
 import { BatchModal } from './BatchModal';
+import { MailMergeModal } from './MailMergeModal';
+import { AccessibilityModal } from './AccessibilityModal';
+import { ReadingView } from '@/components/viewer/ReadingView';
 import { RecoverModal } from './RecoverModal';
 import { PrintModal } from './PrintModal';
 import { ReplacePagesModal } from './ReplacePagesModal';
@@ -20,6 +23,7 @@ export function Modals() {
       <SignatureModal />
       <CertificateModal />
       <TokenModal />
+      <StoreCertModal />
       <VerifyModal />
       <OrganizerModal />
       <SplitModal />
@@ -37,6 +41,9 @@ export function Modals() {
       <PageMarksModal />
       <FindRedactModal />
       <BatchModal />
+      <MailMergeModal />
+      <AccessibilityModal />
+      <ReadingView />
       <RecoverModal />
       <PrintModal />
       <ReplacePagesModal />

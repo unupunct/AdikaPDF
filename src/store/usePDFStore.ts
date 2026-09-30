@@ -52,6 +52,7 @@ export type ModalId =
   | 'signature'
   | 'certificate'
   | 'token'
+  | 'winstore'
   | 'organizer'
   | 'password'
   | 'compress'
@@ -72,6 +73,9 @@ export type ModalId =
   | 'compare'
   | 'find-redact'
   | 'batch'
+  | 'mailmerge'
+  | 'accessibility'
+  | 'readingview'
   | 'recover'
   | 'replacePages';
 

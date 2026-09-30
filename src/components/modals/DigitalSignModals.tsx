@@ -1,21 +1,34 @@
 /**
  * Cryptographic signing dialogs: certificate file (.pfx/.p12) or a new
- * self-signed ID; hardware tokens and smart cards (PKCS#11); verification.
+ * self-signed ID; hardware tokens and smart cards (PKCS#11); certificates of
+ * the Windows certificate store; verification (with the EU Trusted Lists).
  */
 import { useEffect, useState, type ReactNode } from 'react';
 import { BadgeCheck, BadgeX, FileKey2, FolderOpen, KeyRound, Loader2, RefreshCw, ShieldAlert, ShieldCheck, Usb } from 'lucide-react';
 import { usePDFStore } from '@/store/usePDFStore';
 import { Button, Callout, Checkbox, Dialog, Field, Input, Tabs, Select } from '@/components/ui/primitives';
 import { PlacementPicker, resolvePlacement, useSelectedSignatureTarget, type PlacementState } from './PlacementPicker';
-import { addLongTermValidation, signWithIdentity, signWithToken, verifyCurrentSignatures, type SignMeta } from '@/actions/sign';
-import { createSelfSignedIdentity, exportP12, loadP12, type SigningIdentity } from '@/lib/crypto/digitalSignature';
+import {
+  addArchiveTimestamp,
+  addLongTermValidation,
+  euTrustedLists,
+  padesLevelOf,
+  signWithIdentity,
+  signWithStoreCert,
+  signWithToken,
+  updateEuTrustedLists,
+  verifyCurrentSignatures,
+  type SignMeta,
+} from '@/actions/sign';
+import { createSelfSignedIdentity, exportP12, identityFromCertificateDer, loadP12, qcStatementsOf, type SigningIdentity } from '@/lib/crypto/digitalSignature';
+import type { TrustedListCache } from '@/lib/crypto/euTrustedList';
 import { errorMessage } from '@/actions/document';
-import { isDesktop, pickFiles, pickPaths, pkcs11DetectModules, pkcs11ListTokens, saveBytes, type Pkcs11Module, type TokenCertificate, type TokenInfo } from '@/lib/platform';
+import { isDesktop, pickFiles, pickPaths, pkcs11DetectModules, pkcs11ListTokens, saveBytes, winstoreList, type Pkcs11Module, type StoreCertificate, type TokenCertificate, type TokenInfo } from '@/lib/platform';
 import type { SignatureValidation } from '@/types';
 import { cn } from '@/lib/cn';
 
 function useSignMeta(): [SignMeta, (m: SignMeta) => void] {
-  return useState<SignMeta>({ reason: 'I approve this document', location: '', contactInfo: '', tsaUrl: null });
+  return useState<SignMeta>({ reason: 'I approve this document', location: '', contactInfo: '', tsaUrl: null, pades: true });
 }
 
 function usePlacement(): [PlacementState, (p: PlacementState) => void] {
@@ -55,6 +68,19 @@ function MetaFields({ meta, onChange }: { meta: SignMeta; onChange: (m: SignMeta
         </Field>
       ) : null}
       <Checkbox checked={!!meta.ltv} label="Add long-term validation data (LTV: the signature can be verified offline for years; needs internet)" onChange={(ltv) => onChange({ ...meta, ltv })} />
+      {meta.ltv && useTsa ? (
+        <Checkbox
+          checked={!!meta.archive}
+          label="Add an archive timestamp over the signature and validation data (PAdES B-LTA)"
+          onChange={(archive) => onChange({ ...meta, archive })}
+        />
+      ) : null}
+      <Checkbox checked={!!meta.pades} label="EU format: PAdES baseline (eIDAS)" onChange={(pades) => onChange({ ...meta, pades })} />
+      <p className="text-[11px] text-muted" data-testid="pades-level">
+        {padesLevelOf({ ...meta, tsaUrl: useTsa ? meta.tsaUrl : null })
+          ? `Signature level: PAdES ${padesLevelOf({ ...meta, tsaUrl: useTsa ? meta.tsaUrl : null })}`
+          : 'Classic PDF signature (adbe.pkcs7.detached)'}
+      </p>
       {!signed ? (
         <Field label="Certify this document">
           <Select
@@ -405,6 +431,134 @@ export function TokenModal() {
   );
 }
 
+// ================================================================ Windows certificate store
+
+export function StoreCertModal() {
+  const open = usePDFStore((s) => s.modal === 'winstore');
+  const close = () => usePDFStore.getState().openModal(null);
+  const [certs, setCerts] = useState<StoreCertificate[] | null>(null);
+  const [selected, setSelected] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [meta, setMeta] = useSignMeta();
+  const [placement, setPlacement] = usePlacement();
+
+  const load = async () => {
+    setError(null);
+    setCerts(null);
+    try {
+      const all = (await winstoreList()).filter((c) => c.hasPrivateKey);
+      setCerts(all);
+      const now = Date.now();
+      const valid = all.find((c) => {
+        try {
+          return identityFromCertificateDer(base64Bytes(c.derBase64)).validTo.getTime() > now;
+        } catch {
+          return false;
+        }
+      });
+      setSelected((valid ?? all[0])?.thumbprint ?? null);
+    } catch (e) {
+      setError(errorMessage(e));
+      setCerts([]);
+    }
+  };
+
+  useEffect(() => {
+    if (open && isDesktop) void load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
+  const cert = certs?.find((c) => c.thumbprint === selected) ?? null;
+  const sign = async () => {
+    if (!cert) return;
+    const { placement: p, inkSrc, consumeId } = resolvePlacement(placement);
+    close();
+    await signWithStoreCert(cert, p, meta, inkSrc, consumeId);
+  };
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(o) => !o && close()}
+      title="Sign with a Windows certificate"
+      description="Certificates installed in Windows (Personal store): qualified certificates from your card or token driver, or imported .pfx files. Windows asks for the PIN; the key never leaves its device."
+      width={660}
+      testId="winstore-modal"
+      footer={
+        <>
+          <Button onClick={close}>Cancel</Button>
+          <Button variant="accent" disabled={!cert} onClick={() => void sign()} data-testid="winstore-sign-now">
+            <KeyRound size={14} /> Sign and save
+          </Button>
+        </>
+      }
+    >
+      {!isDesktop ? <Callout kind="warn">The Windows certificate store needs the Adika desktop app.</Callout> : null}
+      <div className="mb-2 flex items-center justify-between text-xs">
+        <span className="font-medium">Certificates with a private key</span>
+        <Button variant="ghost" size="icon" aria-label="Refresh" onClick={() => void load()}>
+          <RefreshCw size={14} />
+        </Button>
+      </div>
+      {error ? <Callout kind="error">{error}</Callout> : null}
+      {certs === null && isDesktop ? (
+        <div className="flex items-center gap-2 py-4 text-xs text-muted">
+          <Loader2 size={14} className="animate-spin" /> Reading certificates…
+        </div>
+      ) : null}
+      {certs && certs.length === 0 && !error ? (
+        <div data-testid="winstore-empty">
+          <Callout kind="info">No certificate with a private key is installed. Install your card or token driver, or import a .pfx file in Windows (double-click it).</Callout>
+        </div>
+      ) : null}
+      {certs?.length ? (
+        <div className="mb-3 max-h-56 overflow-auto rounded-lg border border-app" data-testid="winstore-list">
+          {certs.map((c) => (
+            <StoreCertRow key={c.thumbprint} cert={c} active={c.thumbprint === selected} onSelect={() => setSelected(c.thumbprint)} />
+          ))}
+        </div>
+      ) : null}
+      {cert ? (
+        <>
+          <PlacementPicker value={placement} onChange={setPlacement} />
+          <MetaFields meta={meta} onChange={setMeta} />
+        </>
+      ) : null}
+    </Dialog>
+  );
+}
+
+function base64Bytes(b64: string): Uint8Array {
+  const bin = atob(b64);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+
+function StoreCertRow({ cert, active, onSelect }: { cert: StoreCertificate; active: boolean; onSelect: () => void }) {
+  let info: ReturnType<typeof identityFromCertificateDer> | null = null;
+  try {
+    info = identityFromCertificateDer(base64Bytes(cert.derBase64));
+  } catch {
+    /* unreadable certificate */
+  }
+  const qc = info ? qcStatementsOf(info.certificate) : null;
+  const expired = info ? info.validTo.getTime() < Date.now() : false;
+  return (
+    <label className={cn('flex cursor-default items-start gap-2 border-b border-app px-3 py-2 text-xs last:border-b-0', active && 'bg-brand-50 dark:bg-brand-900/30')}>
+      <input type="radio" name="winstore-cert" className="mt-0.5" checked={active} onChange={onSelect} />
+      <span className="min-w-0 flex-1">
+        <span className="font-medium">{info?.name ?? cert.thumbprint}</span>
+        {qc?.compliance ? <span className="ml-2 rounded bg-emerald-100 px-1 text-[10px] text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200">{qc.qscd ? 'Qualified (QSCD)' : 'Qualified'}</span> : null}
+        {expired ? <span className="ml-2 rounded bg-rose-100 px-1 text-[10px] text-rose-800 dark:bg-rose-900/40 dark:text-rose-200">Expired</span> : null}
+        <span className="block truncate text-muted">
+          {info ? `${info.issuer} · until ${info.validTo.toLocaleDateString()}` : ''}
+        </span>
+      </span>
+    </label>
+  );
+}
+
 // ================================================================ verify
 
 export function VerifyModal() {
@@ -413,13 +567,16 @@ export function VerifyModal() {
   const close = () => usePDFStore.getState().openModal(null);
   const [checkRevocation, setCheckRevocation] = useState(isDesktop);
   const [ran, setRan] = useState(false);
+  const [tl, setTl] = useState<TrustedListCache | null>(null);
 
   useEffect(() => {
     if (open) {
       setRan(false);
+      void euTrustedLists().then(setTl);
       void verifyCurrentSignatures(false).then(() => setRan(true));
     }
   }, [open]);
+  const signatures = status.filter((s) => !s.documentTimestamp);
 
   return (
     <Dialog
@@ -433,7 +590,17 @@ export function VerifyModal() {
         <>
           <Checkbox checked={checkRevocation} onChange={setCheckRevocation} label="Check revocation online (OCSP / CRL)" disabled={!isDesktop} />
           <div className="flex-1" />
-          {status.length && status.some((s) => !s.ltv) ? (
+          {signatures.length ? (
+            <Button
+              onClick={() => void addArchiveTimestamp('http://timestamp.digicert.com').then(() => setRan(true))}
+              disabled={!isDesktop}
+              data-testid="verify-add-archive"
+              title="Adds validation data and a document timestamp over the whole file (PAdES B-LTA); repeat it every few years to keep the signatures verifiable"
+            >
+              Add archive timestamp
+            </Button>
+          ) : null}
+          {signatures.length && signatures.some((s) => !s.ltv) ? (
             <Button onClick={() => void addLongTermValidation().then(() => setRan(true))} disabled={!isDesktop} data-testid="verify-add-ltv" title="Store the certificate chains and OCSP / CRL answers in the file (the signatures stay valid)">
               Add long-term validation
             </Button>
@@ -447,6 +614,28 @@ export function VerifyModal() {
         </>
       }
     >
+      <div className="mb-3 flex items-center gap-2 rounded-lg bg-[var(--hover)] px-3 py-2 text-xs" data-testid="eu-tl-status">
+        <ShieldCheck size={14} className="shrink-0 text-brand-600" />
+        <span className="min-w-0 flex-1">
+          {tl
+            ? `EU Trusted Lists: ${tl.services.length} qualified services, downloaded ${new Date(tl.fetched).toLocaleDateString()}.`
+            : 'EU Trusted Lists not downloaded: qualified EU signatures are recognised only through the Windows roots.'}
+        </span>
+        <Button
+          size="sm"
+          disabled={!isDesktop}
+          data-testid="eu-tl-update"
+          onClick={() =>
+            void updateEuTrustedLists().then(async (res) => {
+              if (res) setTl(res);
+              await verifyCurrentSignatures(false);
+              setRan(true);
+            })
+          }
+        >
+          {tl ? 'Update' : 'Download'}
+        </Button>
+      </div>
       {ran && status.length === 0 ? <Callout kind="info">This document has no digital signatures.</Callout> : null}
       {status.map((s) => (
         <SignatureCard key={s.fieldName} sig={s} />
@@ -473,7 +662,15 @@ function SignatureCard({ sig }: { sig: SignatureValidation }) {
       <div className="mb-2 flex items-center gap-2">
         {tone === 'good' ? <BadgeCheck className="text-accent-600" size={20} /> : tone === 'warn' ? <ShieldAlert className="text-amber-600" size={20} /> : <BadgeX className="text-rose-600" size={20} />}
         <div>
-          <div className="text-[13px] font-semibold">{sig.signerName || sig.fieldName}</div>
+          <div className="text-[13px] font-semibold">
+            {sig.documentTimestamp ? <span className="mr-1 font-normal text-muted">Document timestamp ·</span> : null}
+            {sig.signerName || sig.fieldName}
+            {sig.padesLevel ? (
+              <span className="ml-2 rounded bg-brand-50 px-1 text-[10px] font-medium text-brand-700 dark:bg-brand-900/40 dark:text-brand-200" data-testid="pades-badge">
+                PAdES {sig.padesLevel}
+              </span>
+            ) : null}
+          </div>
           <div className="text-[11px] text-muted">
             {sig.signedAt ? new Date(sig.signedAt).toLocaleString() : 'time unknown'} {sig.hasTimestamp ? '· trusted timestamp' : '· time from signer’s clock'}
           </div>
@@ -491,10 +688,26 @@ function SignatureCard({ sig }: { sig: SignatureValidation }) {
               : 'No — content was changed after this signature'}
         </Row>
         {sig.certified ? <Row label="Certified">{['', 'Yes — no changes allowed', 'Yes — form filling and signing allowed', 'Yes — forms, signing and comments allowed'][sig.certified]}</Row> : null}
-        <Row label="Long-term validation">{sig.ltv ? 'Yes — validation data saved in the file' : 'No'}</Row>
-        <Row label="Signer identity">
+        {!sig.documentTimestamp ? <Row label="Long-term validation">{sig.ltv ? 'Yes — validation data saved in the file' : 'No'}</Row> : null}
+        {sig.euTrusted || sig.qualified ? (
+          <Row label="EU qualified">
+            {sig.euTrusted
+              ? sig.documentTimestamp
+                ? 'Qualified timestamp authority'
+                : sig.qualified === 'qscd'
+                  ? 'Qualified electronic signature'
+                  : sig.qualified === 'qc'
+                    ? 'Advanced signature, qualified certificate'
+                    : 'Issuer is a qualified trust service'
+              : 'Declared by the certificate, not confirmed (download the EU Trusted Lists)'}
+            {sig.euTrusted ? <span className="block text-[11px] text-muted">{sig.euTrusted}</span> : null}
+          </Row>
+        ) : null}
+        <Row label={sig.documentTimestamp ? 'Timestamp authority' : 'Signer identity'}>
           {sig.chainStatus === 'trusted'
-            ? 'Trusted (chain to a Windows root)'
+            ? sig.euTrusted
+              ? 'Trusted (EU Trusted List)'
+              : 'Trusted (chain to a Windows root)'
             : sig.chainStatus === 'expired'
               ? 'Certificate expired at signing time'
               : sig.chainStatus === 'incomplete'

@@ -108,6 +108,15 @@ export async function pickPaths(filters: FileFilter[], multiple = false): Promis
   return Array.isArray(result) ? result : [result];
 }
 
+/** Asks for a folder (desktop); null if cancelled. */
+export async function pickFolder(): Promise<string | null> {
+  if (!isDesktop) throw new DesktopOnlyError('Choosing a folder');
+  const queued = e2ePick();
+  if (queued) return queued[0] ?? null;
+  const result = await openDialog({ multiple: false, directory: true });
+  return typeof result === 'string' ? result : null;
+}
+
 /**
  * Saves bytes. On desktop, shows a Save dialog (or writes straight to
  * `existingPath` when given). Returns the saved path, 'downloaded' in a
@@ -270,6 +279,45 @@ export interface SystemCertificates {
 export async function systemCertificates(): Promise<SystemCertificates> {
   if (!isDesktop) return { roots: [], intermediates: [] };
   return invoke<SystemCertificates>('system_certificates');
+}
+
+// ---------------------------------------------------------------- app data
+
+const memoryData = new Map<string, Uint8Array>();
+
+/** A cache file of the app (empty when missing). */
+export async function appDataRead(name: string): Promise<Uint8Array> {
+  if (!isDesktop) return memoryData.get(name) ?? new Uint8Array(0);
+  return new Uint8Array(await invoke<ArrayBuffer>('appdata_read', { name }));
+}
+
+export async function appDataWrite(name: string, bytes: Uint8Array): Promise<void> {
+  if (!isDesktop) {
+    memoryData.set(name, bytes);
+    return;
+  }
+  await invoke('appdata_write', bytes, { headers: { 'x-name': encodeURIComponent(name) } });
+}
+
+// ---------------------------------------------------------------- Windows certificate store
+
+export interface StoreCertificate {
+  thumbprint: string;
+  derBase64: string;
+  hasPrivateKey: boolean;
+}
+
+/** Certificates of the current user's "Personal" store. */
+export async function winstoreList(): Promise<StoreCertificate[]> {
+  if (!isDesktop) return [];
+  return invoke<StoreCertificate[]>('winstore_list');
+}
+
+/** Signs SHA-256(data) with the certificate's key; Windows asks for a PIN if needed. */
+export async function winstoreSign(thumbprint: string, data: Uint8Array): Promise<Uint8Array> {
+  if (!isDesktop) throw new DesktopOnlyError('Signing with the Windows certificate store');
+  const res = await invoke<{ signatureBase64: string }>('winstore_sign', { thumbprint, dataBase64: bytesToBase64(data) });
+  return base64ToBytes(res.signatureBase64);
 }
 
 // ---------------------------------------------------------------- PKCS#11

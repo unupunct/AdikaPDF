@@ -14,6 +14,7 @@ export type BatchOp =
   | { kind: 'compress'; level: CompressLevel }
   | { kind: 'ocr'; lang: string }
   | { kind: 'watermark'; text: string }
+  | { kind: 'pageNumbers'; format: string }
   | { kind: 'pdfa' }
   | { kind: 'protect'; userPassword: string; ownerPassword?: string }
   | { kind: 'sanitize' }
@@ -25,6 +26,7 @@ export const BATCH_OPS: Array<{ kind: BatchKind; label: string; suffix: string }
   { kind: 'ocr', label: 'OCR: make scanned pages searchable', suffix: '-ocr' },
   { kind: 'compress', label: 'Compress (smaller files)', suffix: '-compressed' },
   { kind: 'watermark', label: 'Add a text watermark', suffix: '-watermarked' },
+  { kind: 'pageNumbers', label: 'Add page numbers (footer)', suffix: '-numbered' },
   { kind: 'pdfa', label: 'Convert to PDF/A-2b (archiving)', suffix: '-pdfa2b' },
   { kind: 'protect', label: 'Protect with a password (AES-256)', suffix: '-protected' },
   { kind: 'sanitize', label: 'Remove metadata and hidden data', suffix: '-sanitized' },
@@ -94,6 +96,15 @@ export async function runBatchOp(bytes: Uint8Array, op: BatchOp, ctx: BatchConte
       );
       return { bytes: out };
     }
+    case 'pageNumbers': {
+      const { addPageMarks } = await import('./pdf/pageMarks');
+      const out = await addPageMarks(
+        bytes,
+        { fileName: ctx.fileName, headerFooter: { footerCenter: op.format || '{page} / {pages}', fontSize: 10, color: '#374151', margins: { top: 28, bottom: 24, left: 36, right: 36 } } },
+        (v) => ctx.loadFont(v),
+      );
+      return { bytes: out };
+    }
     case 'pdfa': {
       const { convertToPdfA } = await import('./pdf/pdfa');
       return { bytes: await convertToPdfA(bytes, { title: ctx.fileName.replace(/\.pdf$/i, ''), author: '', level: '2b' }) };
@@ -112,6 +123,63 @@ export async function runBatchOp(bytes: Uint8Array, op: BatchOp, ctx: BatchConte
     case 'flatten':
       return { bytes: await flattenBytes(bytes, ctx.loadFont) };
   }
+}
+
+// ---------------------------------------------------------------- action sequences
+
+/** A saved chain of operations, run on each file in order. */
+export interface ActionSequence {
+  id: string;
+  name: string;
+  steps: BatchOp[];
+}
+
+/** Why the steps cannot run as a sequence, or null. */
+export function sequenceProblem(steps: BatchOp[]): string | null {
+  if (!steps.length) return 'Add at least one step.';
+  const protect = steps.findIndex((s) => s.kind === 'protect');
+  if (protect >= 0 && protect !== steps.length - 1) return 'Password protection must be the last step (the other steps cannot open a protected file).';
+  const pdfa = steps.findIndex((s) => s.kind === 'pdfa');
+  if (pdfa >= 0 && steps.slice(pdfa + 1).some((s) => s.kind !== 'protect')) return 'PDF/A conversion should come last (later steps would break PDF/A conformance).';
+  const bad = steps.find((s) => (s.kind === 'watermark' && !s.text.trim()) || (s.kind === 'protect' && !s.userPassword));
+  if (bad) return bad.kind === 'protect' ? 'A password is needed.' : 'The watermark text is empty.';
+  return null;
+}
+
+/** "Scan to archive" -> "-scan-to-archive". */
+export function sequenceSuffix(name: string): string {
+  const slug = name
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 40);
+  return `-${slug || 'processed'}`;
+}
+
+/**
+ * Runs the steps one after another on one file. A step with nothing to do
+ * (e.g. compression that would not make it smaller) is noted and skipped.
+ */
+export async function runSequence(bytes: Uint8Array, steps: BatchOp[], ctx: BatchContext): Promise<{ bytes: Uint8Array; note?: string }> {
+  const problem = sequenceProblem(steps);
+  if (problem) throw new Error(problem);
+  const notes: string[] = [];
+  let cur = bytes;
+  for (const step of steps) {
+    const label = BATCH_OPS.find((o) => o.kind === step.kind)?.label ?? step.kind;
+    try {
+      const r = await runBatchOp(cur, step, ctx);
+      cur = r.bytes;
+      if (r.note) notes.push(r.note);
+    } catch (e) {
+      // Only the first step may meet an already protected file.
+      if (e instanceof BatchSkip && !(cur === bytes && /password/.test(e.message))) notes.push(`${label}: ${e.message}`);
+      else throw e;
+    }
+  }
+  return { bytes: cur, note: notes.join('; ') || undefined };
 }
 
 /** "C:\\a\\b.pdf" + "-ocr" -> "C:\\a\\b-ocr.pdf", or "b-ocr (2).pdf" when taken. */

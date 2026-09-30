@@ -67,6 +67,9 @@ import {
   PanelBottom,
   PaintBucket,
   Hash,
+  KeyRound,
+  Mails,
+  Accessibility,
 } from 'lucide-react';
 import { usePDFStore } from '@/store/usePDFStore';
 import type { RibbonTab, ToolId } from '@/types';
@@ -336,6 +339,7 @@ function SignTab() {
       <Group label="Digital signature (certificate)">
         <Big icon={<FileKey2 size={I} />} label="Certificate ID" disabled={!hasDoc} onClick={() => s.openModal('certificate')} tip="Sign with a .pfx/.p12 certificate or create a self-signed ID" testId="btn-cert-sign" />
         <Big icon={<Usb size={I} />} label="Token / smart card" disabled={!hasDoc} onClick={() => s.openModal('token')} tip="Sign with a USB token or smart card (PKCS#11)" testId="btn-token-sign" />
+        <Big icon={<KeyRound size={I} />} label="Windows certificate" disabled={!hasDoc} onClick={() => s.openModal('winstore')} tip="Sign with a certificate installed in Windows (qualified certificates, imported .pfx)" testId="btn-winstore-sign" />
         <ToolBtn tool="field-signature" icon={<PenLine size={I} />} label="Signature field" tip="Draw an empty signature field for someone else to sign" />
       </Group>
       <Group label="Validation">
@@ -444,6 +448,7 @@ function FormsTab() {
       <Group label="Data">
         <Big icon={<TableProperties size={I} />} label="Fill form" disabled={!hasDoc} onClick={() => usePDFStore.setState({ inspectorOpen: true, selectedIds: [] })} tip="Fill existing form fields in the right panel" />
         <Big icon={<FileSpreadsheet size={I} />} label="Export CSV" disabled={!hasDoc} onClick={() => void exportFormCsv()} tip="Export field values as CSV" />
+        <Big icon={<Mails size={I} />} label="Mail merge" disabled={!hasDoc} onClick={() => s.openModal('mailmerge')} tip="Fill this form once for every row of a CSV or Excel table: one PDF per row or one combined PDF" testId="btn-mailmerge" />
         <Big icon={<BookCopy size={I} />} label="Batch CSV" onClick={() => s.openModal('export')} tip="Collect answers from many filled PDFs into one CSV (Convert → Export)" />
       </Group>
       <Group label="Finish">
@@ -472,6 +477,9 @@ function SecurityTab() {
       <Group label="Protection">
         <Big icon={<Lock size={I} />} label="Password" disabled={!hasDoc} onClick={() => s.openModal('password')} tip="AES-256 encryption and permissions" testId="btn-protect" />
         <Big icon={<ShieldOff size={I} />} label="Sanitize" disabled={!hasDoc} onClick={() => void import('@/actions/security').then((m) => m.sanitizeDocument())} tip="Remove metadata, XMP and hidden info" />
+      </Group>
+      <Group label="Accessibility">
+        <Big icon={<Accessibility size={I} />} label="Accessibility" disabled={!hasDoc} onClick={() => s.openModal('accessibility')} tip="Check and fix what screen readers need: tags, reading order, title, language, picture descriptions (PDF/UA)" testId="btn-accessibility" />
       </Group>
       <Group label="Signatures">
         <Big icon={<ShieldCheck size={I} />} label="Verify" disabled={!hasDoc} onClick={() => s.openModal('verify')} />
@@ -528,7 +536,7 @@ function ConvertTab() {
         <Big icon={<Stamp size={I} />} label="Flatten" disabled={!hasDoc} onClick={() => void flattenCurrent()} />
       </Group>
       <Group label="Many files">
-        <Big icon={<FileStack size={I} />} label="Batch" onClick={() => s.openModal('batch')} tip="OCR, compress, watermark, PDF/A, protect, sanitize or flatten many PDFs at once" testId="btn-batch" />
+        <Big icon={<FileStack size={I} />} label="Batch" onClick={() => s.openModal('batch')} tip="OCR, compress, watermark, page numbers, PDF/A, protect, sanitize or flatten many PDFs at once, one operation or a saved sequence of steps" testId="btn-batch" />
       </Group>
     </>
   );

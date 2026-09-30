@@ -8,12 +8,13 @@ import { chromium } from 'playwright-core';
 
 export const EXE = process.env.ADIKA_EXE ?? join(process.cwd(), 'src-tauri', 'target', 'release', 'adika-pdf-editor.exe');
 
-/** `recoveryDir`: crash-recovery backups go there (a fresh temp folder by default, never the user's). */
-export async function launchApp({ args = [], port = 9333, exe = EXE, recoveryDir = tempDir('adika-recovery-') } = {}) {
+/** `recoveryDir` / `dataDir`: crash-recovery backups and cache files go there (fresh temp folders by default, never the user's). */
+export async function launchApp({ args = [], port = 9333, exe = EXE, recoveryDir = tempDir('adika-recovery-'), dataDir = tempDir('adika-data-') } = {}) {
   const env = {
     ...process.env,
     ADIKA_E2E: '1',
     ADIKA_RECOVERY_DIR: recoveryDir,
+    ADIKA_DATA_DIR: dataDir,
     WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${port}${process.env.ADIKA_EXTRA_WV2_ARGS ? ` ${process.env.ADIKA_EXTRA_WV2_ARGS}` : ''}`,
   };
   const proc = spawn(exe, args, { env, stdio: process.env.ADIKA_STDERR ? ['ignore', 'ignore', 'inherit'] : 'ignore' });

@@ -83,7 +83,7 @@ type Val =
   | { k: 'a'; v: Val[] }
   | { k: 'other' };
 
-interface Instr {
+export interface Instr {
   op: string;
   args: Val[];
   /** Byte range of the whole instruction (operands + operator) in the source. */
