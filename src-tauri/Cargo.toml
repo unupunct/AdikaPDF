@@ -1,6 +1,6 @@
 [package]
 name = "adika-pdf-editor"
-version = "1.8.0"
+version = "1.9.0"
 description = "Adika PDF Editor - privacy-first offline PDF editor"
 authors = ["unupunct"]
 license = "MIT"
@@ -36,4 +36,4 @@ strip = true
 
 [target."cfg(windows)".dependencies]
 schannel = "0.1.29"
-windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Security", "Win32_Security_Cryptography"] }
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Security", "Win32_Security_Cryptography", "Win32_System_Console"] }

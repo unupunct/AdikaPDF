@@ -14,7 +14,7 @@ export async function pickBatchFiles(): Promise<string[]> {
   return pickPaths([{ name: 'PDF documents', extensions: ['pdf'] }], true);
 }
 
-async function ocrBytes(bytes: Uint8Array, lang: string): Promise<Uint8Array> {
+export async function ocrBytes(bytes: Uint8Array, lang: string): Promise<Uint8Array> {
   const [{ openPdf }, { ocrPages, makeSearchable }] = await Promise.all([import('@/lib/pdf/pdfService'), import('@/lib/pdf/ocr')]);
   const pdf = await openPdf(bytes.slice());
   try {
@@ -46,7 +46,8 @@ export async function runBatch(
     onProgress(i, paths.length, baseName(input));
     try {
       const bytes = await readFile(input);
-      const ctx = { fileName: baseName(input), loadFont: loadFontBytes, ocr: ocrBytes };
+      const { colorHooks } = await import('./printProduction');
+      const ctx = { fileName: baseName(input), loadFont: loadFontBytes, ocr: ocrBytes, colorHooks };
       const r = sequence ? await runSequence(bytes, sequence.steps, ctx) : await runBatchOp(bytes, job as BatchOp, ctx);
       const output = await outputPath(input, suffix, async (p) => (await fileStamp(p)) !== null);
       await writeFile(output, r.bytes);

@@ -13,6 +13,24 @@ import { cloudPathData } from '@/lib/cloud';
 import { calloutKnee } from '@/lib/pdf/annotations';
 import { layoutText } from '@/lib/textLayout';
 import { canvasFont, cssFontFamily } from '@/lib/fonts';
+import { barcodeRects, type Symbology } from '@/lib/barcode/draw';
+
+const previewCache = new Map<string, ReturnType<typeof barcodeRects>>();
+/** Barcode modules for the canvas, cached (the scene is redrawn often). */
+function barcodePreview(symbology: Symbology, text: string, aspect: number) {
+  const key = `${symbology}|${aspect.toFixed(3)}|${text}`;
+  let r = previewCache.get(key);
+  if (!r) {
+    try {
+      r = barcodeRects(symbology, text, aspect);
+    } catch {
+      r = []; // too long for a QR code: shown empty
+    }
+    if (previewCache.size > 60) previewCache.clear();
+    previewCache.set(key, r);
+  }
+  return r;
+}
 import { canvasMeasure } from '@/lib/textLayout';
 import { SIGNATURE_CAPTION_FONT, SIGNATURE_CAPTION_HEIGHT, fitCaption, signatureCaption } from '@/lib/pdf/exportPdf';
 
@@ -214,6 +232,31 @@ function Content({ obj }: { obj: EditorObject }) {
     case 'link':
       return <Rect width={obj.width} height={obj.height} fill="rgba(37,99,235,0.08)" stroke="#2563eb" strokeWidth={1} dash={[4, 2]} strokeScaleEnabled={false} />;
     case 'field': {
+      if (obj.fieldKind === 'barcode') {
+        const spec = obj.barcode ?? { symbology: 'qr' as const, template: '' };
+        return (
+          <>
+            <Rect width={obj.width} height={obj.height} fill="#ffffff" stroke="#0284c7" strokeWidth={1} dash={[3, 2]} strokeScaleEnabled={false} />
+            <Shape
+              listening={false}
+              sceneFunc={(c) => {
+                // A preview: the template itself (the field values are filled in when saving).
+                const rects = barcodePreview(spec.symbology, spec.template || obj.name, obj.width / Math.max(1, obj.height));
+                c.fillStyle = '#111827';
+                for (const r of rects) c.fillRect(r.x * obj.width, r.y * obj.height, r.w * obj.width + 0.3, r.h * obj.height + 0.3);
+              }}
+            />
+          </>
+        );
+      }
+      if (obj.fieldKind === 'button') {
+        return (
+          <>
+            <Rect width={obj.width} height={obj.height} fill="#e0f2fe" stroke="#0284c7" strokeWidth={1} cornerRadius={4} strokeScaleEnabled={false} />
+            <Text text={obj.value || obj.name} width={obj.width} height={obj.height} align="center" verticalAlign="middle" fontSize={Math.min(12, obj.height * 0.5)} fill="#075985" wrap="none" ellipsis listening={false} />
+          </>
+        );
+      }
       const label =
         obj.fieldKind === 'checkbox' ? '☐' : obj.fieldKind === 'radio' ? '◯' : obj.fieldKind === 'signature' ? `✍ ${obj.name}` : obj.fieldKind === 'dropdown' ? `${obj.name} ▾` : obj.value || obj.name;
       const small = obj.fieldKind === 'checkbox' || obj.fieldKind === 'radio';

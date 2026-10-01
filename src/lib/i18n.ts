@@ -1,31 +1,39 @@
 /**
- * Interface language (English / Română).
+ * Interface language: English, Română, Deutsch, Français, Magyar, Italiano, Español.
  *
  * The UI is written in English; `translate()` maps an English string to the
  * chosen language using the dictionary in src/locales (exact strings, and
- * patterns with {0}, {1}… for strings built at runtime, with Romanian plural
- * forms `{0#one|few|many}`). `startDomTranslation()` applies it to the page
+ * patterns with {0}, {1}… for strings built at runtime, with plural forms
+ * `{0#one|few|many}` chosen by the language's plural rule). `startDomTranslation()` applies it to the page
  * as React renders — text, tooltips, placeholders, labels — so components
  * stay plain. Document text, inputs and anything inside [data-no-translate]
  * (file names, comments, bookmarks…) are never touched.
  */
 import { create } from 'zustand';
 
-export type Lang = 'en' | 'ro';
+export type Lang = 'en' | 'ro' | 'de' | 'fr' | 'hu' | 'it' | 'es';
 export const LANGS: Array<{ id: Lang; label: string }> = [
   { id: 'en', label: 'English' },
   { id: 'ro', label: 'Română' },
+  { id: 'de', label: 'Deutsch' },
+  { id: 'fr', label: 'Français' },
+  { id: 'hu', label: 'Magyar' },
+  { id: 'it', label: 'Italiano' },
+  { id: 'es', label: 'Español' },
 ];
+const isLang = (v: unknown): v is Lang => LANGS.some((l) => l.id === v);
 const KEY = 'adika.lang';
 
 function initialLang(): Lang {
   try {
     const v = localStorage.getItem(KEY);
-    if (v === 'en' || v === 'ro') return v;
+    if (isLang(v)) return v;
   } catch {
     /* no storage */
   }
-  return typeof navigator !== 'undefined' && /^ro\b/i.test(navigator.language) ? 'ro' : 'en';
+  // The Windows display language, when Adika speaks it.
+  const nav = typeof navigator !== 'undefined' ? navigator.language.slice(0, 2).toLowerCase() : 'en';
+  return isLang(nav) ? nav : 'en';
 }
 
 interface Pattern {
@@ -104,11 +112,25 @@ export function setDictionary(dict: Record<string, string>): void {
   patterns.sort((a, b) => b.weight - a.weight);
 }
 
-/** Romanian plural form: 1 / 0 and x01–x19 / 20+ ("de"). */
+/**
+ * Which of the plural forms `{0#…|…|…}` a number takes:
+ * Romanian 1 / 0 and x01–x19 / 20+ ("de"); French 0–1 / more; Hungarian
+ * one form (nouns stay singular after numbers); the others 1 / more.
+ */
 function pluralForm(n: number): 0 | 1 | 2 {
-  if (n === 1) return 0;
-  const r = Math.abs(n) % 100;
-  return n === 0 || (r >= 1 && r <= 19) || !Number.isInteger(n) ? 1 : 2;
+  switch (active) {
+    case 'ro': {
+      if (n === 1) return 0;
+      const r = Math.abs(n) % 100;
+      return n === 0 || (r >= 1 && r <= 19) || !Number.isInteger(n) ? 1 : 2;
+    }
+    case 'fr':
+      return Math.abs(n) < 2 ? 0 : 1;
+    case 'hu':
+      return 0;
+    default:
+      return n === 1 ? 0 : 1;
+  }
 }
 
 function fill(to: string, values: string[]): string {
@@ -165,12 +187,21 @@ export function currentLang(): Lang {
   return active;
 }
 
+const DICTS: Record<Exclude<Lang, 'en' | 'ro'>, () => Promise<{ default: unknown }>> = {
+  de: () => import('@/locales/de.json'),
+  fr: () => import('@/locales/fr.json'),
+  hu: () => import('@/locales/hu.json'),
+  it: () => import('@/locales/it.json'),
+  es: () => import('@/locales/es.json'),
+};
+
 async function dictionaryFor(lang: Lang): Promise<Record<string, string>> {
   if (lang === 'ro') {
     const [main, extra] = await Promise.all([import('@/locales/ro.json'), import('@/locales/ro.extra')]);
     return { ...(main.default as Record<string, string>), ...extra.RO_EXTRA };
   }
-  return {};
+  if (lang === 'en') return {};
+  return (await DICTS[lang]()).default as Record<string, string>;
 }
 
 export async function applyLang(lang: Lang): Promise<void> {

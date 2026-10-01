@@ -57,7 +57,7 @@ interface PolyDraft {
   cursor: { x: number; y: number };
 }
 
-const BOX_TOOLS: ToolId[] = ['rect', 'ellipse', 'highlight', 'redact', 'link', 'crop', 'snapshot', 'textbox', 'cloud', 'field-text', 'field-checkbox', 'field-radio', 'field-dropdown', 'field-signature'];
+const BOX_TOOLS: ToolId[] = ['rect', 'ellipse', 'highlight', 'redact', 'link', 'crop', 'snapshot', 'textbox', 'cloud', 'field-text', 'field-checkbox', 'field-radio', 'field-dropdown', 'field-signature', 'field-button', 'field-barcode'];
 const STICKY_TOOLS: ToolId[] = ['pen', 'highlight', 'redact'];
 const SNAP_PX = 6;
 

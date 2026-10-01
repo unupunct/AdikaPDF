@@ -245,6 +245,77 @@ export async function scanPage(): Promise<Uint8Array> {
   return new Uint8Array(await invoke<ArrayBuffer>('scan_wia'));
 }
 
+export interface ScannerInfo {
+  id: string;
+  name: string;
+  /** Has a document feeder. */
+  feeder: boolean;
+}
+
+/** WIA scanners connected to this computer. */
+export async function wiaDevices(): Promise<ScannerInfo[]> {
+  if (!isDesktop) return [];
+  return invoke<ScannerInfo[]>('wia_devices');
+}
+
+/** Scans with the given settings, without the driver dialog: one page from the flatbed, every page from the feeder. */
+export async function wiaScan(opts: { device: string; dpi: number; mode: 'color' | 'gray' | 'bw'; source: 'flatbed' | 'feeder' | 'duplex'; widthMm: number; heightMm: number }): Promise<Uint8Array[]> {
+  if (!isDesktop) throw new DesktopOnlyError('Scanning');
+  const buf = new Uint8Array(await invoke<ArrayBuffer>('wia_scan', { device: opts.device, dpi: opts.dpi, mode: opts.mode, source: opts.source, widthMm: opts.widthMm, heightMm: opts.heightMm }));
+  const view = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
+  const count = view.getUint32(0, true);
+  const pages: Uint8Array[] = [];
+  let o = 4;
+  for (let i = 0; i < count; i++) {
+    const len = view.getUint32(o, true);
+    pages.push(buf.slice(o + 4, o + 4 + len));
+    o += 4 + len;
+  }
+  return pages;
+}
+
+// ---------------------------------------------------------------- folders and command line
+
+export interface DirEntry {
+  name: string;
+  path: string;
+  isDir: boolean;
+  size: number;
+  /** Milliseconds since 1970. */
+  modified: number;
+}
+
+export async function listDir(path: string): Promise<DirEntry[]> {
+  if (!isDesktop) throw new DesktopOnlyError('Reading folders');
+  return invoke<DirEntry[]>('list_dir', { path });
+}
+
+/** Moves a file (never overwriting); returns where it went. */
+export async function moveFile(from: string, to: string): Promise<string> {
+  return invoke<string>('move_file', { from, to });
+}
+
+export async function makeDir(path: string): Promise<void> {
+  await invoke('make_dir', { path });
+}
+
+export async function cliArgs(): Promise<string[]> {
+  if (!isDesktop) return [];
+  return invoke<string[]>('cli_args');
+}
+
+export async function cliCwd(): Promise<string> {
+  return invoke<string>('cli_cwd');
+}
+
+export async function cliPrint(line: string, error = false): Promise<void> {
+  await invoke('cli_print', { line, error });
+}
+
+export async function cliExit(code: number): Promise<void> {
+  await invoke('cli_exit', { code });
+}
+
 // ---------------------------------------------------------------- network
 
 export async function httpGet(url: string): Promise<Uint8Array> {
@@ -311,6 +382,12 @@ export interface StoreCertificate {
 export async function winstoreList(): Promise<StoreCertificate[]> {
   if (!isDesktop) return [];
   return invoke<StoreCertificate[]>('winstore_list');
+}
+
+/** Decrypts an RSA-encrypted content key with the certificate's private key (opening documents encrypted for it). */
+export async function winstoreDecrypt(thumbprint: string, data: Uint8Array): Promise<Uint8Array> {
+  if (!isDesktop) throw new DesktopOnlyError('The Windows certificate store');
+  return base64ToBytes(await invoke<string>('winstore_decrypt', { thumbprint, dataBase64: bytesToBase64(data) }));
 }
 
 /** Signs SHA-256(data) with the certificate's key; Windows asks for a PIN if needed. */

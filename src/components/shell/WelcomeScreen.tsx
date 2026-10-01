@@ -65,8 +65,11 @@ export function WelcomeScreen() {
             <button type="button" className="text-brand-600 hover:underline" onClick={() => openImport('cad')}>
               CAD drawing (DXF)
             </button>
+            <button type="button" className="text-brand-600 hover:underline" onClick={() => usePDFStore.getState().openModal('scan')} data-testid="welcome-scan">
+              Scanner
+            </button>
             <button type="button" className="text-brand-600 hover:underline" onClick={() => openImport('scan')}>
-              Scanner / camera
+              Camera
             </button>
           </div>
         </div>

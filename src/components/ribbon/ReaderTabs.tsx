@@ -5,6 +5,7 @@ import {
   ArrowRight,
   BookOpen,
   BookText,
+  FolderSearch,
   Bookmark,
   ChevronDown,
   ChevronLeft,
@@ -317,6 +318,7 @@ export function HomeTab() {
           <Small icon={<Maximize size={i} />} label="Fit page" active={s.fitMode === 'page'} disabled={!hasDoc} onClick={() => s.setZoom(s.zoom, 'page')} />
         </Stack>
         <Big icon={<Search size={I} />} label="Find" disabled={!hasDoc} onClick={() => s.setSearch({ open: true })} tip="Search the document (Ctrl+F)" testId="btn-find" />
+        <Big icon={<FolderSearch size={I} />} label="Search folders" onClick={() => s.openModal('foldersearch')} tip="Search the text of every PDF in chosen folders" testId="btn-foldersearch" />
       </Group>
       <Group label="Quick actions">
         <Big icon={<Signature size={I} />} label="Fill & Sign" disabled={!editable} onClick={() => s.openModal('signature')} />

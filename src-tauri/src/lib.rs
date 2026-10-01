@@ -12,6 +12,8 @@ mod pkcs11;
 mod recovery;
 mod appdata;
 mod certstore;
+mod scanner;
+mod automation;
 
 use percent_encoding::percent_decode_str;
 use std::path::PathBuf;
@@ -98,10 +100,16 @@ pub fn run() {
         print_watcher::run();
         return;
     }
-    tauri::Builder::default()
+    // Command line batch: no window, no single instance (it runs next to an open editor).
+    let batch = automation::is_batch();
+    if batch {
+        automation::attach_console();
+    }
+    let mut builder = tauri::Builder::default();
+    if !batch {
         // A second launch (Explorer "Open with", the virtual printer) hands its
         // files to the running window, which opens them as new tabs.
-        .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
+        builder = builder.plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
             let files: Vec<String> = argv
                 .iter()
                 .skip(1)
@@ -115,7 +123,23 @@ pub fn run() {
                     let _ = w.emit("adika://open-files", files);
                 }
             }
-        }))
+        }));
+    }
+    builder
+        .setup(move |app| {
+            // The main window is created here (not from the config) so that a
+            // command line batch runs without one showing, and the end-to-end
+            // tests get their own WebView profile (never the user's settings).
+            let cfg = app.config().app.windows.iter().find(|w| w.label == "main").cloned().ok_or("no main window in the configuration")?;
+            let mut b = tauri::WebviewWindowBuilder::from_config(app, &cfg)?.visible(!batch);
+            if e2e_mode() {
+                if let Some(dir) = std::env::var_os("ADIKA_WEBVIEW_DATA") {
+                    b = b.data_directory(PathBuf::from(dir));
+                }
+            }
+            b.build()?;
+            Ok(())
+        })
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
@@ -139,10 +163,20 @@ pub fn run() {
             appdata::appdata_read,
             certstore::winstore_list,
             certstore::winstore_sign,
+            certstore::winstore_decrypt,
             convert::converter_availability,
             convert::office_to_pdf,
             convert::html_to_pdf,
             convert::scan_wia,
+            scanner::wia_devices,
+            scanner::wia_scan,
+            automation::cli_args,
+            automation::cli_cwd,
+            automation::cli_print,
+            automation::cli_exit,
+            automation::list_dir,
+            automation::move_file,
+            automation::make_dir,
             net::http_request,
             net::system_certificates,
             pkcs11::pkcs11_detect_modules,

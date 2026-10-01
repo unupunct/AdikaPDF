@@ -70,6 +70,9 @@ import {
   KeyRound,
   Mails,
   Accessibility,
+  Printer,
+  MousePointerClick,
+  QrCode,
 } from 'lucide-react';
 import { usePDFStore } from '@/store/usePDFStore';
 import type { RibbonTab, ToolId } from '@/types';
@@ -444,6 +447,8 @@ function FormsTab() {
         <ToolBtn tool="field-radio" icon={<CircleDot size={I} />} label="Radio" tip="Radio buttons placed in a row join the same group" />
         <ToolBtn tool="field-dropdown" icon={<ListChecks size={I} />} label="Dropdown" />
         <ToolBtn tool="field-signature" icon={<PenLine size={I} />} label="Signature" />
+        <ToolBtn tool="field-button" icon={<MousePointerClick size={I} />} label="Button" tip="A button that e-mails the form, resets it, prints, opens a web page, shows or hides fields" />
+        <ToolBtn tool="field-barcode" icon={<QrCode size={I} />} label="Barcode" tip="A QR or Code 128 barcode made from the field values when the form is saved" />
       </Group>
       <Group label="Data">
         <Big icon={<TableProperties size={I} />} label="Fill form" disabled={!hasDoc} onClick={() => usePDFStore.setState({ inspectorOpen: true, selectedIds: [] })} tip="Fill existing form fields in the right panel" />
@@ -476,6 +481,7 @@ function SecurityTab() {
       </Group>
       <Group label="Protection">
         <Big icon={<Lock size={I} />} label="Password" disabled={!hasDoc} onClick={() => s.openModal('password')} tip="AES-256 encryption and permissions" testId="btn-protect" />
+        <Big icon={<KeyRound size={I} />} label="Certificate" disabled={!hasDoc} onClick={() => s.openModal('certencrypt')} tip="Encrypt for chosen people's certificates: no shared password" testId="btn-certencrypt" />
         <Big icon={<ShieldOff size={I} />} label="Sanitize" disabled={!hasDoc} onClick={() => void import('@/actions/security').then((m) => m.sanitizeDocument())} tip="Remove metadata, XMP and hidden info" />
       </Group>
       <Group label="Accessibility">
@@ -502,11 +508,12 @@ function ConvertTab() {
     <>
       <Group label="Create PDF from">
         <Big icon={<FileType2 size={I} />} label="Office" onClick={() => openImport('office')} tip="Word, Excel, PowerPoint (uses Microsoft Office on this PC)" testId="btn-import-office" />
+        <Big icon={<ScanLine size={I} />} label="Scan" onClick={() => s.openModal('scan')} tip="Scan to PDF: flatbed or document feeder, cleanup, blank pages and separator sheets, OCR" testId="btn-scan" />
         <Big icon={<FileImage size={I} />} label="Images" onClick={() => openImport('images')} tip="PNG, JPG, WebP, TIFF, GIF, BMP" testId="btn-import-images" />
         <Stack>
           <Small icon={<FileCode2 size={i} />} label="HTML / URL" onClick={() => openImport('html')} />
           <Small icon={<FileText size={i} />} label="Markdown / text" onClick={() => openImport('markdown')} />
-          <Small icon={<Camera size={i} />} label="Scanner / camera" onClick={() => openImport('scan')} />
+          <Small icon={<Camera size={i} />} label="Camera" onClick={() => openImport('scan')} />
         </Stack>
         <Stack>
           <Small icon={<BookCopy size={i} />} label="EPUB / e-mail / XPS" onClick={() => openImport('documents')} testId="btn-import-documents" />
@@ -534,6 +541,9 @@ function ConvertTab() {
         <Big icon={<FileArchive size={I} />} label="Compress" disabled={!hasDoc} onClick={() => s.openModal('compress')} testId="btn-compress" />
         <Big icon={<FileCheck2 size={I} />} label="PDF/A" disabled={!hasDoc} onClick={() => s.openModal('pdfa')} tip="Archival PDF/A-2b" />
         <Big icon={<Stamp size={I} />} label="Flatten" disabled={!hasDoc} onClick={() => void flattenCurrent()} />
+      </Group>
+      <Group label="Print shop">
+        <Big icon={<Printer size={I} />} label="Print production" disabled={!hasDoc} onClick={() => s.openModal('printprod')} tip="PDF/X preflight and conversion, grey or CMYK colours, ink preview, bleed and printer marks" testId="btn-printprod" />
       </Group>
       <Group label="Many files">
         <Big icon={<FileStack size={I} />} label="Batch" onClick={() => s.openModal('batch')} tip="OCR, compress, watermark, page numbers, PDF/A, protect, sanitize or flatten many PDFs at once, one operation or a saved sequence of steps" testId="btn-batch" />

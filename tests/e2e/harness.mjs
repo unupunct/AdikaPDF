@@ -15,6 +15,8 @@ export async function launchApp({ args = [], port = 9333, exe = EXE, recoveryDir
     ADIKA_E2E: '1',
     ADIKA_RECOVERY_DIR: recoveryDir,
     ADIKA_DATA_DIR: dataDir,
+    // Its own WebView profile: the tests never touch the user's Adika settings.
+    ADIKA_WEBVIEW_DATA: tempDir('adika-webview-'),
     WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${port}${process.env.ADIKA_EXTRA_WV2_ARGS ? ` ${process.env.ADIKA_EXTRA_WV2_ARGS}` : ''}`,
   };
   const proc = spawn(exe, args, { env, stdio: process.env.ADIKA_STDERR ? ['ignore', 'ignore', 'inherit'] : 'ignore' });

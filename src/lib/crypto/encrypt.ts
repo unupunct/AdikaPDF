@@ -321,6 +321,26 @@ class ObjectEncryptor {
 }
 
 /**
+ * Encrypts every string and stream of every indirect object with the file
+ * key (AES-256-CBC, no per-object key). Also used by the public-key handler.
+ */
+export async function encryptAllObjects(doc: PDFDocument, aesFileKey: CryptoKey): Promise<void> {
+  const context = doc.context;
+  const enc = new ObjectEncryptor(aesFileKey);
+  for (const [ref, obj] of context.enumerateIndirectObjects()) {
+    if (obj instanceof PDFStream) {
+      if (obj.dict.get(N_TYPE) === N_XREF) continue; // xref streams are never encrypted
+      context.assign(ref, await enc.encryptStream(obj));
+    } else {
+      const rep = await enc.visit(obj);
+      if (rep) context.assign(ref, rep);
+    }
+  }
+}
+
+export { importAesKey };
+
+/**
  * Encrypts a PDF with AES-256 (V5/R6). Rejects input that is already encrypted.
  */
 export async function encryptPdf(bytes: Uint8Array, opts: EncryptOptions): Promise<Uint8Array> {
@@ -352,18 +372,7 @@ export async function encryptPdf(bytes: Uint8Array, opts: EncryptOptions): Promi
   const owner = await makeKeyEntries(passwordBytes(opts.ownerPassword || opts.userPassword), user.hash, fileKey);
   const perms = await makePerms(P, encryptMetadata, aesFileKey);
 
-  // Encrypt all indirect objects. With R6 there is no per-object key: the
-  // file key is used for every string and stream.
-  const enc = new ObjectEncryptor(aesFileKey);
-  for (const [ref, obj] of context.enumerateIndirectObjects()) {
-    if (obj instanceof PDFStream) {
-      if (obj.dict.get(N_TYPE) === N_XREF) continue; // xref streams are never encrypted
-      context.assign(ref, await enc.encryptStream(obj));
-    } else {
-      const rep = await enc.visit(obj);
-      if (rep) context.assign(ref, rep);
-    }
-  }
+  await encryptAllObjects(doc, aesFileKey);
 
   // The Encrypt dictionary is registered afterwards so it is not itself encrypted.
   const stdCF = context.obj({ AuthEvent: 'DocOpen', CFM: 'AESV3', Length: 32 });

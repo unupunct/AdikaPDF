@@ -1,12 +1,20 @@
 /** All comments of the document: new ones (editable) and those already in the file. */
 import { useEffect, useMemo, useState } from 'react';
-import { Highlighter, Keyboard, MessageSquare, PenLine, Search, StickyNote, Strikethrough, Underline, Waves } from 'lucide-react';
+import { GitMerge, Highlighter, Keyboard, MessageSquare, PenLine, Search, StickyNote, Strikethrough, Underline, Waves } from 'lucide-react';
 import { usePDFStore } from '@/store/usePDFStore';
 import { getAnnotations, getPdfPage, type PageAnnotation } from '@/lib/pdf/pdfService';
 import { totalRotation } from '@/lib/geometry';
 import { usePageLabels } from '@/hooks/usePageLabels';
 import { cn } from '@/lib/cn';
 import { measureValue } from '@/lib/measure';
+import type { ReviewState } from '@/lib/pdf/review';
+
+const STATE_STYLE: Record<string, string> = {
+  Accepted: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200',
+  Rejected: 'bg-rose-100 text-rose-800 dark:bg-rose-900/40 dark:text-rose-200',
+  Cancelled: 'bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-200',
+  Completed: 'bg-sky-100 text-sky-800 dark:bg-sky-900/40 dark:text-sky-200',
+};
 
 const COMMENT_SUBTYPES = new Set(['Text', 'FreeText', 'Highlight', 'Underline', 'StrikeOut', 'Squiggly', 'Ink', 'Square', 'Circle', 'Line', 'Polygon', 'PolyLine', 'Stamp', 'Caret', 'FileAttachment']);
 
@@ -20,6 +28,10 @@ interface Row {
   text: string;
   /** Editor object id for comments added in this session. */
   objectId: string | null;
+  /** Latest review status (and who set it). */
+  status?: { state: ReviewState; by: string } | null;
+  /** Comments in the file: how to find them again when setting the status. */
+  match?: { subtype: string; rect: number[]; contents: string };
 }
 
 const KIND_LABEL: Record<string, string> = {
@@ -66,7 +78,7 @@ function pdfDateToIso(d: unknown): string | null {
   return `${y}-${mo}-${da}T${h}:${mi}:${se}`;
 }
 
-type RawAnnot = PageAnnotation & { contentsObj?: { str?: string }; titleObj?: { str?: string }; modificationDate?: string; creationDate?: string; id?: string };
+type RawAnnot = PageAnnotation & { contentsObj?: { str?: string }; titleObj?: { str?: string }; modificationDate?: string; creationDate?: string; id?: string; inReplyTo?: string | null; state?: string | null; stateModel?: string | null; rect: number[] };
 
 export function CommentsPanel() {
   const pages = usePDFStore((s) => s.pages);
@@ -75,6 +87,7 @@ export function CommentsPanel() {
   const labels = usePageLabels();
   const [existing, setExisting] = useState<Row[] | null>(null);
   const [filter, setFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'open' | ReviewState>('all');
 
   // Comments already stored in the file(s), read through pdf.js.
   useEffect(() => {
@@ -84,7 +97,15 @@ export function CommentsPanel() {
       for (const p of pages) {
         if (p.kind !== 'source' || !p.sourceId) continue;
         const annots = (await getAnnotations(p.sourceId, p.sourceIndex).catch(() => [])) as RawAnnot[];
-        const list = annots.filter((a) => COMMENT_SUBTYPES.has(a.subtype));
+        // Review-state replies are the status of the comment they answer, not comments of their own.
+        const states = new Map<string, { state: ReviewState; by: string; at: string }>();
+        for (const a of annots) {
+          if (!a.inReplyTo || a.stateModel !== 'Review' || !a.state) continue;
+          const at = a.modificationDate ?? a.creationDate ?? '';
+          const old = states.get(a.inReplyTo);
+          if (!old || at >= old.at) states.set(a.inReplyTo, { state: a.state as ReviewState, by: a.titleObj?.str ?? '', at });
+        }
+        const list = annots.filter((a) => COMMENT_SUBTYPES.has(a.subtype) && !(a.inReplyTo && a.stateModel));
         if (!list.length) continue;
         const pdfPage = await getPdfPage(p.sourceId, p.sourceIndex).catch(() => null);
         const vp = pdfPage?.getViewport({ scale: 1, rotation: totalRotation(p) });
@@ -99,6 +120,8 @@ export function CommentsPanel() {
             date: pdfDateToIso(a.modificationDate ?? a.creationDate),
             text: a.contentsObj?.str ?? '',
             objectId: null,
+            status: a.id && states.get(a.id) && states.get(a.id)!.state !== 'None' ? { state: states.get(a.id)!.state, by: states.get(a.id)!.by } : null,
+            match: { subtype: a.subtype, rect: a.rect, contents: a.contentsObj?.str ?? '' },
           });
         }
       }
@@ -121,6 +144,9 @@ export function CommentsPanel() {
         if (o.type === 'measure') return [{ key: o.id, pageId: o.pageId, y: o.y, kind: o.kind === 'distance' ? 'Distance' : o.kind === 'perimeter' ? 'Perimeter' : 'Area', author: o.author, date: o.modifiedAt, text: [measureValue(o.kind, o.points, o.scale).label, o.text].filter(Boolean).join(' · '), objectId: o.id }];
         if (o.type === 'attachment') return [{ key: o.id, pageId: o.pageId, y: o.y, kind: 'FileAttachment', author: o.author, date: o.modifiedAt, text: o.text || o.fileName, objectId: o.id }];
         return [];
+      }).map((r) => {
+        const o = objects.find((x) => x.id === r.objectId) as { reviewStatus?: ReviewState; author?: string } | undefined;
+        return o?.reviewStatus && o.reviewStatus !== 'None' ? { ...r, status: { state: o.reviewStatus, by: o.author ?? '' } } : r;
       }),
     [objects],
   );
@@ -129,7 +155,19 @@ export function CommentsPanel() {
   const q = filter.trim().toLowerCase();
   const rows = [...mine, ...(existing ?? [])]
     .filter((r) => !q || `${r.text} ${r.author} ${KIND_LABEL[r.kind] ?? r.kind}`.toLowerCase().includes(q))
+    .filter((r) => statusFilter === 'all' || (statusFilter === 'open' ? !r.status : r.status?.state === statusFilter))
     .sort((a, b) => (pageOrder.get(a.pageId) ?? 0) - (pageOrder.get(b.pageId) ?? 0) || a.y - b.y);
+
+  const setStatus = async (r: Row, state: ReviewState) => {
+    if (r.objectId) {
+      const s = usePDFStore.getState();
+      s.updateObject(r.objectId, { reviewStatus: state === 'None' ? undefined : state } as never);
+      return;
+    }
+    if (!r.match) return;
+    const { setFileCommentStatus } = await import('@/actions/pageTools');
+    await setFileCommentStatus(pageOrder.get(r.pageId) ?? 0, r.match, state);
+  };
 
   const open = (r: Row) => {
     const s = usePDFStore.getState();
@@ -145,13 +183,39 @@ export function CommentsPanel() {
     <>
       <div className="flex h-9 shrink-0 items-center justify-between border-b border-app px-3 text-[11px] font-semibold uppercase tracking-wide text-muted">
         <span>Comments</span>
-        <span className="font-normal normal-case">{rows.length}</span>
+        <span className="flex items-center gap-1 font-normal normal-case">
+          {rows.length}
+          <button
+            type="button"
+            aria-label="Merge reviewers' copies"
+            title="Merge the comments of reviewers' copies of this document"
+            className="rounded p-1 hover-app"
+            onClick={() => void import('@/actions/pageTools').then((m) => m.mergeReviewCopies())}
+            data-testid="comments-merge"
+          >
+            <GitMerge size={13} />
+          </button>
+        </span>
       </div>
       <div className="border-b border-app p-2">
         <div className="flex items-center gap-1.5 rounded-md border border-app bg-panel-2 px-2">
           <Search size={12} className="text-muted" />
           <input aria-label="Filter comments" placeholder="Filter…" value={filter} onChange={(e) => setFilter(e.target.value)} className="h-7 min-w-0 flex-1 bg-transparent text-[12px] outline-none" />
         </div>
+        <select
+          aria-label="Filter by status"
+          className="mt-1.5 h-7 w-full rounded-md border border-app bg-panel-2 px-1 text-[12px]"
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value as typeof statusFilter)}
+          data-testid="comments-status-filter"
+        >
+          <option value="all">All statuses</option>
+          <option value="open">No status yet</option>
+          <option value="Accepted">Accepted</option>
+          <option value="Rejected">Rejected</option>
+          <option value="Completed">Completed</option>
+          <option value="Cancelled">Cancelled</option>
+        </select>
       </div>
       <div className="flex-1 overflow-auto p-1.5" data-testid="comments-panel">
         {existing && rows.length === 0 ? <p className="px-2 py-4 text-xs text-muted">{q ? 'No comments match.' : 'No comments yet. Use the Comment tab to add notes, highlights and more.'}</p> : null}
@@ -162,10 +226,13 @@ export function CommentsPanel() {
           return (
             <div key={r.key}>
               {header ? <div className="px-1.5 pb-1 pt-2 text-[10.5px] font-semibold text-muted">Page {labels[r.pageId] ?? pageNo}</div> : null}
-              <button
-                type="button"
+              <div
+                role="button"
+                tabIndex={0}
                 data-testid="comment-row"
+                data-status={r.status?.state ?? ''}
                 onClick={() => open(r)}
+                onKeyDown={(e) => (e.key === 'Enter' ? open(r) : undefined)}
                 className={cn('mb-1 block w-full rounded-md border px-2 py-1.5 text-left', r.objectId && selectedIds.includes(r.objectId) ? 'border-brand-400 bg-brand-50 dark:bg-brand-900/30' : 'border-app hover-app')}
               >
                 <div className="flex items-center gap-1.5 text-[11px]">
@@ -181,8 +248,30 @@ export function CommentsPanel() {
                     {r.text}
                   </div>
                 ) : null}
-                {r.date ? <div className="mt-0.5 text-[10px] text-muted">{new Date(r.date).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}</div> : null}
-              </button>
+                <div className="mt-0.5 flex items-center gap-1 text-[10px] text-muted">
+                  {r.date ? <span className="min-w-0 flex-1 truncate">{new Date(r.date).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}</span> : <span className="flex-1" />}
+                  {r.status ? (
+                    <span className={cn('rounded px-1', STATE_STYLE[r.status.state])} title={r.status.by} data-testid="comment-status">
+                      {r.status.state}
+                    </span>
+                  ) : null}
+                  <select
+                    aria-label="Review status"
+                    className="h-5 rounded border border-app bg-transparent text-[10px]"
+                    value={r.status?.state ?? ''}
+                    onClick={(e) => e.stopPropagation()}
+                    onChange={(e) => void setStatus(r, (e.target.value || 'None') as ReviewState)}
+                    data-testid="comment-set-status"
+                  >
+                    <option value="">Status…</option>
+                    <option value="Accepted">Accepted</option>
+                    <option value="Rejected">Rejected</option>
+                    <option value="Completed">Completed</option>
+                    <option value="Cancelled">Cancelled</option>
+                    <option value="None">None</option>
+                  </select>
+                </div>
+              </div>
             </div>
           );
         })}

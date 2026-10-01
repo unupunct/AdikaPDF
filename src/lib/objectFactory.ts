@@ -203,6 +203,8 @@ const FIELD_SIZES: Record<FieldKind, { width: number; height: number }> = {
   radio: { width: 14, height: 14 },
   dropdown: { width: 140, height: 22 },
   signature: { width: 180, height: 50 },
+  button: { width: 100, height: 26 },
+  barcode: { width: 90, height: 90 },
 };
 
 export function defaultFieldSize(kind: FieldKind): { width: number; height: number } {
@@ -216,7 +218,7 @@ export function makeField(
   existingNames: string[],
   radioGroup?: string,
 ): FieldObject {
-  const prefix = { text: 'Text', checkbox: 'Check', radio: 'Group', dropdown: 'Dropdown', signature: 'Signature' }[kind];
+  const prefix = { text: 'Text', checkbox: 'Check', radio: 'Group', dropdown: 'Dropdown', signature: 'Signature', button: 'Button', barcode: 'Barcode' }[kind];
   let name = radioGroup ?? '';
   if (!name) {
     let i = 1;
@@ -233,11 +235,13 @@ export function makeField(
     opacity: 1,
     fieldKind: kind,
     name,
-    value: kind === 'radio' ? `Option${radioCount + 1}` : '',
+    value: kind === 'radio' ? `Option${radioCount + 1}` : kind === 'button' ? 'Print' : '',
     options: kind === 'dropdown' ? ['Option 1', 'Option 2', 'Option 3'] : [],
     required: false,
     fontSize: 0,
     multiline: false,
+    ...(kind === 'button' ? { action: { kind: 'print' as const } } : {}),
+    ...(kind === 'barcode' ? { barcode: { symbology: 'qr' as const, template: existingNames.filter((n) => !/^(Button|Barcode)\d+$/.test(n)).map((n) => `{${n}}`).join('\n') } } : {}),
   };
 }
 

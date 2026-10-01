@@ -13,7 +13,7 @@ import { PDFDocument, StandardFonts, degrees, rgb } from 'pdf-lib';
 import * as pdfjs from 'pdfjs-dist/legacy/build/pdf.mjs';
 import { Document, Packer, Paragraph, HeadingLevel, Table, TableRow, TableCell, TextRun } from 'docx';
 import JSZip from 'jszip';
-import { launchApp, tempDir } from './harness.mjs';
+import { launchApp, tempDir, EXE } from './harness.mjs';
 import { registerFormatTests } from './formats.part.mjs';
 import { makeReaderFixture, registerReaderTests } from './reader.part.mjs';
 import { makeCommentFixture, registerCommentTests } from './comments.part.mjs';
@@ -29,6 +29,10 @@ import { registerEidasTests, makeStoreTestPfx } from './eidas.part.mjs';
 import { registerMergeTests } from './merge.part.mjs';
 import { registerAccessTests } from './access.part.mjs';
 import { registerVisualTests } from './visual.part.mjs';
+import { registerScanTests } from './scan.part.mjs';
+import { registerPrintProdTests } from './printprod.part.mjs';
+import { registerAutomationTests } from './automation.part.mjs';
+import { registerForms2Tests } from './forms2.part.mjs';
 
 const only = process.argv.slice(2).filter((a) => !a.startsWith('--'));
 const shots = process.argv.includes('--shots');
@@ -841,6 +845,10 @@ registerEidasTests(test, { S, page, open, idle, savedFile, assert, F });
 registerMergeTests(test, { S, page, dir, open, idle, savedFile, assert, pdfText, join, writeFileSync });
 registerAccessTests(test, { S, page, dir, open, idle, savedFile, assert, join, writeFileSync });
 registerVisualTests(test, { S, page, dir, open, idle, savedFile, assert, pdfText, join, writeFileSync, F });
+registerScanTests(test, { S, page, dir, open, idle, savedFile, assert, join, writeFileSync, FONT_DATA });
+registerPrintProdTests(test, { S, page, dir, open, idle, savedFile, assert, join, writeFileSync, FONT_DATA });
+registerAutomationTests(test, { S, page, dir, open, idle, savedFile, assert, pdfText, join, writeFileSync, EXE });
+registerForms2Tests(test, { S, page, dir, open, idle, savedFile, assert, join, writeFileSync, drag, setTool, FONT_DATA, pfxPath: process.env.ADIKA_WINSTORE_TEST_PFX });
 
 test('dark mode toggle and welcome after close', async () => {
   await page.click('[data-testid="theme-toggle"]');

@@ -18,7 +18,8 @@ export type BatchOp =
   | { kind: 'pdfa' }
   | { kind: 'protect'; userPassword: string; ownerPassword?: string }
   | { kind: 'sanitize' }
-  | { kind: 'flatten' };
+  | { kind: 'flatten' }
+  | { kind: 'grayscale' };
 
 export type BatchKind = BatchOp['kind'];
 
@@ -31,6 +32,7 @@ export const BATCH_OPS: Array<{ kind: BatchKind; label: string; suffix: string }
   { kind: 'protect', label: 'Protect with a password (AES-256)', suffix: '-protected' },
   { kind: 'sanitize', label: 'Remove metadata and hidden data', suffix: '-sanitized' },
   { kind: 'flatten', label: 'Flatten forms and comments', suffix: '-flattened' },
+  { kind: 'grayscale', label: 'Convert colours to grey', suffix: '-grayscale' },
 ];
 
 export const COMPRESS_PRESETS: Record<CompressLevel, Omit<CompressOptions, 'stripMetadata'>> = {
@@ -44,6 +46,8 @@ export interface BatchContext {
   loadFont: (v: FontVariant) => Promise<Uint8Array>;
   /** OCR of a whole document (app: pdf.js + Tesseract). */
   ocr?: (bytes: Uint8Array, lang: string) => Promise<Uint8Array>;
+  /** Image codecs for the colour conversion (photos). */
+  colorHooks?: import('./print/convertColors').ConvertHooks;
 }
 
 export class BatchSkip extends Error {}
@@ -122,6 +126,11 @@ export async function runBatchOp(bytes: Uint8Array, op: BatchOp, ctx: BatchConte
       return { bytes: await sanitizeBytes(bytes) };
     case 'flatten':
       return { bytes: await flattenBytes(bytes, ctx.loadFont) };
+    case 'grayscale': {
+      const { convertColors } = await import('./print/convertColors');
+      const r = await convertColors(bytes, 'gray', ctx.colorHooks);
+      return { bytes: r.bytes, note: r.report.kept.length ? `kept: ${r.report.kept.join('; ')}` : undefined };
+    }
   }
 }
 

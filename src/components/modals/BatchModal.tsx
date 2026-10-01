@@ -6,6 +6,7 @@ import { Button, Callout, Dialog, Field, Input, Select, Tabs } from '@/component
 import { BATCH_OPS, sequenceProblem, sequenceSuffix, type ActionSequence, type BatchKind, type BatchOp, type CompressLevel } from '@/lib/batch';
 import { OCR_LANGUAGES } from '@/lib/pdf/ocr';
 import type { BatchResult } from '@/actions/batch';
+import { WatchPanel } from './WatchPanel';
 
 const name = (p: string) => p.split(/[\\/]/).pop() ?? p;
 
@@ -87,7 +88,7 @@ export function BatchModal() {
   const open = usePDFStore((s) => s.modal === 'batch');
   const close = () => usePDFStore.getState().openModal(null);
   const [files, setFiles] = useState<string[]>([]);
-  const [mode, setMode] = useState<'single' | 'sequence'>('single');
+  const [mode, setMode] = useState<'single' | 'sequence' | 'watch'>('single');
   const [single, setSingle] = useState<BatchOp>(defaultOp('ocr'));
   const [pw2, setPw2] = useState('');
   const [sequences, setSequences] = useState<ActionSequence[]>([]);
@@ -184,14 +185,26 @@ export function BatchModal() {
           ) : (
             <Button onClick={close}>Close</Button>
           )}
-          <Button variant="primary" disabled={!ready} onClick={() => void run()} data-testid="batch-run">
-            {running ? <Loader2 size={13} className="animate-spin" /> : null}
-            {`Run on ${files.length} file${files.length === 1 ? '' : 's'}`}
-          </Button>
+          {mode !== 'watch' ? (
+            <Button variant="primary" disabled={!ready} onClick={() => void run()} data-testid="batch-run">
+              {running ? <Loader2 size={13} className="animate-spin" /> : null}
+              {`Run on ${files.length} file${files.length === 1 ? '' : 's'}`}
+            </Button>
+          ) : null}
         </>
       }
     >
-      <div className="mb-3">
+      <Tabs
+        value={mode}
+        onChange={setMode}
+        tabs={[
+          { value: 'single', label: 'One operation' },
+          { value: 'sequence', label: 'Action sequence' },
+          { value: 'watch', label: 'Watched folders' },
+        ]}
+      />
+      {mode === 'watch' ? <WatchPanel sequences={sequences} /> : null}
+      <div className={mode === 'watch' ? 'hidden' : 'mb-3'}>
         <div className="mb-1.5 flex items-center justify-between">
           <span className="text-xs font-semibold">Files</span>
           <Button size="sm" onClick={() => void add()} disabled={running} data-testid="batch-add">
@@ -224,15 +237,7 @@ export function BatchModal() {
           <p className="rounded-md border border-dashed border-app px-3 py-4 text-center text-[12px] text-muted">No files yet. Add the PDFs to process.</p>
         )}
       </div>
-      <Tabs
-        value={mode}
-        onChange={setMode}
-        tabs={[
-          { value: 'single', label: 'One operation' },
-          { value: 'sequence', label: 'Action sequence' },
-        ]}
-      />
-      {mode === 'single' ? (
+      {mode === 'watch' ? null : mode === 'single' ? (
         <>
           <div className="mb-3 grid gap-1">
             {BATCH_OPS.map((o) => (

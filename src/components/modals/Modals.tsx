@@ -13,6 +13,10 @@ import { BatchModal } from './BatchModal';
 import { MailMergeModal } from './MailMergeModal';
 import { AccessibilityModal } from './AccessibilityModal';
 import { ReadingView } from '@/components/viewer/ReadingView';
+import { ScanModal } from './ScanModal';
+import { PrintProductionModal } from './PrintProductionModal';
+import { FolderSearchModal } from './FolderSearchModal';
+import { CertEncryptModal, CertKeyDialog } from './CertEncryptModals';
 import { RecoverModal } from './RecoverModal';
 import { PrintModal } from './PrintModal';
 import { ReplacePagesModal } from './ReplacePagesModal';
@@ -44,6 +48,11 @@ export function Modals() {
       <MailMergeModal />
       <AccessibilityModal />
       <ReadingView />
+      <ScanModal />
+      <PrintProductionModal />
+      <FolderSearchModal />
+      <CertEncryptModal />
+      <CertKeyDialog />
       <RecoverModal />
       <PrintModal />
       <ReplacePagesModal />
