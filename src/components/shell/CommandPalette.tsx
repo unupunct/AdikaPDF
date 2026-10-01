@@ -41,7 +41,12 @@ function extras(): Item[] {
   return [
     mk('replace', 'Find & replace', 'Replace text everywhere (Ctrl+H)', () => s.setSearch({ open: true, replace: true })),
     mk('theme', 'Dark mode', 'Switch between light and dark', () => s.setTheme(s.theme === 'dark' ? 'light' : 'dark')),
-    mk('lang', 'Language', 'Interface language: English / Română', () => void import('@/lib/i18n').then((m) => m.useLang.getState().setLang(m.useLang.getState().lang === 'ro' ? 'en' : 'ro'))),
+    mk('lang', 'Language', 'Interface language: the next one (English, Română, Deutsch, Français, Magyar, Italiano, Español)', () =>
+      void import('@/lib/i18n').then((m) => {
+        const i = m.LANGS.findIndex((l) => l.id === m.useLang.getState().lang);
+        return m.useLang.getState().setLang(m.LANGS[(i + 1) % m.LANGS.length].id);
+      }),
+    ),
     mk('about', 'About', 'Version, updates, shortcuts and logs', () => s.openModal('about')),
   ];
 }

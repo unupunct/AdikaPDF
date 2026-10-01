@@ -719,4 +719,5 @@ export const RO_EXTRA: Record<string, string> = {
   'Decryption failed: {0}': 'Decriptarea a eșuat: {0}',
   'Opening was cancelled.': 'Deschiderea a fost anulată.',
   'The comment is no longer on this page.': 'Comentariul nu mai este pe această pagină.',
+  'Interface language': 'Limba interfeței',
 };

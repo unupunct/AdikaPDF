@@ -7,6 +7,7 @@ export function registerLanguageTests(test, ctx) {
     await open(F.sample);
     await page.click('[data-testid="tab-home"]');
     await page.click('[data-testid="lang-toggle"]');
+    await page.click('[data-testid="lang-ro"]');
     await page.waitForFunction(() => document.documentElement.lang === 'ro');
     // Ribbon tabs, buttons and tooltips.
     const tabs = await page.$$eval('[data-testid^="tab-"]', (els) => els.map((e) => e.textContent.trim()));
@@ -40,6 +41,7 @@ export function registerLanguageTests(test, ctx) {
     assert(leftovers.size <= 3, `ribbon fully translated (${[...leftovers].join(' | ')})`);
     // Back to English.
     await page.click('[data-testid="lang-toggle"]');
+    await page.click('[data-testid="lang-en"]');
     await page.waitForFunction(() => document.documentElement.lang === 'en');
     const tabsEn = await page.$$eval('[data-testid^="tab-"]', (els) => els.map((e) => e.textContent.trim()));
     assert(tabsEn.includes('Home') && tabsEn.includes('Security'), `back to English (${tabsEn.join(', ')})`);

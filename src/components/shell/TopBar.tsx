@@ -1,8 +1,8 @@
 import { Info, Languages, Moon, PanelLeft, PanelRight, Search, Sun } from 'lucide-react';
 import { usePalette } from './CommandPalette';
-import { useLang, type Lang } from '@/lib/i18n';
+import { LANGS, useLang } from '@/lib/i18n';
 import { usePDFStore } from '@/store/usePDFStore';
-import { Button, Tooltip } from '@/components/ui/primitives';
+import { Button, DropdownContent, DropdownItem, DropdownMenu, DropdownTrigger, Tooltip } from '@/components/ui/primitives';
 import { AdikaLogo } from './AdikaLogo';
 
 export function TopBar() {
@@ -69,14 +69,26 @@ export function TopBar() {
 
 function LanguageButton() {
   const lang = useLang((s) => s.lang);
-  const next: Lang = lang === 'ro' ? 'en' : 'ro';
   return (
-    <Tooltip content={lang === 'ro' ? 'Interface language: Română (switch to English)' : 'Interface language: English (switch to Română)'}>
-      <Button variant="ghost" size="sm" className="h-8 gap-1 px-2 text-[11.5px] font-semibold" aria-label="Language" data-testid="lang-toggle" onClick={() => void useLang.getState().setLang(next)}>
-        <Languages size={15} />
-        <span data-no-translate>{lang.toUpperCase()}</span>
-      </Button>
-    </Tooltip>
+    <DropdownMenu>
+      <Tooltip content="Interface language">
+        <DropdownTrigger asChild>
+          <Button variant="ghost" size="sm" className="h-8 gap-1 px-2 text-[11.5px] font-semibold" aria-label="Language" data-testid="lang-toggle">
+            <Languages size={15} />
+            <span data-no-translate>{lang.toUpperCase()}</span>
+          </Button>
+        </DropdownTrigger>
+      </Tooltip>
+      <DropdownContent align="end">
+        {LANGS.map((l) => (
+          <DropdownItem key={l.id} onSelect={() => void useLang.getState().setLang(l.id)}>
+            <span data-no-translate data-testid={`lang-${l.id}`} className={lang === l.id ? 'font-semibold' : undefined}>
+              {l.label}
+            </span>
+          </DropdownItem>
+        ))}
+      </DropdownContent>
+    </DropdownMenu>
   );
 }
 
