@@ -97,6 +97,11 @@ export function useShortcuts(): void {
         startPresentation();
         return;
       }
+      if (key === 'f7' && !s.readOnlyReason) {
+        e.preventDefault();
+        s.openModal('spell');
+        return;
+      }
       if (mod && key === 'p') {
         e.preventDefault();
         s.openModal('print');

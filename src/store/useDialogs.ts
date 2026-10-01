@@ -15,6 +15,8 @@ interface ConfirmPrompt {
   message: string;
   confirmLabel: string;
   danger: boolean;
+  /** Only an OK button (a message, nothing to decide). */
+  messageOnly?: boolean;
   resolve: (ok: boolean) => void;
 }
 
@@ -60,6 +62,25 @@ export function askPassword(fileName: string, incorrect: boolean): Promise<strin
         resolve: (v) => {
           useDialogs.setState({ password: null });
           resolve(v);
+        },
+      },
+    });
+  });
+}
+
+/** Shows a message with an OK button (e.g. a form script's app.alert). */
+export function showMessage(title: string, message: string): Promise<void> {
+  return new Promise((resolve) => {
+    useDialogs.setState({
+      confirm: {
+        title,
+        message,
+        confirmLabel: 'OK',
+        danger: false,
+        messageOnly: true,
+        resolve: () => {
+          useDialogs.setState({ confirm: null });
+          resolve();
         },
       },
     });

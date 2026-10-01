@@ -58,6 +58,7 @@ import {
   Minus,
   ArrowUpRight,
   MessagesSquare,
+  SpellCheck,
   ChevronsDown,
   MessageSquareQuote,
   SquareDashedText,
@@ -472,6 +473,7 @@ export function CommentTab() {
       <Group label="Manage">
         <Big icon={<MessagesSquare size={I} />} label={count ? `Comments (${count})` : 'Comments'} disabled={!hasDoc} onClick={() => usePDFStore.setState({ sidebarOpen: true, sidebarTab: 'comments' })} tip="List all comments" testId="btn-comments" />
         <CommentFileMenu />
+        <Big icon={<SpellCheck size={I} />} label="Spelling" disabled={!hasDoc || !!s.readOnlyReason} onClick={() => s.openModal('spell')} tip="Check the spelling of comments, text boxes and filled form fields (F7)" testId="btn-spell" />
         <Stack>
           <label className="flex h-[19px] items-center gap-1 px-1 text-[11px] text-muted">
             Author

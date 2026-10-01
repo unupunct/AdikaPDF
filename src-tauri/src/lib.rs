@@ -14,6 +14,7 @@ mod appdata;
 mod certstore;
 mod scanner;
 mod automation;
+mod spellcheck;
 
 use percent_encoding::percent_decode_str;
 use std::path::PathBuf;
@@ -177,6 +178,9 @@ pub fn run() {
             automation::list_dir,
             automation::move_file,
             automation::make_dir,
+            spellcheck::spell_languages,
+            spellcheck::spell_check,
+            spellcheck::spell_add,
             net::http_request,
             net::system_certificates,
             pkcs11::pkcs11_detect_modules,

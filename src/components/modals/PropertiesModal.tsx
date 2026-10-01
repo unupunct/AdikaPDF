@@ -2,7 +2,9 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { PDFDict, PDFDocument, PDFName } from 'pdf-lib';
 import { usePDFStore } from '@/store/usePDFStore';
-import { Button, Dialog, Field, Input, Tabs } from '@/components/ui/primitives';
+import { Button, Dialog, Field, Input, Select, Tabs, Textarea } from '@/components/ui/primitives';
+import { Plus, Trash2 } from 'lucide-react';
+import type { DocMeta } from '@/store/usePDFStore';
 import { getSourceDoc, pdfjs } from '@/lib/pdf/pdfService';
 import { displaySize } from '@/lib/geometry';
 
@@ -21,6 +23,11 @@ interface Info {
   permissions: string[] | null;
   encrypted: boolean;
   fonts: Array<{ name: string; type: string; embedded: boolean; subset: boolean }>;
+  rightsStatus: 'unknown' | 'copyrighted' | 'public';
+  copyright: string;
+  copyrightUrl: string;
+  custom: Record<string, string>;
+  xmp: string | null;
 }
 
 const PERMISSION_NAMES: Record<number, string> = {
@@ -48,8 +55,13 @@ async function readInfo(sourceId: string, bytes: Uint8Array): Promise<Info> {
   const perms = await doc.getPermissions();
   const fonts: Info['fonts'] = [];
   let encrypted = false;
+  let extra: Pick<Info, 'rightsStatus' | 'copyright' | 'copyrightUrl' | 'custom' | 'xmp'> = { rightsStatus: 'unknown', copyright: '', copyrightUrl: '', custom: {}, xmp: null };
   try {
     const lib = await PDFDocument.load(bytes, { updateMetadata: false });
+    const x = await import('@/lib/pdf/xmp');
+    const f = x.readXmpFields(lib);
+    const packet = x.readXmpPacket(lib);
+    extra = { rightsStatus: f?.rightsStatus ?? 'unknown', copyright: f?.copyright ?? '', copyrightUrl: f?.copyrightUrl ?? '', custom: x.readCustomInfo(lib), xmp: packet ? x.xmpForDisplay(packet) : null };
     const seen = new Set<string>();
     for (const [, obj] of lib.context.enumerateIndirectObjects()) {
       if (!(obj instanceof PDFDict) || obj.get(PDFName.of('Type')) !== PDFName.of('Font')) continue;
@@ -80,15 +92,16 @@ async function readInfo(sourceId: string, bytes: Uint8Array): Promise<Info> {
     permissions: perms ? Object.entries(PERMISSION_NAMES).filter(([bit]) => perms.has(Number(bit))).map(([, n]) => n) : null,
     encrypted: encrypted || usePDFStore.getState().readOnlyReason !== null,
     fonts: fonts.sort((a, b) => a.name.localeCompare(b.name)),
+    ...extra,
   };
 }
 
 export function PropertiesModal() {
   const open = usePDFStore((s) => s.modal === 'properties');
   const close = () => usePDFStore.getState().openModal(null);
-  const [tab, setTab] = useState<'description' | 'fonts'>('description');
+  const [tab, setTab] = useState<'description' | 'more' | 'fonts'>('description');
   const [info, setInfo] = useState<Info | null>(null);
-  const [draft, setDraft] = useState({ title: '', author: '', subject: '', keywords: '' });
+  const [draft, setDraft] = useState<Required<Omit<DocMeta, 'custom'>> & { custom: Array<[string, string]> }>({ title: '', author: '', subject: '', keywords: '', rightsStatus: 'unknown', copyright: '', copyrightUrl: '', custom: [] });
   const s = usePDFStore.getState();
 
   useEffect(() => {
@@ -100,7 +113,16 @@ export function PropertiesModal() {
     void readInfo(src.id, src.bytes).then((i) => {
       setInfo(i);
       const m = usePDFStore.getState().docMeta;
-      setDraft({ title: m?.title ?? i.title, author: m?.author ?? i.author, subject: m?.subject ?? i.subject, keywords: m?.keywords ?? i.keywords });
+      setDraft({
+        title: m?.title ?? i.title,
+        author: m?.author ?? i.author,
+        subject: m?.subject ?? i.subject,
+        keywords: m?.keywords ?? i.keywords,
+        rightsStatus: m?.rightsStatus ?? i.rightsStatus,
+        copyright: m?.copyright ?? i.copyright,
+        copyrightUrl: m?.copyrightUrl ?? i.copyrightUrl,
+        custom: Object.entries(m?.custom ?? i.custom),
+      });
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
@@ -125,7 +147,7 @@ export function PropertiesModal() {
             disabled={readOnly || !info}
             data-testid="properties-apply"
             onClick={() => {
-              usePDFStore.getState().setDocMeta(draft);
+              usePDFStore.getState().setDocMeta({ ...draft, custom: Object.fromEntries(draft.custom.filter(([k]) => k.trim())) });
               usePDFStore.getState().toast('Properties will be written when you save.', 'success');
               close();
             }}
@@ -135,7 +157,57 @@ export function PropertiesModal() {
         </>
       }
     >
-      <Tabs value={tab} onChange={setTab} tabs={[{ value: 'description', label: 'Description' }, { value: 'fonts', label: `Fonts${info ? ` (${info.fonts.length})` : ''}` }]} />
+      <Tabs
+        value={tab}
+        onChange={setTab}
+        tabs={[
+          { value: 'description', label: 'Description' },
+          { value: 'more', label: 'Copyright & custom' },
+          { value: 'fonts', label: `Fonts${info ? ` (${info.fonts.length})` : ''}` },
+        ]}
+      />
+      {tab === 'more' ? (
+        <div className="flex flex-col gap-3" data-testid="properties-more">
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Copyright status">
+              <Select
+                value={draft.rightsStatus}
+                ariaLabel="Copyright status"
+                onChange={(rightsStatus) => setDraft({ ...draft, rightsStatus })}
+                options={[
+                  { value: 'unknown', label: 'Unknown' },
+                  { value: 'copyrighted', label: 'Copyrighted' },
+                  { value: 'public', label: 'Public domain' },
+                ]}
+              />
+            </Field>
+            <Field label="Copyright info URL">
+              <Input value={draft.copyrightUrl} disabled={readOnly} onChange={(e) => setDraft({ ...draft, copyrightUrl: e.target.value })} placeholder="https://" data-testid="prop-copyright-url" />
+            </Field>
+          </div>
+          <Field label="Copyright notice">
+            <Input value={draft.copyright} disabled={readOnly} onChange={(e) => setDraft({ ...draft, copyright: e.target.value })} placeholder="© 2026 …" data-testid="prop-copyright" />
+          </Field>
+          <div>
+            <div className="mb-1 text-xs font-medium">Custom properties</div>
+            {draft.custom.map(([k, v], i) => (
+              <div key={i} className="mb-1 flex gap-1.5">
+                <Input value={k} disabled={readOnly} aria-label="Property name" placeholder="Name" data-testid="prop-custom-name" onChange={(e) => setDraft({ ...draft, custom: draft.custom.map((r, j) => (j === i ? [e.target.value.replace(/[^A-Za-z0-9_.-]/g, ''), r[1]] : r)) })} />
+                <Input value={v} disabled={readOnly} aria-label="Property value" placeholder="Value" data-testid="prop-custom-value" onChange={(e) => setDraft({ ...draft, custom: draft.custom.map((r, j) => (j === i ? [r[0], e.target.value] : r)) })} />
+                <button type="button" aria-label="Remove" disabled={readOnly} className="rounded p-1.5 hover-app" onClick={() => setDraft({ ...draft, custom: draft.custom.filter((_, j) => j !== i) })}>
+                  <Trash2 size={13} />
+                </button>
+              </div>
+            ))}
+            <Button size="sm" disabled={readOnly} onClick={() => setDraft({ ...draft, custom: [...draft.custom, ['', '']] })} data-testid="prop-custom-add">
+              <Plus size={13} /> Add property
+            </Button>
+          </div>
+          <Field label="XMP metadata (as stored)">
+            <Textarea rows={6} readOnly value={info?.xmp ?? ''} placeholder="This document has no XMP metadata yet; it gets it when you apply and save." className="font-mono text-[10.5px]" data-no-translate />
+          </Field>
+        </div>
+      ) : null}
       {tab === 'description' ? (
         <>
           <div className="grid grid-cols-2 gap-3">
@@ -171,7 +243,7 @@ export function PropertiesModal() {
             <Row label="Signatures">{s.signatureStatus.length || 'None'}</Row>
           </dl>
         </>
-      ) : (
+      ) : tab === 'fonts' ? (
         <div className="max-h-[360px] overflow-auto" data-testid="properties-fonts">
           {!info ? <p className="text-xs text-muted">Reading fonts…</p> : info.fonts.length === 0 ? <p className="text-xs text-muted">{info.encrypted ? 'Fonts cannot be listed for encrypted files.' : 'No fonts (image-only document).'}</p> : null}
           <table className="w-full text-xs">
@@ -186,7 +258,7 @@ export function PropertiesModal() {
             </tbody>
           </table>
         </div>
-      )}
+      ) : null}
     </Dialog>
   );
 }

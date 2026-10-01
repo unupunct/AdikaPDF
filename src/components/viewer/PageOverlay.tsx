@@ -329,13 +329,15 @@ export function PageOverlay({ page, zoom }: { page: PageRef; zoom: number }) {
         const name = `${r0.fontFamily ?? ''} ${r0.fontName ?? ''}`;
         const fam = /mono|courier|consol/i.test(name) ? 'mono' : /serif|times|georgia|garamond|roman/i.test(name) && !/sans/i.test(r0.fontFamily ?? '') ? 'serif' : 'sans';
         const size = Math.round(para.size * 10) / 10;
+        const color = (await import('@/actions/textStyle').then((m) => m.pageTextColor(page, para.rects))) ?? '#000000';
         const base = makeText(page.id, 0, 0, store.style, {
           text: para.text,
           fontSize: size,
           fontFamily: fam,
           bold: !!r0.bold,
           italic: !!r0.italic,
-          color: '#000000',
+          color,
+          original: { fontFamily: fam, bold: !!r0.bold, italic: !!r0.italic, fontSize: size, color },
           background: null,
           lineHeight: Math.round(para.lineHeight * 1000) / 1000,
           align: para.align,
@@ -355,13 +357,15 @@ export function PageOverlay({ page, zoom }: { page: PageRef; zoom: number }) {
         : /serif|times|georgia|garamond|roman/i.test(`${run.fontFamily} ${run.fontName}`) && !/sans/i.test(`${run.fontFamily}`)
           ? 'serif'
           : 'sans';
+      const color = (await import('@/actions/textStyle').then((m) => m.pageTextColor(page, [runRect(run)]))) ?? '#000000';
       const base = makeText(page.id, 0, 0, store.style, {
         text: run.str,
         fontSize: Math.round(run.size * 10) / 10,
         fontFamily: family,
         bold: run.bold,
         italic: run.italic,
-        color: '#000000',
+        color,
+        original: { fontFamily: family, bold: run.bold, italic: run.italic, fontSize: Math.round(run.size * 10) / 10, color },
         background: null,
         width: run.width + TEXT_PADDING * 2 + run.size * 0.6,
         replaces: [runRect(run)],
@@ -417,6 +421,9 @@ export function PageOverlay({ page, zoom }: { page: PageRef; zoom: number }) {
         return;
       case 'editImage':
         void import('@/actions/imageEdit').then((m) => m.liftImage(page, p.x, p.y));
+        return;
+      case 'editVector':
+        void import('@/actions/vectorEdit').then((m) => m.liftVector(page, p.x, p.y));
         return;
       case 'note': {
         e.evt.preventDefault(); // keep focus for the popup we are about to open

@@ -60,3 +60,13 @@ export function writeCalcOrder(doc: PDFDocument, logic: Record<string, FieldLogi
   const acro = doc.catalog.lookup(PDFName.of('AcroForm'));
   if (acro instanceof PDFDict) acro.set(PDFName.of('CO'), doc.context.obj(refs.filter((r): r is PDFRef => !!r)) as PDFArray);
 }
+
+/** What people call a field: its tooltip (TU), or the last part of an XFA-style name ("form1[0].Page1[0].Name[0]" -> "Name"). */
+export function fieldLabel(name: string, tu: unknown): string | undefined {
+  if (tu instanceof PDFString || tu instanceof PDFHexString) {
+    const t = tu.decodeText().trim();
+    if (t) return t;
+  }
+  if (/\[\d+\]$/.test(name)) return name.split('.').pop()!.replace(/\[\d+\]$/, '');
+  return undefined;
+}

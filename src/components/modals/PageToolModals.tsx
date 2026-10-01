@@ -4,7 +4,8 @@ import { usePDFStore } from '@/store/usePDFStore';
 import { useModalArgs } from '@/store/useModalArgs';
 import { Button, Callout, Checkbox, ColorSwatch, Dialog, Field, Input, Select, Tabs } from '@/components/ui/primitives';
 import { parseRanges } from '@/actions/convert';
-import { applyCrop, applyPageMarks, removeAllPageMarks } from '@/actions/pageTools';
+import { applyCrop, applyPageMarks, applyPageSize, removeAllPageMarks } from '@/actions/pageTools';
+import { PAPER_SIZES } from '@/lib/pdf/pageSize';
 import { makeLink } from '@/lib/objectFactory';
 import { displaySize } from '@/lib/geometry';
 import { pickFiles } from '@/lib/platform';
@@ -188,6 +189,73 @@ export function CropModal() {
       </p>
       {scope.node}
       {!ok ? <Callout kind="error">The margins are larger than the page.</Callout> : null}
+    </Dialog>
+  );
+}
+
+// ================================================================ page size
+
+export function PageSizeModal() {
+  const open = usePDFStore((s) => s.modal === 'pageSize');
+  const scope = usePageScope();
+  const [paper, setPaper] = useState('A4');
+  const [w, setW] = useState(210);
+  const [h, setH] = useState(297);
+  const [mode, setMode] = useState<'fit' | 'canvas'>('fit');
+  const [margin, setMargin] = useState(0);
+  const [turn, setTurn] = useState(true);
+  const choose = (p: string) => {
+    setPaper(p);
+    const s = PAPER_SIZES[p];
+    if (s) {
+      setW(mm(s[0]));
+      setH(mm(s[1]));
+    }
+  };
+  const ok = w >= 20 && h >= 20 && w <= 5000 && h <= 5000;
+  const apply = async () => {
+    close();
+    await applyPageSize({ size: [w * MM, h * MM], matchOrientation: turn, mode, margin: margin * MM, pages: scope.pages() });
+  };
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(o) => !o && close()}
+      title="Page size"
+      description="Gives the pages a paper size: the content is scaled to fit, or the page grows or shrinks around it."
+      width={480}
+      testId="pagesize-modal"
+      footer={
+        <>
+          <Button onClick={close}>Cancel</Button>
+          <Button variant="primary" disabled={!ok} onClick={() => void apply()} data-testid="pagesize-apply">
+            Resize
+          </Button>
+        </>
+      }
+    >
+      <div className="mb-3 grid grid-cols-3 gap-2">
+        <Field label="Paper">
+          <Select value={paper} ariaLabel="Paper" onChange={choose} options={[...Object.keys(PAPER_SIZES).map((k) => ({ value: k, label: k })), { value: 'custom', label: 'Custom' }]} />
+        </Field>
+        <NumInput label="Width (mm)" value={w} min={20} step={1} onChange={(v) => (setW(v), setPaper('custom'))} testId="pagesize-w" />
+        <NumInput label="Height (mm)" value={h} min={20} step={1} onChange={(v) => (setH(v), setPaper('custom'))} testId="pagesize-h" />
+      </div>
+      <div className="mb-3 flex flex-col gap-1.5">
+        <label className="flex items-center gap-2 text-[13px]">
+          <input type="radio" checked={mode === 'fit'} onChange={() => setMode('fit')} />
+          Scale the content to fit the new size
+        </label>
+        <label className="flex items-center gap-2 text-[13px]">
+          <input type="radio" checked={mode === 'canvas'} onChange={() => setMode('canvas')} data-testid="pagesize-canvas" />
+          Keep the content size; the page grows or shrinks around it
+        </label>
+      </div>
+      <div className="mb-3 grid grid-cols-2 items-end gap-2">
+        {mode === 'fit' ? <NumInput label="Margin (mm)" value={margin} min={0} step={1} onChange={setMargin} testId="pagesize-margin" /> : <span />}
+        <Checkbox checked={turn} label="Turn the paper to each page's orientation" onChange={setTurn} />
+      </div>
+      {scope.node}
     </Dialog>
   );
 }

@@ -14,6 +14,17 @@
 import {
   BlendMode,
   LineCapStyle,
+  LineJoinStyle,
+  PDFOperator,
+  appendBezierCurve,
+  closePath,
+  lineTo,
+  moveTo,
+  setFillingRgbColor,
+  setGraphicsState,
+  setLineJoin,
+  setLineWidth,
+  setStrokingRgbColor,
   PDFArray,
   PDFBool,
   PDFCheckBox,
@@ -53,6 +64,7 @@ import type {
   LineObject,
   PageRef,
   PenObject,
+  VectorObject,
   Rotation,
   ShapeObject,
   SignatureObject,
@@ -80,6 +92,12 @@ import { writeOutline } from './outline';
 import { dropUnreachableObjects } from './prune';
 import { removeGlyphs, type Box, type LineEdit } from './textRemoval';
 import { readFieldLogic, writeCalcOrder, writeFieldLogic } from './formScripts';
+import { readXfaPackets, restoreStaticXfa, xfaKindOf } from './xfa';
+import { parseSvgPath } from './vectorEdit';
+import { layerForContent } from './layers';
+
+/** Objects drawn as page content (others are annotations or form fields). */
+const LAYERED = new Set<EditorObject['type']>(['text', 'image', 'signature', 'rect', 'ellipse', 'highlight', 'line', 'arrow', 'pen', 'vector']);
 import { calcOrder, calculate, displayValue, parseNumber } from '@/lib/formLogic';
 import type { FieldValue } from '@/store/usePDFStore';
 
@@ -106,8 +124,10 @@ export interface ExportOptions {
   flatten?: boolean;
   title?: string;
   /** Document properties edited by the user (Properties dialog). */
-  meta?: { title?: string; author?: string; subject?: string; keywords?: string } | null;
+  meta?: import('@/store/usePDFStore').DocMeta | null;
   onProgress?: (message: string, fraction: number) => void;
+  /** Text shown in fields whose value a form script formatted ("sourceId::name" -> text); the value itself stays plain. */
+  fieldDisplay?: Record<string, string>;
 }
 
 export class ExportError extends Error {}
@@ -473,6 +493,38 @@ function drawLine(page: PDFPage, pm: Matrix, o: LineObject): void {
   });
 }
 
+/** A drawing lifted from the page: its path scaled to the object's box, with its colours and line width. */
+function drawVector(page: PDFPage, pm: Matrix, o: VectorObject): void {
+  const cmds = parseSvgPath(o.path);
+  if (!cmds.length || (!o.fill && !o.stroke)) return;
+  const sx = o.width / (o.naturalWidth || 1);
+  const sy = o.height / (o.naturalHeight || 1);
+  // Local frame (y down) -> PDF; the path is scaled, the line width is not.
+  withMatrix(page, objectMatrix(pm, o), () => {
+    const P = (x: number, y: number) => [x * sx, y * sy];
+    const ops: PDFOperator[] = [];
+    const gs = (page as unknown as { maybeEmbedGraphicsState(o: { opacity?: number; borderOpacity?: number }): PDFName | undefined }).maybeEmbedGraphicsState({ opacity: o.opacity, borderOpacity: o.opacity });
+    if (gs) ops.push(setGraphicsState(gs));
+    if (o.fill) {
+      const c = hexToRgb(o.fill) as { red: number; green: number; blue: number };
+      ops.push(setFillingRgbColor(c.red, c.green, c.blue));
+    }
+    if (o.stroke) {
+      const c = hexToRgb(o.stroke) as { red: number; green: number; blue: number };
+      ops.push(setStrokingRgbColor(c.red, c.green, c.blue), setLineWidth(o.strokeWidth), setLineJoin(LineJoinStyle.Round));
+    }
+    for (const c of cmds) {
+      if (c.c === 'M') ops.push(moveTo(...(P(c.p[0], c.p[1]) as [number, number])));
+      else if (c.c === 'L') ops.push(lineTo(...(P(c.p[0], c.p[1]) as [number, number])));
+      else if (c.c === 'C') ops.push(appendBezierCurve(...([...P(c.p[0], c.p[1]), ...P(c.p[2], c.p[3]), ...P(c.p[4], c.p[5])] as [number, number, number, number, number, number])));
+      else ops.push(closePath());
+    }
+    const paint = o.fill && o.stroke ? (o.evenOdd ? 'B*' : 'B') : o.fill ? (o.evenOdd ? 'f*' : 'f') : 'S';
+    ops.push(PDFOperator.of(paint as never));
+    page.pushOperators(...ops);
+  });
+}
+
 function drawPen(page: PDFPage, pm: Matrix, o: PenObject): void {
   if (o.points.length < 4) return;
   let d = `M ${o.points[0]} ${o.points[1]}`;
@@ -706,6 +758,8 @@ export async function buildPdf(input: ExportInput, options: ExportOptions = {}):
     doc = await PDFDocument.create({ updateMetadata: false });
   }
   doc.registerFontkit(fontkit);
+  // A static XFA form: pdf-lib drops the XFA as soon as the form is touched; it is put back at the end.
+  const staticXfa = baseSourceId && xfaKindOf(doc) === 'static' ? readXfaPackets(doc) : null;
 
   const baseOriginal = baseSourceId ? doc.getPages() : [];
   baseOriginal.forEach(pinInheritedAttributes);
@@ -798,8 +852,18 @@ export async function buildPdf(input: ExportInput, options: ExportOptions = {}):
       // Single-line replacements tell the engine their width so the rest of the line makes room.
       const edits: LineEdit[] = replacers.map((o) => {
         const newWidth = singleLineWidth(o, opts.measure);
-        // Plain one-line text in the default colour of the run can be written in the original font.
-        return { boxes: o.replaces!.map(toPdf), newWidth, text: Number.isFinite(newWidth) && o.opacity >= 1 && !o.background ? o.text : undefined };
+        // Plain one-line text can be written in the document's own font, also in another colour or
+        // size; another typeface, bold or italic needs Adika's font.
+        const og = o.original;
+        const sameFace = !og || (og.fontFamily === o.fontFamily && og.bold === o.bold && og.italic === o.italic);
+        const native = Number.isFinite(newWidth) && o.opacity >= 1 && !o.background && sameFace;
+        return {
+          boxes: o.replaces!.map(toPdf),
+          newWidth,
+          text: native ? o.text : undefined,
+          color: og && og.color.toLowerCase() !== o.color.toLowerCase() ? o.color : undefined,
+          sizeRatio: og && og.fontSize > 0 && Math.abs(og.fontSize - o.fontSize) > 0.05 ? o.fontSize / og.fontSize : undefined,
+        };
       });
       const res = editable ? removeGlyphs(doc, page, edits.flatMap((e) => e.boxes), 'replace', edits) : null;
       if (!res?.ok || res.coversImage) coverReplaced.add(ref.id);
@@ -852,7 +916,11 @@ export async function buildPdf(input: ExportInput, options: ExportOptions = {}):
     for (const o of list) {
       const review = (o as { reviewStatus?: ReviewState }).reviewStatus;
       const annotsBefore = review ? (page.node.Annots()?.size() ?? 0) : 0;
+      // An object in a layer: its page content is marked as that layer's.
+      const layer = o.layer && LAYERED.has(o.type) && !(o.type === 'text' && o.annotation) ? layerForContent(ctx.doc, page, o.layer) : null;
+      if (layer) page.pushOperators(PDFOperator.of('BDC' as never, [PDFName.of('OC'), PDFName.of(layer)]));
       await writeObject(o);
+      if (layer) page.pushOperators(PDFOperator.of('EMC' as never));
       if (review && review !== 'None') {
         // The comment's annotation: the first one added for it that is not its popup.
         const annots = page.node.Annots();
@@ -906,6 +974,9 @@ export async function buildPdf(input: ExportInput, options: ExportOptions = {}):
           break;
         case 'pen':
           drawPen(page, pm, o);
+          break;
+        case 'vector':
+          drawVector(page, pm, o);
           break;
         case 'field':
           await addFormField(ctx, page, pm, rotation, o);
@@ -988,6 +1059,20 @@ export async function buildPdf(input: ExportInput, options: ExportOptions = {}):
           /* not a text field */
         }
       }
+      for (const [key, shown] of Object.entries(options.fieldDisplay ?? {})) {
+        if (!baseSourceId || !key.startsWith(`${baseSourceId}::`)) continue;
+        const name = key.slice(baseSourceId.length + 2);
+        if (logic[name]?.format) continue;
+        try {
+          const f = form.getTextField(name);
+          const v = f.getText() ?? '';
+          if (!v || v === shown || raw.has(f)) continue;
+          raw.set(f, v);
+          f.setText(shown);
+        } catch {
+          /* not a text field */
+        }
+      }
       try {
         form.updateFieldAppearances(ctx.fieldFont);
       } catch {
@@ -1009,11 +1094,43 @@ export async function buildPdf(input: ExportInput, options: ExportOptions = {}):
   }
   doc.setProducer('Adika PDF Editor');
   doc.setModificationDate(new Date());
+  if (options.meta) {
+    // Edited properties: the XMP metadata says the same as the Info dictionary.
+    const { readXmpFields, writeXmp } = await import('./xmp');
+    const m = options.meta;
+    const old = readXmpFields(doc);
+    const authors = (m.author ?? doc.getAuthor() ?? '').split(/;\s*/).filter(Boolean);
+    writeXmp(
+      doc,
+      {
+        title: m.title ?? doc.getTitle() ?? '',
+        authors,
+        description: m.subject ?? doc.getSubject() ?? '',
+        keywords: m.keywords ?? doc.getKeywords() ?? '',
+        rightsStatus: m.rightsStatus ?? old?.rightsStatus ?? 'unknown',
+        copyright: m.copyright ?? old?.copyright ?? '',
+        copyrightUrl: m.copyrightUrl ?? old?.copyrightUrl ?? '',
+      },
+      { producer: 'Adika PDF Editor', custom: m.custom },
+    );
+  }
   progress('Writing file', 0.95);
+  let keepXfa = false;
+  if (staticXfa && !options.flatten) {
+    // Field updates first (they would drop the XFA again), then the XFA with the filled values in its data.
+    try {
+      doc.getForm().updateFieldAppearances(ctx.fieldFont ?? undefined);
+    } catch {
+      /* odd appearance: keep it */
+    }
+    const prefix = `${baseSourceId}::`;
+    const values = Object.fromEntries(Object.entries(input.fieldValues).filter(([k]) => k.startsWith(prefix)).map(([k, v]) => [k.slice(prefix.length), v]));
+    keepXfa = restoreStaticXfa(doc, staticXfa, values) === 'synced';
+  }
   // Embed fonts/images first, then drop orphans (replaced or deleted pages).
   await doc.flush();
   dropUnreachableObjects(doc);
-  return doc.save({ useObjectStreams: true });
+  return doc.save({ useObjectStreams: true, updateFieldAppearances: !keepXfa });
 }
 
 /**

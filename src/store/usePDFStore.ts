@@ -81,7 +81,11 @@ export type ModalId =
   | 'foldersearch'
   | 'certencrypt'
   | 'recover'
-  | 'replacePages';
+  | 'replacePages'
+  | 'spell'
+  | 'einvoice'
+  | 'portfolio'
+  | 'pageSize';
 
 export interface Toast {
   id: string;
@@ -102,6 +106,12 @@ export interface DocMeta {
   author?: string;
   subject?: string;
   keywords?: string;
+  /** Copyright (XMP rights): status, notice and a web page with the terms. */
+  rightsStatus?: 'unknown' | 'copyrighted' | 'public';
+  copyright?: string;
+  copyrightUrl?: string;
+  /** Custom properties of the document (Info dictionary), replacing the file's own. */
+  custom?: Record<string, string>;
 }
 
 export interface BusyState {

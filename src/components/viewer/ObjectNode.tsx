@@ -198,6 +198,24 @@ function Content({ obj }: { obj: EditorObject }) {
         />
       );
     }
+    case 'vector':
+      return (
+        <>
+          <Rect width={obj.width} height={obj.height} fill="transparent" />
+          <Path
+            data={obj.path}
+            scaleX={obj.width / (obj.naturalWidth || 1)}
+            scaleY={obj.height / (obj.naturalHeight || 1)}
+            fill={obj.fill ?? undefined}
+            fillRule={obj.evenOdd ? 'evenodd' : 'nonzero'}
+            stroke={obj.stroke ?? undefined}
+            strokeWidth={obj.stroke ? obj.strokeWidth : 0}
+            strokeScaleEnabled={false}
+            opacity={obj.opacity}
+            lineJoin="round"
+          />
+        </>
+      );
     case 'pen':
       return <Line points={obj.points} stroke={obj.stroke} strokeWidth={obj.strokeWidth} opacity={obj.opacity} lineCap="round" lineJoin="round" hitStrokeWidth={Math.max(10, obj.strokeWidth + 8)} />;
     case 'redact':

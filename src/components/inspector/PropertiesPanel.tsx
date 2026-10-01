@@ -8,13 +8,14 @@ import { AlignCenter, AlignLeft, AlignRight, BadgeCheck, BadgeX, Bold, Italic, L
 import { usePDFStore, type FieldValue } from '@/store/usePDFStore';
 import type { EditorObject, FieldObject, FontFamily, ImageObject, LinkObject, MeasureObject, TextObject } from '@/types';
 import { measureValue } from '@/lib/measure';
-import { calcOrder, calculate, checkInput, displayValue, formulaFields, parseNumber, type FieldLogic } from '@/lib/formLogic';
+import { checkInput, displayValue, formulaFields, type FieldLogic } from '@/lib/formLogic';
 import { ScaleEditor } from '@/components/ribbon/MeasureTools';
 import { Button, Checkbox, ColorSwatch, Field, Input, Select, Textarea } from '@/components/ui/primitives';
 import { FONT_LABELS } from '@/lib/fonts';
 import { layoutText } from '@/lib/textLayout';
-import { readFormFields, type FormFieldInfo } from '@/actions/security';
-import { setViewerFieldValue } from '@/lib/pdf/pdfService';
+import type { FormFieldInfo } from '@/actions/security';
+import { commitFieldValue, sourceFields } from '@/actions/formFill';
+import { useFormView } from '@/store/formView';
 import { cn } from '@/lib/cn';
 
 const FONT_OPTIONS = (Object.keys(FONT_LABELS) as FontFamily[]).map((f) => ({ value: f, label: FONT_LABELS[f] }));
@@ -35,6 +36,53 @@ export function PropertiesPanel() {
   );
 }
 
+const LAYER_TYPES = new Set<EditorObject['type']>(['text', 'image', 'signature', 'rect', 'ellipse', 'highlight', 'line', 'arrow', 'pen', 'vector']);
+
+/** The layer an object is saved in: one of the document's layers, a new one, or none. */
+function LayerField({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const sources = usePDFStore((s) => s.sources);
+  const [names, setNames] = useState<string[]>([]);
+  const [text, setText] = useState(value);
+  useEffect(() => setText(value), [value]);
+  useEffect(() => {
+    let alive = true;
+    void (async () => {
+      const { getLayerConfig } = await import('@/lib/pdf/pdfService');
+      const out = new Set<string>();
+      for (const id of Object.keys(sources)) {
+        const c = await getLayerConfig(id).catch(() => null);
+        if (c) for (const [, g] of c as unknown as Iterable<[string, { name: string | null }]>) if (g.name) out.add(g.name);
+      }
+      for (const o of usePDFStore.getState().objects) if (o.layer) out.add(o.layer);
+      if (alive) setNames([...out]);
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [sources]);
+  return (
+    <Section title="Layer">
+      <Input
+        list="adika-layer-names"
+        value={text}
+        placeholder="None (always visible)"
+        aria-label="Layer"
+        data-testid="object-layer"
+        data-no-translate
+        onChange={(e) => setText(e.target.value)}
+        onBlur={() => text.trim() !== value && onChange(text.trim())}
+        onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
+      />
+      <datalist id="adika-layer-names">
+        {names.map((n) => (
+          <option key={n} value={n} />
+        ))}
+      </datalist>
+      <p className="mt-1 text-[11px] text-muted">Saved in this layer, so it can be shown or hidden with it. Type a new name to make a layer.</p>
+    </Section>
+  );
+}
+
 function objectLabel(o: EditorObject): string {
   const map: Record<EditorObject['type'], string> = {
     text: 'Text box',
@@ -45,6 +93,7 @@ function objectLabel(o: EditorObject): string {
     line: 'Line',
     arrow: 'Arrow',
     pen: 'Ink',
+    vector: 'Drawing',
     redact: 'Redaction',
     signature: 'Signature',
     field: 'Form field',
@@ -130,6 +179,7 @@ function ObjectProperties({ obj }: { obj: EditorObject }) {
         </div>
       </Section>
       <TypeSpecific obj={obj} update={update} />
+      {LAYER_TYPES.has(obj.type) && !(obj.type === 'text' && obj.annotation) ? <LayerField value={obj.layer ?? ''} onChange={(layer) => update({ layer: layer || undefined })} /> : null}
       <div className="flex flex-wrap gap-1.5">
         <Button size="sm" onClick={() => update({ locked: !obj.locked })}>
           {obj.locked ? <Unlock size={13} /> : <Lock size={13} />}
@@ -189,6 +239,21 @@ function TypeSpecific({ obj, update }: { obj: EditorObject; update: (p: Partial<
               Switch to {obj.type === 'line' ? 'arrow' : 'line'}
             </Button>
           ) : null}
+        </Section>
+      );
+    case 'vector':
+      return (
+        <Section title="Appearance">
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <span className="text-xs">Fill</span>
+            <ColorSwatch label="Fill colour" value={obj.fill} allowNone onChange={(fill) => update({ fill })} />
+          </div>
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <span className="text-xs">Line</span>
+            <ColorSwatch label="Line colour" value={obj.stroke} allowNone onChange={(stroke) => update({ stroke })} />
+          </div>
+          {obj.stroke ? <Num label="Line width" value={obj.strokeWidth} min={0.1} max={50} step={0.25} onChange={(strokeWidth) => update({ strokeWidth })} /> : null}
+          <p className="mt-2 text-[11px] text-muted">A drawing from the page: move, resize, recolour it, or press Delete to remove it.</p>
         </Section>
       );
     case 'image':
@@ -853,13 +918,14 @@ function FormFill() {
   const sources = usePDFStore((s) => s.sources);
   const fieldValues = usePDFStore((s) => s.fieldValues);
   const readOnly = usePDFStore((s) => s.readOnlyReason !== null);
+  const formatted = useFormView((v) => v.formatted);
   const [fields, setFields] = useState<Array<{ sourceId: string; field: FormFieldInfo }>>([]);
 
   useEffect(() => {
     let alive = true;
     void (async () => {
       const all: Array<{ sourceId: string; field: FormFieldInfo }> = [];
-      for (const src of Object.values(sources)) for (const field of await readFormFields(src.bytes)) all.push({ sourceId: src.id, field });
+      for (const src of Object.values(sources)) for (const field of await sourceFields(src.id)) all.push({ sourceId: src.id, field });
       if (alive) setFields(all.filter((f) => !['button', 'other', 'signature'].includes(f.field.kind)));
     })();
     return () => {
@@ -868,26 +934,7 @@ function FormFill() {
   }, [sources]);
 
   if (fields.length === 0) return null;
-  const setValue = (sourceId: string, name: string, value: FieldValue) => {
-    // The value, then every calculated field of that document (totals after their parts).
-    const patch: Record<string, FieldValue> = { [`${sourceId}::${name}`]: value };
-    const mine = fields.filter((f) => f.sourceId === sourceId);
-    const current = (n: string) => {
-      const k = `${sourceId}::${n}`;
-      const f = mine.find((x) => x.field.name === n);
-      return k in patch ? patch[k] : k in fieldValues ? fieldValues[k] : f?.field.value;
-    };
-    const logic = Object.fromEntries(mine.map((f) => [f.field.name, f.field.logic ?? {}]));
-    const names = mine.map((f) => f.field.name);
-    for (const n of calcOrder(logic)) {
-      const l = logic[n];
-      const v = calculate(l.calc!, names, (x) => parseNumber(current(x) as string));
-      const dec = l.format && l.format.kind !== 'date' ? l.format.decimals + (l.format.kind === 'percent' ? 2 : 0) : 6;
-      patch[`${sourceId}::${n}`] = Number.isFinite(v) ? String(Math.round(v * 10 ** dec) / 10 ** dec) : '';
-    }
-    usePDFStore.getState().setFieldValues(patch);
-    for (const [k, v] of Object.entries(patch)) void setViewerFieldValue(sourceId, k.slice(sourceId.length + 2), v).then(() => usePDFStore.getState().bumpRenderEpoch());
-  };
+  const setValue = (sourceId: string, name: string, value: FieldValue) => void commitFieldValue(sourceId, name, value);
   const missing = fields.filter(({ sourceId, field }) => {
     if (!field.required) return false;
     const k = `${sourceId}::${field.name}`;
@@ -908,7 +955,7 @@ function FormFill() {
             <div key={key}>
               <div className="mb-0.5 flex items-baseline gap-1 text-[11px] font-medium">
                 <span className="truncate" title={field.name} data-no-translate>
-                  {field.name}
+                  {field.label ?? field.name}
                 </span>
                 {field.required ? <span className="text-rose-600" title="Required">*</span> : null}
                 {field.logic?.calc ? <span className="truncate font-normal text-muted">{field.logic.calc.op === 'formula' ? `= ${field.logic.calc.formula}` : `= ${field.logic.calc.op}(${field.logic.calc.fields.join(', ')})`}</span> : null}
@@ -932,7 +979,15 @@ function FormFill() {
                   onChange={(v) => setValue(sourceId, field.name, v ? [v] : [])}
                 />
               ) : (
-                <CommitInput multiline={field.multiline} disabled={disabled || !!field.logic?.calc} value={String(value ?? '')} logic={field.logic} onCommit={(v) => setValue(sourceId, field.name, v)} label={field.name} />
+                <CommitInput
+                  multiline={field.multiline}
+                  disabled={disabled || !!field.logic?.calc}
+                  value={String(value ?? '')}
+                  logic={field.logic}
+                  formatted={formatted[key]?.value === value ? formatted[key].text : undefined}
+                  onCommit={(v) => setValue(sourceId, field.name, v)}
+                  label={field.name}
+                />
               )}
             </div>
           );
@@ -943,7 +998,7 @@ function FormFill() {
 }
 
 /** Commits on blur/Enter so typing doesn't flood the undo history. */
-function CommitInput({ value, onCommit, multiline, disabled, label, logic }: { value: string; onCommit: (v: string) => void; multiline: boolean; disabled: boolean; label: string; logic?: FieldLogic }) {
+function CommitInput({ value, onCommit, multiline, disabled, label, logic, formatted }: { value: string; onCommit: (v: string) => void; multiline: boolean; disabled: boolean; label: string; logic?: FieldLogic; formatted?: string }) {
   // Formatted while not editing ("1.234,50 lei"), the plain value while typing.
   const [editing, setEditing] = useState(false);
   const [text, setText] = useState(value);
@@ -951,7 +1006,8 @@ function CommitInput({ value, onCommit, multiline, disabled, label, logic }: { v
   useEffect(() => {
     if (!editing) setText(value);
   }, [value, editing]);
-  const shown = editing ? text : displayValue(logic?.format, value);
+  // A form script's own formatting wins over Adika's reading of the format.
+  const shown = editing ? text : (formatted ?? displayValue(logic?.format, value));
   const commit = () => {
     setEditing(false);
     const r = checkInput(logic, text);

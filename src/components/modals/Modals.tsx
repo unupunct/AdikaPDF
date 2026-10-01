@@ -15,6 +15,9 @@ import { AccessibilityModal } from './AccessibilityModal';
 import { ReadingView } from '@/components/viewer/ReadingView';
 import { ScanModal } from './ScanModal';
 import { PrintProductionModal } from './PrintProductionModal';
+import { SpellCheckModal } from './SpellCheckModal';
+import { EInvoiceModal, PortfolioModal } from './EInvoiceModals';
+import { PageSizeModal } from './PageToolModals';
 import { FolderSearchModal } from './FolderSearchModal';
 import { CertEncryptModal, CertKeyDialog } from './CertEncryptModals';
 import { RecoverModal } from './RecoverModal';
@@ -50,6 +53,10 @@ export function Modals() {
       <ReadingView />
       <ScanModal />
       <PrintProductionModal />
+      <SpellCheckModal />
+      <EInvoiceModal />
+      <PortfolioModal />
+      <PageSizeModal />
       <FolderSearchModal />
       <CertEncryptModal />
       <CertKeyDialog />
@@ -113,14 +120,16 @@ function ConfirmPrompt() {
       testId="confirm-prompt"
       footer={
         <>
-          <Button onClick={() => c.resolve(false)}>Cancel</Button>
+          {c.messageOnly ? null : <Button onClick={() => c.resolve(false)}>Cancel</Button>}
           <Button variant={c.danger ? 'danger' : 'primary'} onClick={() => c.resolve(true)} data-testid="confirm-ok">
             {c.confirmLabel}
           </Button>
         </>
       }
     >
-      <p className="text-[13px] leading-relaxed">{c.message}</p>
+      <p className="whitespace-pre-line text-[13px] leading-relaxed" data-no-translate={c.messageOnly || undefined}>
+        {c.message}
+      </p>
     </Dialog>
   );
 }

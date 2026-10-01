@@ -247,3 +247,18 @@ export async function compareWithFile(): Promise<void> {
   else st.toast(`${out.inserted} word${out.inserted === 1 ? '' : 's'} inserted, ${out.deleted} deleted, on page${out.changedPages.length === 1 ? '' : 's'} ${out.changedPages.slice(0, 8).join(', ')}${out.changedPages.length > 8 ? '…' : ''}. The first page is a summary.`, 'success');
 }
 
+
+// ------------------------------------------------------------------ page size
+
+export async function applyPageSize(o: import('@/lib/pdf/pageSize').PageSizeOptions): Promise<boolean> {
+  busyNow('Resizing pages');
+  const { resizePages } = await import('@/lib/pdf/pageSize');
+  return applyInPlace('Resizing pages', async (bytes) => {
+    const out = await resizePages(bytes, o);
+    if (!out.resized) {
+      usePDFStore.getState().toast('The pages already have this size.', 'info');
+      return null;
+    }
+    return { bytes: out.bytes, summary: `Resized ${out.resized} page${out.resized === 1 ? '' : 's'}.` };
+  });
+}

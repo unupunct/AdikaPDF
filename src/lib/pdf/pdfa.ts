@@ -214,6 +214,8 @@ export interface XmpFields {
   creatorTool?: string;
   /** ISO 19005 part: 1, 2 or 3 (default 2). Conformance is always B. */
   part?: 1 | 2 | 3;
+  /** More rdf:Description blocks (e.g. Factur-X invoice data with its extension schema). */
+  extra?: string;
 }
 
 export function buildPdfAXmp(f: XmpFields): string {
@@ -243,7 +245,9 @@ export function buildPdfAXmp(f: XmpFields): string {
   if (f.creatorTool) lines.push(`<xmp:CreatorTool>${escapeXml(f.creatorTool)}</xmp:CreatorTool>`);
   lines.push(`<pdf:Producer>${escapeXml(f.producer)}</pdf:Producer>`);
   if (f.keywords) lines.push(`<pdf:Keywords>${escapeXml(f.keywords)}</pdf:Keywords>`);
-  lines.push('</rdf:Description>', '</rdf:RDF>', '</x:xmpmeta>');
+  lines.push('</rdf:Description>');
+  if (f.extra) lines.push(f.extra);
+  lines.push('</rdf:RDF>', '</x:xmpmeta>');
   // Padding so in-place XMP editors can grow the packet.
   const pad = (' '.repeat(99) + '\n').repeat(20);
   return lines.join('\n') + '\n' + pad + '<?xpacket end="w"?>';
@@ -273,6 +277,8 @@ export interface PdfAMeta {
   level?: PdfALevel;
   /** Files to embed as associated files. Only honoured for PDF/A-3b. */
   attachments?: PdfAAttachment[];
+  /** More XMP (rdf:Description blocks), e.g. Factur-X. */
+  extraXmp?: string;
 }
 
 export interface PdfAConversionResult {
@@ -657,6 +663,7 @@ export async function convertToPdfADetailed(bytes: Uint8Array, meta: PdfAMeta): 
     keywords,
     creatorTool,
     part: levelPart(level),
+    extra: meta.extraXmp,
   });
   const xmpStream = ctx.stream(new TextEncoder().encode(xmp), {
     Type: 'Metadata',

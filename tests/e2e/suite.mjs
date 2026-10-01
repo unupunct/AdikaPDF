@@ -33,6 +33,9 @@ import { registerScanTests } from './scan.part.mjs';
 import { registerPrintProdTests } from './printprod.part.mjs';
 import { registerAutomationTests } from './automation.part.mjs';
 import { registerForms2Tests } from './forms2.part.mjs';
+import { registerForms3Tests } from './forms3.part.mjs';
+import { registerEInvoiceTests } from './einvoice.part.mjs';
+import { registerEditing3Tests } from './editing3.part.mjs';
 
 const only = process.argv.slice(2).filter((a) => !a.startsWith('--'));
 const shots = process.argv.includes('--shots');
@@ -849,6 +852,9 @@ registerScanTests(test, { S, page, dir, open, idle, savedFile, assert, join, wri
 registerPrintProdTests(test, { S, page, dir, open, idle, savedFile, assert, join, writeFileSync, FONT_DATA });
 registerAutomationTests(test, { S, page, dir, open, idle, savedFile, assert, pdfText, join, writeFileSync, EXE });
 registerForms2Tests(test, { S, page, dir, open, idle, savedFile, assert, join, writeFileSync, drag, setTool, FONT_DATA, pfxPath: process.env.ADIKA_WINSTORE_TEST_PFX });
+registerForms3Tests(test, { S, page, dir, open, idle, savedFile, assert, join, writeFileSync });
+registerEInvoiceTests(test, { S, page, dir, open, idle, savedFile, assert, join, writeFileSync, pdfText });
+registerEditing3Tests(test, { S, page, dir, open, idle, savedFile, assert, join, writeFileSync, pageBox });
 
 test('dark mode toggle and welcome after close', async () => {
   await page.click('[data-testid="theme-toggle"]');

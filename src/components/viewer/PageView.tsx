@@ -10,6 +10,7 @@ import { renderPageToCanvas } from '@/lib/pdf/pdfService';
 import { usePDFStore } from '@/store/usePDFStore';
 import { PageOverlay } from './PageOverlay';
 import { LinkLayer, TextSelectionLayer } from './ReaderLayers';
+import { FormFillLayer } from './FormFillLayer';
 import { isTextTool } from '@/lib/tools';
 import { cn } from '@/lib/cn';
 
@@ -98,6 +99,7 @@ export const PageView = memo(function PageView({ page, index, zoom, scrollRoot }
       {near ? <TextSelectionLayer page={page} zoom={zoom} active={isTextTool(tool)} /> : null}
       {near ? <LinkLayer page={page} zoom={zoom} active={reading} /> : null}
       {near ? <PageOverlay page={page} zoom={zoom} /> : null}
+      {near ? <FormFillLayer page={page} zoom={zoom} active={reading || tool === 'select'} /> : null}
       <div className="pointer-events-none absolute -left-9 top-0 hidden text-[11px] font-medium text-muted xl:block">{index + 1}</div>
     </div>
   );
