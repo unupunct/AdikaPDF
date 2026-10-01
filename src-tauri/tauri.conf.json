@@ -6,7 +6,7 @@
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:5173",
-    "beforeBuildCommand": "npm run build",
+    "beforeBuildCommand": "npm run build && npm run build:thumbs",
     "frontendDist": "../dist"
   },
   "app": {
@@ -30,7 +30,7 @@
   "bundle": {
     "active": true,
     "targets": ["nsis"],
-    "resources": { "windows/printer.ps1": "printer.ps1" },
+    "resources": { "windows/printer.ps1": "printer.ps1", "thumbs/target/release/adika_thumbs.dll": "adika_thumbs.dll" },
     "publisher": "unupunct",
     "copyright": "Copyright (c) 2026 unupunct. MIT License.",
     "category": "Productivity",

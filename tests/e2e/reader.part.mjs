@@ -139,9 +139,9 @@ export function registerReaderTests(test, ctx) {
     const before = await dark();
     await page.click('[data-testid="sidebar-layers"]');
     await page.waitForSelector('[data-testid="layer-toggle"]');
-    const names = await page.$$eval('[data-testid="layers-panel"] label', (els) => els.map((e) => e.textContent.trim()));
+    const names = await page.$$eval('[data-testid="layer-row"]', (els) => els.map((e) => e.textContent.trim()));
     assert(names.includes('Walls') && names.includes('Notes'), `layers listed ${names}`);
-    await page.click('[data-testid="layers-panel"] label:has-text("Walls") input');
+    await page.click('[data-testid="layer-row"]:has-text("Walls") input');
     await page.waitForTimeout(900);
     const after = await dark();
     assert(after < before * 0.5, `hiding “Walls” removes its lines (${before} → ${after} dark px)`);

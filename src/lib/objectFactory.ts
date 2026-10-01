@@ -129,10 +129,13 @@ export function makeLine(type: LineObject['type'], pageId: string, x1: number, y
   };
 }
 
-export function makePen(pageId: string, points: number[], style: ToolStyle): PenObject {
+export function makePen(pageId: string, points: number[], style: ToolStyle, pressures: number[] | null = null): PenObject {
   const x = points[0];
   const y = points[1];
+  // Pressure only when it varies (a pen); a mouse draws an even line.
+  const varied = pressures && pressures.length === points.length / 2 && Math.max(...pressures) - Math.min(...pressures) > 0.05;
   return {
+    ...(varied ? { pressures: pressures.map((p) => Math.round(Math.max(0, Math.min(1, p)) * 100) / 100) } : {}),
     id: uid('obj'),
     type: 'pen',
     pageId,
@@ -453,4 +456,9 @@ export function makeMeasure(kind: MeasureObject['kind'], pageId: string, pagePoi
     createdAt: now,
     modifiedAt: now,
   };
+}
+
+/** Line width at a pen pressure (0.5, a normal press, gives the set width). */
+export function pressureWidth(base: number, pressure: number): number {
+  return base * (0.3 + 1.4 * Math.max(0, Math.min(1, pressure)));
 }

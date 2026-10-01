@@ -69,6 +69,22 @@ export async function hasFormScripts(doc: PDFDocumentProxy): Promise<boolean> {
   return false;
 }
 
+/**
+ * The calculation order, with every field that has a calculate script: a
+ * form without /CO (or one that misses fields) is still calculated, as
+ * Acrobat and Adika's own form logic do.
+ */
+function withAllCalculations(order: string[], objects: Record<string, WidgetInfo[]>): string[] {
+  const out = [...order];
+  const has = (a: WidgetInfo['actions']) => (a instanceof Map ? a.has('Calculate') : !!a && 'Calculate' in a);
+  for (const ws of Object.values(objects)) {
+    const w = ws.find((x) => has(x.actions));
+    if (!w) continue;
+    if (!ws.some((x) => out.includes(x.id))) out.push(ws[0].id);
+  }
+  return out;
+}
+
 // Every sandbox reports through window events; the one being driven gets them.
 let driving: FormScripting | null = null;
 let listening = false;
@@ -108,7 +124,7 @@ export class FormScripting {
     const run = s.drive(() =>
       sandbox.create({
         objects,
-        calculationOrder: calculationOrder ?? [],
+        calculationOrder: withAllCalculations(calculationOrder ?? [], objects),
         appInfo: { platform: 'WIN', language: typeof navigator !== 'undefined' ? navigator.language : 'en-US' },
         docInfo: { ...info, numPages: doc.numPages, filename: '', baseURL: '', URL: '', filesize: 0, actions: docActions ?? {} },
       }),

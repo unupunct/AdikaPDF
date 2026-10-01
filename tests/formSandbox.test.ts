@@ -4,7 +4,7 @@ import type { PDFDocumentProxy } from 'pdfjs-dist';
 import { FormScripting, hasFormScripts } from '@/lib/pdf/formSandbox';
 import { scriptedFormPdf } from './helpers/scriptedForm';
 import { loadTestSandbox } from './helpers/sandboxEnv';
-import { PDFDocument } from 'pdf-lib';
+import { PDFDocument, PDFName, PDFString } from 'pdf-lib';
 
 const open = async (bytes: Uint8Array) => (await pdfjs.getDocument({ data: bytes.slice(), verbosity: 0 }).promise) as unknown as PDFDocumentProxy;
 
@@ -33,6 +33,22 @@ describe('form JavaScript in the sandbox', () => {
     const ship = s.commit('Express', true);
     expect(ship.updates.Shipping.value).toBe('25');
     expect(s.commit('Express', false).updates.Shipping.value).toBe('0');
+    s.destroy();
+  });
+
+  it('calculates fields the form forgot to list in its calculation order', async () => {
+    const d = await PDFDocument.create();
+    const p = d.addPage();
+    const form = d.getForm();
+    form.createTextField('A').addToPage(p, { x: 50, y: 700 });
+    form.createTextField('B').addToPage(p, { x: 50, y: 650 });
+    const sum = form.createTextField('Sum');
+    sum.addToPage(p, { x: 50, y: 600 });
+    sum.acroField.dict.set(PDFName.of('AA'), d.context.obj({ C: d.context.obj({ S: 'JavaScript', JS: PDFString.of('AFSimple_Calculate("SUM", new Array("A", "B"));') }) }));
+    const doc = await open(await d.save());
+    const s = (await FormScripting.start(doc, loadTestSandbox))!.scripting;
+    s.commit('A', '2');
+    expect(s.commit('B', '5').updates.Sum.value).toBe('7');
     s.destroy();
   });
 

@@ -13,6 +13,7 @@ import { RIBBON_TABS, TabContent } from '@/components/ribbon/Ribbon';
 import { normalizeForSearch } from '@/lib/search';
 import { originalAttr, translate } from '@/lib/i18n';
 import { cn } from '@/lib/cn';
+import { useTabs } from '@/store/tabs';
 import type { RibbonTab } from '@/types';
 
 export const usePalette = create<{ open: boolean }>()(() => ({ open: false }));
@@ -48,6 +49,8 @@ function extras(): Item[] {
       }),
     ),
     mk('about', 'About', 'Version, updates, shortcuts and logs', () => s.openModal('about')),
+    mk('newwindow', 'Move to a new window', 'Open this document in a window of its own', () => void import('@/actions/windows').then((m) => m.moveTabToWindow(useTabs.getState().activeId))),
+    mk('customize', 'Customize', 'Quick Access toolbar and keyboard shortcuts', () => s.openModal('customize')),
   ];
 }
 

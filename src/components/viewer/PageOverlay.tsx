@@ -31,6 +31,7 @@ import {
   makeSignature,
   makeText,
 } from '@/lib/objectFactory';
+import { PressureLine } from './PressureLine';
 import { layoutText, TEXT_PADDING } from '@/lib/textLayout';
 import { paragraphAt } from '@/lib/paragraph';
 import { pageTextRuns, runAngle, runRect } from '@/lib/pdf/textGeometry';
@@ -45,7 +46,7 @@ import { TextEditor } from './TextEditor';
 type Draft =
   | { kind: 'box'; tool: ToolId; x0: number; y0: number; x1: number; y1: number }
   | { kind: 'line'; tool: 'line' | 'arrow'; x0: number; y0: number; x1: number; y1: number }
-  | { kind: 'pen'; points: number[] }
+  | { kind: 'pen'; points: number[]; pressures: number[] | null }
   | { kind: 'callout'; x0: number; y0: number; x1: number; y1: number }
   | { kind: 'measure'; x0: number; y0: number; x1: number; y1: number }
   | { kind: 'marquee'; x0: number; y0: number; x1: number; y1: number };
@@ -160,7 +161,7 @@ export function PageOverlay({ page, zoom }: { page: PageRef; zoom: number }) {
         return;
       }
       if (d.kind === 'pen') {
-        if (d.points.length >= 4) store.addObject(makePen(page.id, d.points, style), false);
+        if (d.points.length >= 4) store.addObject(makePen(page.id, d.points, style, d.pressures), false);
         return;
       }
       if (d.kind === 'measure') {
@@ -503,7 +504,8 @@ export function PageOverlay({ page, zoom }: { page: PageRef; zoom: number }) {
         return;
       }
       case 'pen':
-        startDrag({ kind: 'pen', points: [p.x, p.y] });
+        // A pen (Windows Ink) gives pressure: the line gets thicker the harder it is pressed.
+        startDrag({ kind: 'pen', points: [p.x, p.y], pressures: e.evt.pointerType === 'pen' ? [e.evt.pressure || 0.5] : null });
         return;
       case 'line':
       case 'arrow':
@@ -526,7 +528,7 @@ export function PageOverlay({ page, zoom }: { page: PageRef; zoom: number }) {
       if (cur.kind === 'pen') {
         const [lx, ly] = cur.points.slice(-2);
         if (Math.hypot(p.x - lx, p.y - ly) < 0.8 / zoom) return;
-        next = { ...cur, points: [...cur.points, p.x, p.y] };
+        next = { ...cur, points: [...cur.points, p.x, p.y], pressures: cur.pressures ? [...cur.pressures, ev.pressure || 0.5] : null };
       } else if ((cur.kind === 'line' || cur.kind === 'measure') && ev.shiftKey) {
         // Shift snaps lines to 45° steps.
         const a = Math.round(Math.atan2(p.y - cur.y0, p.x - cur.x0) / (Math.PI / 4)) * (Math.PI / 4);
@@ -859,6 +861,7 @@ function DraftNode({ draft, zoom }: { draft: Draft; zoom: number }) {
     );
   }
   if (draft.kind === 'pen') {
+    if (draft.pressures) return <PressureLine points={draft.points} pressures={draft.pressures} stroke={style.stroke} strokeWidth={style.strokeWidth} opacity={style.opacity} listening={false} />;
     return <Line points={draft.points} stroke={style.stroke} strokeWidth={style.strokeWidth} opacity={style.opacity} lineCap="round" lineJoin="round" listening={false} />;
   }
   if (draft.kind === 'line') {

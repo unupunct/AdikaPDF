@@ -292,6 +292,8 @@ export interface PenObject extends BaseObject {
   type: 'pen';
   /** Flat local coordinates relative to (x, y). */
   points: number[];
+  /** Pen pressure (0-1) at each point: the line width varies with it. */
+  pressures?: number[];
   stroke: string;
   strokeWidth: number;
 }

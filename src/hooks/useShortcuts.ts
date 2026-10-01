@@ -18,6 +18,7 @@ function selectPageText(pageId: string | null): void {
   sel?.addRange(range);
 }
 import type { ToolId } from '@/types';
+import { comboOf, runCommand, useCustomize } from '@/store/customize';
 
 const TOOL_KEYS: Record<string, ToolId> = {
   s: 'selectText',
@@ -45,6 +46,14 @@ export function useShortcuts(): void {
       const mod = e.ctrlKey || e.metaKey;
       const key = e.key.toLowerCase();
       if (s.modal || s.busy || s.presentation) return;
+      // The user's own shortcuts come first (they may take a built-in one's place).
+      const combo = comboOf(e);
+      const mine = combo ? useCustomize.getState().shortcuts.find((x) => x.combo === combo) : undefined;
+      if (mine && !isTyping(e.target)) {
+        e.preventDefault();
+        void runCommand(mine);
+        return;
+      }
 
       if (key === 'f11') {
         e.preventDefault();

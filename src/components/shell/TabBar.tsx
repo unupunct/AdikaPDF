@@ -3,6 +3,7 @@ import { useTabs, switchTab, tabInfo } from '@/store/tabs';
 import { usePDFStore } from '@/store/usePDFStore';
 import { closeTabAction, openDialog } from '@/actions/document';
 import { cn } from '@/lib/cn';
+import { translate } from '@/lib/i18n';
 
 /** Document tabs (hidden while only the welcome screen is open). */
 export function TabBar() {
@@ -23,6 +24,12 @@ export function TabBar() {
             role="tab"
             aria-selected={active}
             data-testid="doc-tab"
+            draggable={!!info.name}
+            onDragEnd={(e) => {
+              // Dropped outside the window: the document gets a window of its own.
+              const out = e.screenX < window.screenX || e.screenX > window.screenX + window.outerWidth || e.screenY < window.screenY || e.screenY > window.screenY + window.outerHeight;
+              if (out) void import('@/actions/windows').then((m) => m.moveTabToWindow(t.id));
+            }}
             onMouseDown={(e) => {
               if (e.button === 1) {
                 e.preventDefault();
@@ -34,7 +41,7 @@ export function TabBar() {
               'group flex h-7 max-w-[220px] min-w-[120px] cursor-default items-center gap-1.5 rounded-t-md border border-b-0 px-2 text-[12px]',
               active ? 'border-app bg-panel font-medium' : 'border-transparent text-muted hover:bg-panel/60',
             )}
-            title={info.name ?? 'New tab'}
+            title={info.name ? `${info.name} — ${translate('drag out of the window to open it in a window of its own')}` : translate('New tab')}
           >
             <FileText size={13} className={active ? 'text-brand-600' : ''} />
             <span className="min-w-0 flex-1 truncate" data-no-translate={info.name ? '' : undefined}>

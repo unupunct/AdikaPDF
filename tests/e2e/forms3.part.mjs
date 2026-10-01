@@ -70,6 +70,7 @@ export function registerForms3Tests(test, ctx) {
     const shown = await page.inputValue('[data-testid="page-field"][data-field="form1[0].Main[0].Name[0]"]');
     assert(shown === 'Ana Pop', `value from the XFA data (${shown})`);
     await fill('form1[0].Main[0].Name[0]', 'Elena Dumitru');
+    await waitValue('form1[0].Main[0].Name[0]', 'Elena Dumitru');
     await page.selectOption('[data-testid="page-field"][data-field="form1[0].Main[0].Country[0]"]', 'Romania');
     await waitValue('form1[0].Main[0].Country[0]', 'Romania');
     await page.keyboard.press('Control+Shift+s');
@@ -92,6 +93,7 @@ export function registerForms3Tests(test, ctx) {
     writeFileSync(path, await staticXfaPdf());
     await open(path);
     await fill('form1[0].Main[0].Name[0]', 'Ioana Marin');
+    await waitValue('form1[0].Main[0].Name[0]', 'Ioana Marin');
     await page.keyboard.press('Control+Shift+s');
     await idle();
     const doc = await PD.load(readFileSync(await savedFile(/xfa-static\.pdf$/)), { updateMetadata: false });

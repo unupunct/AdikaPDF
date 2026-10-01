@@ -36,6 +36,8 @@ import { registerForms2Tests } from './forms2.part.mjs';
 import { registerForms3Tests } from './forms3.part.mjs';
 import { registerEInvoiceTests } from './einvoice.part.mjs';
 import { registerEditing3Tests } from './editing3.part.mjs';
+import { registerUx4Tests } from './ux4.part.mjs';
+import { registerExtrasTests } from './extras.part.mjs';
 
 const only = process.argv.slice(2).filter((a) => !a.startsWith('--'));
 const shots = process.argv.includes('--shots');
@@ -855,6 +857,8 @@ registerForms2Tests(test, { S, page, dir, open, idle, savedFile, assert, join, w
 registerForms3Tests(test, { S, page, dir, open, idle, savedFile, assert, join, writeFileSync });
 registerEInvoiceTests(test, { S, page, dir, open, idle, savedFile, assert, join, writeFileSync, pdfText });
 registerEditing3Tests(test, { S, page, dir, open, idle, savedFile, assert, join, writeFileSync, pageBox });
+registerUx4Tests(test, { S, page, dir, open, idle, savedFile, assert, join, writeFileSync, pageBox });
+registerExtrasTests(test, { S, page, dir, open, idle, savedFile, assert, join, writeFileSync, pdfText });
 
 test('dark mode toggle and welcome after close', async () => {
   await page.click('[data-testid="theme-toggle"]');

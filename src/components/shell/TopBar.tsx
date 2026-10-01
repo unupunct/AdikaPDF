@@ -1,4 +1,5 @@
-import { Info, Languages, Moon, PanelLeft, PanelRight, Search, Sun } from 'lucide-react';
+import { Info, Languages, Moon, PanelLeft, PanelRight, Search, Settings2, Sun } from 'lucide-react';
+import { QuickAccessBar } from './CustomizeModal';
 import { usePalette } from './CommandPalette';
 import { LANGS, useLang } from '@/lib/i18n';
 import { usePDFStore } from '@/store/usePDFStore';
@@ -18,6 +19,7 @@ export function TopBar() {
   return (
     <header className="flex h-11 shrink-0 items-center gap-3 border-b border-app bg-panel px-3">
       <AdikaLogo className="h-7" />
+      <QuickAccessBar />
       <div className="mx-2 h-5 w-px bg-[var(--border)]" />
       <div className="min-w-0 flex-1 truncate text-[13px]" data-testid="doc-title">
         {fileName ? (
@@ -57,6 +59,11 @@ export function TopBar() {
           </Button>
         </Tooltip>
         <LanguageButton />
+        <Tooltip content="Customize the Quick Access toolbar and keyboard shortcuts">
+          <Button variant="ghost" size="icon" aria-label="Customize" data-testid="customize-open" onClick={() => s.openModal('customize')}>
+            <Settings2 size={17} />
+          </Button>
+        </Tooltip>
         <Tooltip content="About Adika PDF Editor">
           <Button variant="ghost" size="icon" aria-label="About" onClick={() => s.openModal('about')}>
             <Info size={17} />

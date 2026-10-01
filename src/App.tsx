@@ -21,8 +21,7 @@ import { PresentationView } from '@/components/viewer/PresentationView';
 import { SelectionToolbar } from '@/components/viewer/SelectionToolbar';
 import { dirtyTabCount } from '@/store/tabs';
 import { ensureFontsLoaded } from '@/lib/fonts';
-import { ensurePrintWatcher, initialFiles, onForwardedFiles } from '@/lib/platform';
-import { openPdfPath } from '@/actions/document';
+import { ensurePrintWatcher, launchRequest, onLaunch } from '@/lib/platform';
 import { maybeAutoCheck } from '@/lib/updates';
 import { isDesktop } from '@/lib/platform';
 import { askConfirm } from '@/store/useDialogs';
@@ -54,27 +53,34 @@ export default function App() {
   // forwarded by a second launch (virtual printer), and the print helper.
   useEffect(() => {
     if (!fontsReady) return;
-    void initialFiles().then(async (paths) => {
-      for (const p of paths) await openPdfPath(p);
-    });
-    const off = onForwardedFiles(async (paths) => {
-      for (const p of paths) await openPdfPath(p);
-    });
-    void ensurePrintWatcher();
-    maybeAutoCheck();
-    void import('@/actions/automation').then((m) => m.restartWatching());
-    // Crash recovery: offer what an earlier run left, then back up from now on.
-    void import('@/lib/recovery').then(async (r) => {
-      const items = await r.listBackups();
-      r.startAutoBackup();
-      if (items.length) {
-        const { useRecoverList } = await import('@/components/modals/RecoverModal');
-        useRecoverList.setState({ items });
-        usePDFStore.getState().openModal('recover');
+    let off: Promise<() => void> | null = null;
+    void import('@/actions/windows').then(async (w) => {
+      // A window opened for a tab moved out of another window: that document, nothing else.
+      const adopt = w.adoptRequest();
+      if (adopt || (await w.windowLabel()) !== 'main') {
+        const r = await import('@/lib/recovery');
+        if (adopt) await r.adoptSnapshot(adopt).catch((e: unknown) => usePDFStore.getState().toast(String(e), 'error'));
+        r.startAutoBackup();
+        return;
       }
+      void launchRequest().then((req) => import('@/actions/launch').then((m) => m.handleLaunch(req)));
+      off = onLaunch((req) => void import('@/actions/launch').then((m) => m.handleLaunch(req)));
+      void ensurePrintWatcher();
+      maybeAutoCheck();
+      void import('@/actions/automation').then((m) => m.restartWatching());
+      // Crash recovery: offer what an earlier run left, then back up from now on.
+      void import('@/lib/recovery').then(async (r) => {
+        const items = await r.listBackups();
+        r.startAutoBackup();
+        if (items.length) {
+          const { useRecoverList } = await import('@/components/modals/RecoverModal');
+          useRecoverList.setState({ items });
+          usePDFStore.getState().openModal('recover');
+        }
+      });
     });
     return () => {
-      void off.then((f) => f());
+      void off?.then((f) => f());
     };
   }, [fontsReady]);
 

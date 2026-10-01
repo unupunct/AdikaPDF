@@ -63,6 +63,13 @@ void (async () => {
     autoScroll,
     updates,
     i18n: await import('./lib/i18n'),
+    customize: (await import('./store/customize')).useCustomize,
+    // Closes this window without asking (a test closing a window it opened).
+    closeWindow: async () => {
+      store.usePDFStore.setState({ dirty: false });
+      const { getCurrentWindow } = await import('@tauri-apps/api/window');
+      await getCurrentWindow().destroy();
+    },
   };
 })();
 

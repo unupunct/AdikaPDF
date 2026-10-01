@@ -95,6 +95,7 @@ import { readFieldLogic, writeCalcOrder, writeFieldLogic } from './formScripts';
 import { readXfaPackets, restoreStaticXfa, xfaKindOf } from './xfa';
 import { parseSvgPath } from './vectorEdit';
 import { layerForContent } from './layers';
+import { pressureWidth } from '@/lib/objectFactory';
 
 /** Objects drawn as page content (others are annotations or form fields). */
 const LAYERED = new Set<EditorObject['type']>(['text', 'image', 'signature', 'rect', 'ellipse', 'highlight', 'line', 'arrow', 'pen', 'vector']);
@@ -527,6 +528,16 @@ function drawVector(page: PDFPage, pm: Matrix, o: VectorObject): void {
 
 function drawPen(page: PDFPage, pm: Matrix, o: PenObject): void {
   if (o.points.length < 4) return;
+  if (o.pressures?.length) {
+    // Pen pressure: each segment with its own width, round ends joining them smoothly.
+    withMatrix(page, multiply(objectMatrix(pm, o), [1, 0, 0, -1, 0, 0]), () => {
+      for (let i = 2; i < o.points.length; i += 2) {
+        const p = ((o.pressures![i / 2 - 1] ?? 0.5) + (o.pressures![i / 2] ?? 0.5)) / 2;
+        page.drawLine({ start: { x: o.points[i - 2], y: -o.points[i - 1] }, end: { x: o.points[i], y: -o.points[i + 1] }, thickness: pressureWidth(o.strokeWidth, p), color: hexToRgb(o.stroke), opacity: o.opacity, lineCap: LineCapStyle.Round });
+      }
+    });
+    return;
+  }
   let d = `M ${o.points[0]} ${o.points[1]}`;
   for (let i = 2; i < o.points.length; i += 2) d += ` L ${o.points[i]} ${o.points[i + 1]}`;
   withMatrix(page, multiply(objectMatrix(pm, o), [1, 0, 0, -1, 0, 0]), () => {

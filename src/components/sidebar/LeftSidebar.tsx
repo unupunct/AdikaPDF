@@ -3,7 +3,8 @@
  * Layers (optional content) and Search results.
  */
 import { useEffect, useState, type ReactNode } from 'react';
-import { MessagesSquare, Bookmark, FileSearch, Layers as LayersIcon, LayoutGrid, Paperclip, Save, ExternalLink } from 'lucide-react';
+import { MessagesSquare, Bookmark, FileSearch, Layers as LayersIcon, LayoutGrid, Paperclip, Save, ExternalLink, Tags as TagsIcon } from 'lucide-react';
+import { TagsPanel } from './TagsPanel';
 import { usePDFStore, type SidebarTab } from '@/store/usePDFStore';
 import { ThumbnailSidebar } from './ThumbnailSidebar';
 import { Tooltip } from '@/components/ui/primitives';
@@ -20,6 +21,7 @@ const TABS: Array<{ id: SidebarTab; label: string; icon: ReactNode }> = [
   { id: 'comments', label: 'Comments', icon: <MessagesSquare size={16} /> },
   { id: 'attachments', label: 'Attachments', icon: <Paperclip size={16} /> },
   { id: 'layers', label: 'Layers', icon: <LayersIcon size={16} /> },
+  { id: 'tags', label: 'Tags', icon: <TagsIcon size={16} /> },
   { id: 'search', label: 'Search results', icon: <FileSearch size={16} /> },
 ];
 
@@ -50,6 +52,7 @@ export function LeftSidebar() {
         {tab === 'comments' ? <CommentsPanel /> : null}
         {tab === 'attachments' ? <AttachmentsPanel /> : null}
         {tab === 'layers' ? <LayersPanel /> : null}
+        {tab === 'tags' ? <TagsPanel /> : null}
         {tab === 'search' ? <SearchResultsPanel /> : null}
       </div>
     </aside>

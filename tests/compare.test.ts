@@ -246,3 +246,18 @@ describe('comparePdfs', () => {
     expect(y2 - y1).toBeLessThan(20);
   });
 });
+
+describe('redline list of changes', () => {
+  it('lists every change with its context after the summary page', async () => {
+    const a = await makePdf([{ lines: ['The quick brown fox jumps over the lazy dog.', 'Payment is due in 30 days.'] }]);
+    const b = await makePdf([{ lines: ['The quick red fox jumps over the lazy dog.', 'Payment is due in 60 days.'] }]);
+    const r = await comparePdfs(await openPdf(a), a, await openPdf(b), b, loadFont, { redline: { title: 'List of changes', page: 'Page {0}' } });
+    const doc = await openPdf(r.bytes);
+    expect(doc.numPages).toBe(3); // summary, list of changes, the page
+    const text = (await (await doc.getPage(2)).getTextContent()).items.map((i) => ('str' in i ? i.str : '')).join(' ');
+    expect(text).toContain('List of changes');
+    expect(text).toMatch(/quick\s+brown\s+red\s+fox/);
+    expect(text).toMatch(/in\s+30\s+60\s+days/);
+    expect(text.match(/Page 1/g)).toHaveLength(2);
+  });
+});

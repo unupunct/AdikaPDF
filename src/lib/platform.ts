@@ -34,7 +34,7 @@ export class DesktopOnlyError extends Error {
  * dialogs are replaced by a queue of paths and a fixed output folder so the
  * suite can click real buttons without native dialogs blocking it.
  */
-const e2e: { pickQueue: string[][]; saveDir: string | null; saved: string[] } = { pickQueue: [], saveDir: null, saved: [] };
+const e2e: { pickQueue: string[][]; saveDir: string | null; saved: string[]; mails: Array<{ path: string; fileName: string; subject: string }> } = { pickQueue: [], saveDir: null, saved: [], mails: [] };
 
 export function e2eQueuePicks(paths: string[]): void {
   e2e.pickQueue.push(paths);
@@ -211,6 +211,40 @@ export async function ensurePrintWatcher(): Promise<boolean> {
 export async function initialFiles(): Promise<string[]> {
   if (!isDesktop) return [];
   return invoke<string[]>('initial_files');
+}
+
+/** What this launch asked for (Explorer: open, combine the selected PDFs, convert to PDF). */
+export async function launchRequest(): Promise<import('@/actions/launch').LaunchRequest> {
+  if (!isDesktop) return { action: 'open', files: [] };
+  return invoke('launch_request');
+}
+
+/** A later launch (second instance) handing its request to this window. */
+export async function onLaunch(handler: (req: import('@/actions/launch').LaunchRequest) => void): Promise<() => void> {
+  if (!isDesktop) return () => undefined;
+  const { listen } = await import('@tauri-apps/api/event');
+  return listen<import('@/actions/launch').LaunchRequest>('adika://launch', (e) => handler(e.payload));
+}
+
+/**
+ * Opens a new message in the default mail program with the file attached
+ * (Simple MAPI). Throws "NO_MAPI" when no mail program takes attachments.
+ */
+export async function sendMail(path: string, fileName: string, subject: string, body: string): Promise<void> {
+  if (e2e.saveDir !== null) {
+    e2e.mails.push({ path, fileName, subject });
+    return;
+  }
+  await invoke('mail_send', { path, fileName, subject, body });
+}
+
+export function e2eMails(): Array<{ path: string; fileName: string; subject: string }> {
+  return e2e.mails;
+}
+
+export async function revealInExplorer(path: string): Promise<void> {
+  if (!isDesktop) return;
+  await invoke('reveal_in_explorer', { path });
 }
 
 // ---------------------------------------------------------------- conversion

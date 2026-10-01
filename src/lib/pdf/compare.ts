@@ -471,6 +471,94 @@ function drawSummary(page: PDFPage, fonts: { regular: PDFFont; bold: PDFFont }, 
   line('Only the text is compared; changes to images, graphics, colours or fonts are not reported.', 9, fonts.regular, grey);
 }
 
+// ------------------------------------------------------------------ redline
+
+export interface RedlineChange {
+  /** 1-based page of the new document. */
+  page: number;
+  before: string;
+  deleted: string;
+  inserted: string;
+  after: string;
+}
+
+/** Every change with a few unchanged words around it, in reading order. */
+export function redlineChanges(ops: DiffOp[], oldWords: PageWord[], newWords: PageWord[], context = 6): RedlineChange[] {
+  const out: RedlineChange[] = [];
+  for (let i = 0; i < ops.length; i++) {
+    const op = ops[i];
+    if (op.op === 'equal') continue;
+    const next = ops[i + 1];
+    const del = op.op === 'delete' ? op.a : null;
+    const ins = op.op === 'insert' ? op.b : next && next.op === 'insert' && op.op === 'delete' ? next.b : null;
+    if (op.op === 'delete' && ins) i++;
+    // Position in the new document: where the change starts.
+    const at = ins ? ins[0] : op.b[0];
+    const end = ins ? ins[1] : at;
+    const page = (newWords[at] ?? newWords[at - 1] ?? newWords[0])?.page ?? 0;
+    out.push({
+      page: page + 1,
+      before: joinWords(newWords.slice(Math.max(0, at - context), at)),
+      deleted: del ? joinWords(oldWords.slice(del[0], del[1])) : '',
+      inserted: ins ? joinWords(newWords.slice(ins[0], ins[1])) : '',
+      after: joinWords(newWords.slice(end, end + context)),
+    });
+  }
+  return out;
+}
+
+/** Pages listing the changes: unchanged context in grey, deleted words struck through in red, inserted ones underlined in green. */
+function drawRedline(out: PDFDocument, fonts: { regular: PDFFont; bold: PDFFont }, changes: RedlineChange[], at: number, labels: { title: string; page: string }): number {
+  const [W, H] = [595.28, 841.89];
+  const M = 50;
+  const size = 10;
+  const lead = 14;
+  const red = rgb(0.83, 0.18, 0.18);
+  const green = rgb(0.1, 0.55, 0.2);
+  const grey = rgb(0.4, 0.42, 0.46);
+  const safe = (s: string) => {
+    const set = fonts.regular.getCharacterSet();
+    return [...s].map((c) => (set.includes(c.codePointAt(0)!) ? c : '?')).join('');
+  };
+  let pageIndex = at;
+  let page = out.insertPage(pageIndex++, [W, H]);
+  let y = H - M;
+  page.drawText(safe(labels.title), { x: M, y: y - 16, size: 16, font: fonts.bold });
+  y -= 40;
+  const newPage = () => {
+    page = out.insertPage(pageIndex++, [W, H]);
+    y = H - M;
+  };
+  for (const c of changes) {
+    if (y < M + 3 * lead) newPage();
+    page.drawText(safe(labels.page.replace('{0}', String(c.page))), { x: M, y, size: 8.5, font: fonts.bold, color: grey });
+    y -= lead;
+    const words: Array<{ t: string; kind: 'ctx' | 'del' | 'ins' }> = [];
+    const add = (s: string, kind: 'ctx' | 'del' | 'ins') => s.split(/\s+/).filter(Boolean).forEach((t) => words.push({ t: safe(t), kind }));
+    if (c.before) add(`… ${c.before}`, 'ctx');
+    add(c.deleted, 'del');
+    add(c.inserted, 'ins');
+    if (c.after) add(`${c.after} …`, 'ctx');
+    let x = M;
+    const space = fonts.regular.widthOfTextAtSize(' ', size);
+    for (const w of words) {
+      const wd = fonts.regular.widthOfTextAtSize(w.t, size);
+      if (x + wd > W - M && x > M) {
+        x = M;
+        y -= lead;
+        if (y < M) newPage();
+      }
+      const color = w.kind === 'del' ? red : w.kind === 'ins' ? green : grey;
+      page.drawText(w.t, { x, y, size, font: fonts.regular, color });
+      if (w.kind === 'del') page.drawLine({ start: { x, y: y + size * 0.32 }, end: { x: x + wd, y: y + size * 0.32 }, thickness: 0.8, color: red });
+      if (w.kind === 'ins') page.drawLine({ start: { x, y: y - 1.5 }, end: { x: x + wd, y: y - 1.5 }, thickness: 0.8, color: green });
+      x += wd + space;
+    }
+    y -= lead * 1.6;
+  }
+  return pageIndex - at;
+}
+
 // ------------------------------------------------------------------ main
 
 export async function comparePdfs(
@@ -479,7 +567,7 @@ export async function comparePdfs(
   newDoc: PDFDocumentProxy,
   newBytes: Uint8Array,
   loadFont: LoadFont,
-  opts: { oldName?: string; newName?: string } = {},
+  opts: { oldName?: string; newName?: string; redline?: { title: string; page: string } } = {},
 ): Promise<CompareResult> {
   const newWords = await documentWords(newDoc);
   // Byte-identical files: no need to read the old one again.
@@ -612,5 +700,10 @@ export async function comparePdfs(
   };
   const summary = out.insertPage(0, [595.28, 841.89]);
   drawSummary(summary, fonts, result, opts.oldName ?? 'Old document', opts.newName ?? 'New document');
+  // A list of every change after the summary (inserted / deleted words with their context).
+  if (opts.redline) {
+    const changes = redlineChanges(ops, oldWords, newWords);
+    if (changes.length) drawRedline(out, fonts, changes, 1, opts.redline);
+  }
   return { bytes: await out.save(), ...result };
 }

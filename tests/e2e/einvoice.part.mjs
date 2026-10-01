@@ -126,6 +126,7 @@ export function registerEInvoiceTests(test, ctx) {
     });
     await page.click('[data-testid="tab-organize"]');
     await page.click('[data-testid="btn-toc"]');
+    await page.waitForFunction(() => window.__adika.store.getState().pages.length === 4, null, { timeout: 20000 });
     await idle();
     const st = await S(() => {
       const s = window.__adika.store.getState();

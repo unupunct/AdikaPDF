@@ -18,6 +18,7 @@ import { PrintProductionModal } from './PrintProductionModal';
 import { SpellCheckModal } from './SpellCheckModal';
 import { EInvoiceModal, PortfolioModal } from './EInvoiceModals';
 import { PageSizeModal } from './PageToolModals';
+import { CustomizeModal } from '@/components/shell/CustomizeModal';
 import { FolderSearchModal } from './FolderSearchModal';
 import { CertEncryptModal, CertKeyDialog } from './CertEncryptModals';
 import { RecoverModal } from './RecoverModal';
@@ -57,6 +58,7 @@ export function Modals() {
       <EInvoiceModal />
       <PortfolioModal />
       <PageSizeModal />
+      <CustomizeModal />
       <FolderSearchModal />
       <CertEncryptModal />
       <CertKeyDialog />

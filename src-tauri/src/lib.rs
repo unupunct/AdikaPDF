@@ -15,6 +15,7 @@ mod certstore;
 mod scanner;
 mod automation;
 mod spellcheck;
+mod shellops;
 
 use percent_encoding::percent_decode_str;
 use std::path::PathBuf;
@@ -111,17 +112,13 @@ pub fn run() {
         // A second launch (Explorer "Open with", the virtual printer) hands its
         // files to the running window, which opens them as new tabs.
         builder = builder.plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
-            let files: Vec<String> = argv
-                .iter()
-                .skip(1)
-                .filter(|a| a.to_ascii_lowercase().ends_with(".pdf") && std::path::Path::new(a).is_file())
-                .cloned()
-                .collect();
+            // Open, combine (Explorer's "Combine in Adika") or convert: the running window does it.
+            let req = shellops::launch_from_args(argv);
             if let Some(w) = app.get_webview_window("main") {
                 let _ = w.unminimize();
                 let _ = w.set_focus();
-                if !files.is_empty() {
-                    let _ = w.emit("adika://open-files", files);
+                if !req.files.is_empty() {
+                    let _ = w.emit("adika://launch", req);
                 }
             }
         }));
@@ -181,6 +178,11 @@ pub fn run() {
             spellcheck::spell_languages,
             spellcheck::spell_check,
             spellcheck::spell_add,
+            shellops::launch_request,
+            shellops::mail_prepare,
+            shellops::mail_send,
+            shellops::reveal_in_explorer,
+            shellops::open_document_window,
             net::http_request,
             net::system_certificates,
             pkcs11::pkcs11_detect_modules,

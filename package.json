@@ -10,6 +10,7 @@
     "assets": "node scripts/copy-pdfjs-assets.mjs && node scripts/copy-ocr-assets.mjs",
     "dev": "vite",
     "build": "npm run assets && tsc -b && vite build",
+    "build:thumbs": "cargo build --release --offline --manifest-path src-tauri/thumbs/Cargo.toml",
     "preview": "vite preview",
     "typecheck": "tsc -b",
     "test": "vitest run",

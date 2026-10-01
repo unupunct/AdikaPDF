@@ -221,7 +221,7 @@ export async function compareVisually(): Promise<void> {
 }
 
 /** Compares the current document (new version) with a PDF the user picks (old version). */
-export async function compareWithFile(): Promise<void> {
+export async function compareWithFile(redline = false): Promise<void> {
   const s = usePDFStore.getState();
   if (!s.pages.length) return;
   const [f] = await pickFiles(PDF_FILTER);
@@ -233,7 +233,8 @@ export async function compareWithFile(): Promise<void> {
     const [oldDoc, newDoc] = await Promise.all([openPdf(f.bytes), openPdf(newBytes)]);
     try {
       const { comparePdfs } = await import('@/lib/pdf/compare');
-      return await comparePdfs(oldDoc, f.bytes, newDoc, newBytes, (v) => loadFontBytes(v), { oldName: f.name, newName });
+      const { translate } = await import('@/lib/i18n');
+      return await comparePdfs(oldDoc, f.bytes, newDoc, newBytes, (v) => loadFontBytes(v), { oldName: f.name, newName, redline: redline ? { title: translate('List of changes'), page: translate('Page {0}') } : undefined });
     } finally {
       await Promise.all([oldDoc.loadingTask.destroy().catch(() => undefined), newDoc.loadingTask.destroy().catch(() => undefined)]);
     }

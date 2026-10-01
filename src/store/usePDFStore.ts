@@ -85,7 +85,8 @@ export type ModalId =
   | 'spell'
   | 'einvoice'
   | 'portfolio'
-  | 'pageSize';
+  | 'pageSize'
+  | 'customize';
 
 export interface Toast {
   id: string;
@@ -93,7 +94,7 @@ export interface Toast {
   message: string;
 }
 
-export type SidebarTab = 'pages' | 'bookmarks' | 'comments' | 'attachments' | 'layers' | 'search';
+export type SidebarTab = 'pages' | 'bookmarks' | 'comments' | 'attachments' | 'layers' | 'tags' | 'search';
 
 export interface NavPoint {
   pageId: string;

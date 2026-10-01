@@ -1,0 +1,36 @@
+[package]
+name = "adika-thumbs"
+version = "1.9.0"
+description = "Explorer thumbnails for PDF files (Adika PDF Editor), drawn by the Windows PDF renderer"
+edition = "2021"
+license = "MIT"
+publish = false
+
+[lib]
+name = "adika_thumbs"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+windows-core = "0.61"
+windows = { version = "0.61.3", features = [
+  "Data_Pdf",
+  "Foundation",
+  "Graphics_Imaging",
+  "Storage_Streams",
+  "Win32_Foundation",
+  "Win32_Graphics_Gdi",
+  "Win32_System_Com",
+  "Win32_System_Com_StructuredStorage",
+  "Win32_System_LibraryLoader",
+  "Win32_Security",
+  "Win32_System_Registry",
+  "Win32_System_WinRT",
+  "Win32_UI_Shell",
+  "Win32_UI_Shell_PropertiesSystem",
+] }
+
+[profile.release]
+opt-level = "s"
+lto = true
+strip = true
+codegen-units = 1
