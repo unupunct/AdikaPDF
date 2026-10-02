@@ -137,7 +137,7 @@ describe('action sequences', () => {
     expect(sequenceProblem([])).toMatch(/at least one step/);
     expect(sequenceProblem([{ kind: 'protect', userPassword: 'x' }, { kind: 'flatten' }])).toMatch(/must be the last step/);
     expect(sequenceProblem([{ kind: 'pdfa' }, { kind: 'watermark', text: 'X' }])).toMatch(/PDF\/A/);
-    expect(sequenceProblem([{ kind: 'pdfa' }, { kind: 'protect', userPassword: 'x' }])).toBeNull();
+    expect(sequenceProblem([{ kind: 'pdfa' }, { kind: 'protect', userPassword: 'x' }])).toMatch(/forbids encryption/);
     expect(sequenceProblem([{ kind: 'protect', userPassword: '' }])).toMatch(/password/);
     expect(sequenceSuffix('Scanări → Arhivă 2026')).toBe('-scanari-arhiva-2026');
     expect(sequenceSuffix('  ')).toBe('-processed');
