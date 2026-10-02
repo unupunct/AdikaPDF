@@ -65,6 +65,10 @@ export interface SourceDoc {
   name: string;
   bytes: Uint8Array;
   pageCount: number;
+  /** The password it was opened with (memory only: handed to another window, never written to disk). */
+  password?: string;
+  /** The bytes are the file as opened from disk (not rewritten), so an incremental update can be appended. */
+  original?: boolean;
 }
 
 /** One page of the working document, pointing at a page of a source (or blank). */

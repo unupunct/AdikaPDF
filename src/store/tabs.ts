@@ -23,6 +23,7 @@ const DOC_KEYS = [
   'filePath',
   'readOnlyReason',
   'dirty',
+  'savedDoc',
   'signatureStatus',
   'zoom',
   'fitMode',
@@ -62,18 +63,17 @@ function capture(): DocSlice {
 }
 
 function emptySlice(): DocSlice {
+  const doc = { pages: [], objects: [], fieldValues: {}, outline: null };
   return {
     sources: {},
-    pages: [],
-    objects: [],
-    fieldValues: {},
-    outline: null,
+    ...doc,
     past: [],
     future: [],
     fileName: null,
     filePath: null,
     readOnlyReason: null,
     dirty: false,
+    savedDoc: doc,
     signatureStatus: [],
     zoom: 1,
     fitMode: 'width',
@@ -169,6 +169,25 @@ export function removeTab(id: string): void {
 /** True when the active tab is empty (welcome screen). */
 export function activeTabIsEmpty(): boolean {
   return usePDFStore.getState().pages.length === 0;
+}
+
+/** A tab's document state: live for the active tab, parked for the others. */
+export function tabSlice(id: string): DocSlice | null {
+  const { tabs, activeId } = useTabs.getState();
+  if (id === activeId) return capture();
+  return tabs.find((t) => t.id === id)?.slice ?? null;
+}
+
+const samePath = (a: string, b: string) => a.replace(/\//g, '\\').toLowerCase() === b.replace(/\//g, '\\').toLowerCase();
+
+/** The tab that has this file open, if any (Windows paths: case does not matter). */
+export function tabWithPath(path: string): string | null {
+  const { tabs } = useTabs.getState();
+  for (const t of tabs) {
+    const p = tabSlice(t.id)?.filePath;
+    if (p && samePath(p, path)) return t.id;
+  }
+  return null;
 }
 
 /** Every tab with unsaved changes (for the close-window prompt). */
