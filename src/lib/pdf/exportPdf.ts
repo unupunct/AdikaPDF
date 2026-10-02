@@ -45,6 +45,7 @@ import {
   PDFTextField,
   StandardFonts,
   clip,
+  clipEvenOdd,
   concatTransformationMatrix,
   degrees,
   drawObject,
@@ -73,6 +74,7 @@ import type {
 } from '@/types';
 import {
   displaySize,
+  objectDisplayBounds,
   displayToPdfMatrix,
   multiply,
   rotateCw,
@@ -552,6 +554,40 @@ function drawPen(page: PDFPage, pm: Matrix, o: PenObject): void {
   });
 }
 
+// ---------------------------------------------------------------- redaction
+
+/** Objects whose content cannot be cut: under a redaction box they are left out. */
+const CLIPPABLE = new Set<EditorObject['type']>(['rect', 'ellipse', 'highlight', 'line', 'arrow']);
+
+/**
+ * What happens to an object under a redaction box: plain shapes and lines are
+ * clipped out of the boxes; text, pictures, ink, drawings, comments and
+ * fields are dropped (their data would otherwise stay in the file).
+ */
+export function redactionFate(o: EditorObject, rects: Rect[]): 'keep' | 'clip' | 'drop' {
+  if (o.type === 'redact') return 'keep';
+  const b = objectDisplayBounds(o);
+  const eps = 0.01;
+  const hit = rects.some((r) => b.x < r.x + r.width - eps && r.x < b.x + b.width - eps && b.y < r.y + r.height - eps && r.y < b.y + b.height - eps);
+  if (!hit) return 'keep';
+  return CLIPPABLE.has(o.type) ? 'clip' : 'drop';
+}
+
+/** The objects of a redacted page: those under a box dropped, the boxes themselves last so nothing is drawn over them. */
+function orderForRedaction(list: EditorObject[], rects: Rect[]): EditorObject[] {
+  return [...list.filter((o) => o.type !== 'redact' && redactionFate(o, rects) !== 'drop'), ...list.filter((o) => o.type === 'redact')];
+}
+
+/** Opens a graphics state whose clip leaves out every redaction box (closed with Q). */
+function clipOutRedactions(page: PDFPage, pm: Matrix, rects: Rect[]): void {
+  page.pushOperators(pushGraphicsState());
+  // One even-odd clip per box: the clips intersect, so overlapping boxes stay out too.
+  for (const d of rects) {
+    const r = transformRectBounds(pm, d);
+    page.pushOperators(rectangle(-1e5, -1e5, 2e5, 2e5), rectangle(r.x, r.y, r.width, r.height), clipEvenOdd(), endPath());
+  }
+}
+
 // ---------------------------------------------------------------- forms
 
 /** The value of a form field as text (fields created from objects first, then the document's own). */
@@ -924,14 +960,27 @@ export async function buildPdf(input: ExportInput, options: ExportOptions = {}):
     if (!list) continue;
     const rotation: Rotation = rasterized ? 0 : totalRotation(ref);
     const pm = displayToPdfMatrix(rotation, visibleBox(page));
-    for (const o of list) {
+    const redactRects = redactsByPage.get(ref.id) ?? [];
+    if (redactRects.length && coverReplaced.has(ref.id)) {
+      // Replacement text under a box is left out; the old letters it should have covered still are.
+      for (const o of list) {
+        if (o.type !== 'text' || !o.replaces?.length || redactionFate(o, redactRects) !== 'drop') continue;
+        withMatrix(page, pm, () => {
+          for (const r of o.replaces!) page.drawRectangle({ x: r.x, y: r.y, width: r.width, height: r.height, color: rgb(1, 1, 1) });
+        });
+      }
+    }
+    for (const o of redactRects.length ? orderForRedaction(list, redactRects) : list) {
       const review = (o as { reviewStatus?: ReviewState }).reviewStatus;
       const annotsBefore = review ? (page.node.Annots()?.size() ?? 0) : 0;
+      const clipped = redactRects.length > 0 && redactionFate(o, redactRects) === 'clip';
+      if (clipped) clipOutRedactions(page, pm, redactRects);
       // An object in a layer: its page content is marked as that layer's.
       const layer = o.layer && LAYERED.has(o.type) && !(o.type === 'text' && o.annotation) ? layerForContent(ctx.doc, page, o.layer) : null;
       if (layer) page.pushOperators(PDFOperator.of('BDC' as never, [PDFName.of('OC'), PDFName.of(layer)]));
       await writeObject(o);
       if (layer) page.pushOperators(PDFOperator.of('EMC' as never));
+      if (clipped) page.pushOperators(popGraphicsState());
       if (review && review !== 'None') {
         // The comment's annotation: the first one added for it that is not its popup.
         const annots = page.node.Annots();
