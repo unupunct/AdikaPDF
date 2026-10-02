@@ -6,7 +6,8 @@ import { currentDoc, usePDFStore } from '@/store/usePDFStore';
 import { askConfirm, askPassword } from '@/store/useDialogs';
 import { buildPdf, ExportError, type ExportOptions, type RasterResult } from '@/lib/pdf/exportPdf';
 import { PasswordRequiredError, canvasToBytes, rasterizePage } from '@/lib/pdf/pdfService';
-import { fileStamp, pickFiles, saveBytes, readFile, type FileFilter } from '@/lib/platform';
+import { fileStamp, pickFiles, readFile, type FileFilter } from '@/lib/platform';
+import { saveFile } from './saveGuard';
 import { activeTabIsEmpty, newTab, removeTab, switchTab, useTabs } from '@/store/tabs';
 import { addRecent } from '@/lib/recent';
 import { errorText, log } from '@/lib/log';
@@ -23,13 +24,32 @@ export function errorMessage(e: unknown): string {
   return typeof e === 'string' ? e : 'Unexpected error';
 }
 
-/** Runs `fn` with the busy overlay and turns failures into an error toast. */
-export async function withBusy<T>(message: string, fn: (progress: (msg: string, fraction: number | null) => void) => Promise<T>): Promise<T | undefined> {
+/** True for the error an aborted operation throws (`signal.throwIfAborted()`). */
+export function isAbortError(e: unknown): boolean {
+  return (e instanceof DOMException || e instanceof Error) && e.name === 'AbortError';
+}
+
+/**
+ * Runs `fn` with the busy overlay and turns failures into an error toast.
+ * A callback that takes the `signal` argument can be cancelled: the overlay
+ * shows Cancel, and a cancelled run returns undefined (its result is dropped).
+ */
+export async function withBusy<T>(message: string, fn: (progress: (msg: string, fraction: number | null) => void, signal: AbortSignal) => Promise<T>): Promise<T | undefined> {
   const store = usePDFStore.getState();
-  store.setBusy({ message, progress: null });
+  const controller = new AbortController();
+  const abort = fn.length >= 2 ? controller : undefined;
+  store.setBusy({ message, progress: null, abort });
   try {
-    return await fn((msg, fraction) => usePDFStore.getState().setBusy({ message: msg, progress: fraction }));
+    const result = await fn((msg, fraction) => usePDFStore.getState().setBusy({ message: msg, progress: fraction, abort }), controller.signal);
+    if (controller.signal.aborted) throw controller.signal.reason;
+    return result;
   } catch (e) {
+    // Whatever a cancelled run threw, the user asked for it to stop.
+    if (controller.signal.aborted) {
+      log('info', `${message} cancelled`);
+      usePDFStore.getState().toast('Cancelled.', 'info');
+      return undefined;
+    }
     console.error(e);
     log('error', `${message} failed: ${errorText(e)}`);
     usePDFStore.getState().toast(errorMessage(e), 'error');
@@ -249,14 +269,16 @@ export async function saveDocument(saveAs = false): Promise<boolean> {
     });
     if (!ok) return false;
   }
-  const result = await withBusy('Saving…', async (progress) => {
+  const bytes = await withBusy('Saving…', async (progress) => {
     // A converted XFA form that was only filled in stays the original XFA form.
     const xfa = await import('./xfaForms').then((m) => m.xfaSaveBytes());
-    const bytes = xfa ?? (await exportCurrentPdf({}, progress));
-    const path = await saveBytes(bytes, suggestedName(), PDF_FILTER, saveAs ? null : s.filePath);
-    return { path, bytes };
+    return xfa ?? (await exportCurrentPdf({}, progress));
   });
-  if (!result?.path) return false;
+  if (!bytes) return false;
+  // A failed write offers "Save as…" to another location.
+  const path = await saveFile(bytes, suggestedName(), PDF_FILTER, { existingPath: saveAs ? null : s.filePath, retry: () => saveDocument(true), successMessage: false });
+  const result = { path, bytes };
+  if (!result.path) return false;
   const name = result.path === 'downloaded' ? suggestedName() : result.path.split(/[\\/]/).pop();
   usePDFStore.getState().markSaved(result.path === 'downloaded' ? null : result.path, name);
   if (result.path !== 'downloaded') {
@@ -268,16 +290,10 @@ export async function saveDocument(saveAs = false): Promise<boolean> {
 }
 
 /** Saves bytes produced by an operation (sign, protect, compress…) as a new file. */
-export async function saveDerived(bytes: Uint8Array, suffix: string, reopen: boolean): Promise<void> {
-  const path = await saveBytes(bytes, suggestedName(suffix), PDF_FILTER);
-  if (!path) return;
-  const store = usePDFStore.getState();
-  if (path === 'downloaded') {
-    store.toast('Downloaded.', 'success');
-    return;
-  }
-  store.toast(`Saved to ${path}`, 'success');
-  if (reopen) await openPdfBytes(bytes, path.split(/[\\/]/).pop() ?? path, path, true);
+export async function saveDerived(bytes: Uint8Array, suffix: string, reopen: boolean): Promise<string | null> {
+  const path = await saveFile(bytes, suggestedName(suffix), PDF_FILTER, { retry: () => saveDerived(bytes, suffix, reopen) });
+  if (reopen && path && path !== 'downloaded') await openPdfBytes(bytes, path.split(/[\\/]/).pop() ?? path, path, true);
+  return path;
 }
 
 export async function refreshSignatureStatus(): Promise<void> {

@@ -236,7 +236,7 @@ export async function addArchiveTimestamp(tsaUrl: string): Promise<void> {
     return { ...ltv, bytes: await addDocumentTimestamp(ltv.bytes, { tsaUrl, fetchImpl: isDesktop ? nativeFetch : undefined }) };
   });
   if (!res) return;
-  await saveDerived(res.bytes, '-lta', true);
+  if (!(await saveDerived(res.bytes, '-lta', true))) return;
   await refreshSignatureStatus();
   await verifyCurrentSignatures(false);
   usePDFStore.getState().toast(res.complete ? 'Archive timestamp added (PAdES B-LTA).' : `Archive timestamp added, but the validation data is incomplete: ${res.notes.join(' ')}`, res.complete ? 'success' : 'info');
@@ -255,7 +255,7 @@ export async function addLongTermValidation(): Promise<void> {
     addValidationData(bytes, { trustedRoots: await trustedRoots(), httpGet: isDesktop ? httpGet : undefined, httpPost: isDesktop ? httpPost : undefined }),
   );
   if (!res) return;
-  await saveDerived(res.bytes, '-ltv', true);
+  if (!(await saveDerived(res.bytes, '-ltv', true))) return;
   await refreshSignatureStatus();
   usePDFStore.getState().toast(res.complete ? 'Long-term validation data added: the signatures can be verified offline, years from now.' : `Validation data added, but incomplete: ${res.notes.join(' ')}`, res.complete ? 'success' : 'info');
 }

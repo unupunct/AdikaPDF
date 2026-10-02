@@ -92,6 +92,13 @@ export interface Toast {
   id: string;
   kind: 'info' | 'success' | 'error';
   message: string;
+  /** A button on the toast, e.g. "Save as…" after a failed save. */
+  action?: ToastAction;
+}
+
+export interface ToastAction {
+  label: string;
+  run: () => void;
 }
 
 export type SidebarTab = 'pages' | 'bookmarks' | 'comments' | 'attachments' | 'layers' | 'tags' | 'search';
@@ -119,6 +126,8 @@ export interface BusyState {
   message: string;
   /** 0..1, or null for indeterminate. */
   progress: number | null;
+  /** Set when the operation can be cancelled: the overlay shows a Cancel button. */
+  abort?: AbortController;
 }
 
 interface PDFState extends UndoableState {
@@ -236,7 +245,7 @@ interface PDFState extends UndoableState {
   setTheme: (t: 'light' | 'dark') => void;
   openModal: (m: ModalId) => void;
   setBusy: (b: BusyState | null) => void;
-  toast: (message: string, kind?: Toast['kind']) => void;
+  toast: (message: string, kind?: Toast['kind'], action?: ToastAction) => void;
   dismissToast: (id: string) => void;
   setSearch: (patch: Partial<PDFState['search']>) => void;
   saveSignature: (sig: SavedSignature) => void;
@@ -710,10 +719,10 @@ export const usePDFStore = create<PDFState>()((set, get) => ({
   },
   openModal: (modal) => set({ modal }),
   setBusy: (busy) => set({ busy }),
-  toast: (message, kind = 'info') => {
+  toast: (message, kind = 'info', action) => {
     const id = uid('toast');
-    set((s) => ({ toasts: [...s.toasts.slice(-4), { id, kind, message }] }));
-    setTimeout(() => get().dismissToast(id), kind === 'error' ? 9000 : 4500);
+    set((s) => ({ toasts: [...s.toasts.slice(-4), { id, kind, message, action }] }));
+    setTimeout(() => get().dismissToast(id), action ? 15000 : kind === 'error' ? 9000 : 4500);
   },
   dismissToast: (id) => set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })),
   setSearch: (patch) => set((s) => ({ search: { ...s.search, ...patch } })),

@@ -7,8 +7,9 @@ import { PDFDocument } from 'pdf-lib';
 import { marked } from 'marked';
 import { usePDFStore } from '@/store/usePDFStore';
 import { exportCurrentPdf, openPdfBytes, saveDerived, suggestedName, withBusy, PDF_FILTER } from './document';
+import { saveFile } from './saveGuard';
 import { openPdf, type PDFDocumentProxy } from '@/lib/pdf/pdfService';
-import { htmlToPdf, officeToPdf, pickFiles, pickPaths, readFile, saveBytes, scanPage, isDesktop } from '@/lib/platform';
+import { htmlToPdf, officeToPdf, pickFiles, pickPaths, readFile, scanPage, isDesktop } from '@/lib/platform';
 import { imageFileToDataUrl } from '@/lib/objectFactory';
 import { decodeTiff } from '@/lib/images';
 import {
@@ -426,8 +427,7 @@ export async function exportAs(req: ExportRequest): Promise<void> {
     }, progress),
   );
   if (!result) return;
-  const path = await saveBytes(result, `${baseName()}.${info.ext}`, [{ name: info.label, extensions: [info.ext] }]);
-  if (path) usePDFStore.getState().toast(path === 'downloaded' ? 'Downloaded.' : `Saved to ${path}`, 'success');
+  await saveFile(result, `${baseName()}.${info.ext}`, [{ name: info.label, extensions: [info.ext] }]);
 }
 
 // ================================================================ OCR / compress / PDF-A / flatten
@@ -466,10 +466,10 @@ export async function runOcr(opts: { pageNumbers: number[]; dpi: number; lang: s
     }, progress),
   );
   if (!out) return;
+  if (!(await saveDerived(out.bytes, editable ? '-editable' : '-ocr', true))) return;
   usePDFStore
     .getState()
     .toast(editable ? `OCR found ${out.words} words. The text is now real, editable text (Edit → Edit text).` : `OCR found ${out.words} words. The text layer is now searchable and selectable.`, 'success');
-  await saveDerived(out.bytes, editable ? '-editable' : '-ocr', true);
 }
 
 export async function runCompress(opts: CompressOptions): Promise<{ before: number; after: number } | undefined> {
@@ -649,15 +649,14 @@ export async function splitDocument(ranges: number[][], names: Array<string | nu
   });
   if (!outputs) return;
   if (outputs.length === 1) {
-    await saveBytes(outputs[0].bytes, outputs[0].name, PDF_FILTER);
+    await saveFile(outputs[0].bytes, outputs[0].name, PDF_FILTER);
     return;
   }
   const JSZip = (await import('jszip')).default;
   const zip = new JSZip();
   for (const f of outputs) zip.file(f.name, f.bytes);
   const blob = await zip.generateAsync({ type: 'blob' });
-  const path = await saveBytes(blob, `${base}-split.zip`, [{ name: 'ZIP archive', extensions: ['zip'] }]);
-  if (path) usePDFStore.getState().toast(`Split into ${outputs.length} files.`, 'success');
+  await saveFile(blob, `${base}-split.zip`, [{ name: 'ZIP archive', extensions: ['zip'] }], { successMessage: `Split into ${outputs.length} files.` });
 }
 
 /** Parses "1-3, 5, 8-" style ranges (1-based, inclusive). */

@@ -9,7 +9,7 @@ import { create } from 'zustand';
 import { usePDFStore } from '@/store/usePDFStore';
 import { onSourceRelease, pdfjs } from '@/lib/pdf/pdfService';
 import { isPdfEncrypted } from '@/lib/crypto/encrypt';
-import { saveBytes } from '@/lib/platform';
+import { saveFile } from './saveGuard';
 
 const originals = new Map<string, Uint8Array>();
 
@@ -106,6 +106,5 @@ export async function exportXfaData(): Promise<void> {
     return;
   }
   const name = `${(s.fileName ?? 'form').replace(/\.pdf$/i, '')}-data.xml`;
-  const path = await saveBytes(new TextEncoder().encode(xml), name, [{ name: 'XML data', extensions: ['xml'] }]);
-  if (path) s.toast(path === 'downloaded' ? 'Downloaded.' : `Saved to ${path}`, 'success');
+  await saveFile(new TextEncoder().encode(xml), name, [{ name: 'XML data', extensions: ['xml'] }]);
 }

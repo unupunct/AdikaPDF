@@ -3,7 +3,7 @@ import { PDFCheckBox, PDFDocument, PDFDropdown, PDFName, PDFOptionList, PDFRadio
 import { usePDFStore } from '@/store/usePDFStore';
 import { exportCurrentPdf, primarySourceBytes, saveDerived, suggestedName, withBusy } from './document';
 import { encryptPdf, type PdfPermissions } from '@/lib/crypto/encrypt';
-import { saveBytes } from '@/lib/platform';
+import { saveFile } from './saveGuard';
 import type { FieldLogic } from '@/lib/formLogic';
 
 export async function protectDocument(userPassword: string, ownerPassword: string, permissions: PdfPermissions): Promise<void> {
@@ -86,8 +86,7 @@ export async function exportFormCsv(): Promise<void> {
     return;
   }
   const csv = new TextEncoder().encode(fieldsToCsv(fields));
-  const path = await saveBytes(csv, suggestedName('-form-data').replace(/\.pdf$/, '.csv'), [{ name: 'CSV', extensions: ['csv'] }]);
-  if (path) s.toast(`Exported ${fields.length} fields.`, 'success');
+  await saveFile(csv, suggestedName('-form-data').replace(/\.pdf$/, '.csv'), [{ name: 'CSV', extensions: ['csv'] }], { successMessage: `Exported ${fields.length} fields.` });
 }
 
 /** Batch extraction: one CSV row per selected PDF (collect submitted forms). */
@@ -108,6 +107,5 @@ export async function batchExtractFormCsv(files: Array<{ name: string; bytes: Ui
     );
   }
   const csv = new TextEncoder().encode(`﻿${lines.join('\r\n')}\r\n`);
-  const path = await saveBytes(csv, 'form-responses.csv', [{ name: 'CSV', extensions: ['csv'] }]);
-  if (path) usePDFStore.getState().toast(`Extracted ${rows.length} forms.`, 'success');
+  await saveFile(csv, 'form-responses.csv', [{ name: 'CSV', extensions: ['csv'] }], { successMessage: `Extracted ${rows.length} forms.` });
 }

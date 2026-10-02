@@ -7,7 +7,8 @@
 import { usePDFStore } from '@/store/usePDFStore';
 import { translate, useLang } from '@/lib/i18n';
 import { loadFontBytes } from '@/lib/fonts';
-import { pickFiles, saveBytes } from '@/lib/platform';
+import { pickFiles } from '@/lib/platform';
+import { saveFile } from './saveGuard';
 import { checkEInvoice, detectEInvoice, parseEInvoice, pickInvoiceXml, type EInvoice } from '@/lib/einvoice/parse';
 import { EN_LABELS, paymentMeansName, type InvoiceLabels } from '@/lib/einvoice/render';
 import { errorMessage, exportCurrentPdf, openPdfBytes, primarySourceBytes, saveDerived, withBusy } from './document';
@@ -102,8 +103,7 @@ export async function currentEInvoice(): Promise<{ name: string; xml: string; in
 }
 
 export async function saveInvoiceXml(xml: string, name: string): Promise<void> {
-  const path = await saveBytes(new TextEncoder().encode(xml), name, [{ name: 'XML data', extensions: ['xml'] }]);
-  if (path) usePDFStore.getState().toast(path === 'downloaded' ? 'Downloaded.' : `Saved to ${path}`, 'success');
+  await saveFile(new TextEncoder().encode(xml), name, [{ name: 'XML data', extensions: ['xml'] }]);
 }
 
 /** Embeds an invoice XML into the open PDF: Factur-X / ZUGFeRD for CII, a PDF/A-3 with the UBL invoice otherwise. */
@@ -123,7 +123,7 @@ export async function makeEInvoicePdf(): Promise<void> {
   });
   if (!r) return;
   try {
-    await saveDerived(r.bytes, r.kind === 'Factur-X' ? '-facturx' : '-einvoice', true);
+    if (!(await saveDerived(r.bytes, r.kind === 'Factur-X' ? '-facturx' : '-einvoice', true))) return;
     usePDFStore.getState().toast(r.kind === 'Factur-X' ? `Factur-X / ZUGFeRD invoice made (profile ${r.level}).` : 'PDF/A-3 made with the invoice XML embedded.', 'success');
   } catch (e) {
     usePDFStore.getState().toast(errorMessage(e), 'error');
