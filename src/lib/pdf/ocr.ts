@@ -126,6 +126,8 @@ export async function ocrPages(
     lang?: string | string[];
     /** Called with each recognised page and its pixels (e.g. to read paper and ink colours). */
     sample?: (result: OcrPageResult, pixels: { data: Uint8ClampedArray; width: number; height: number; scale: number }) => void;
+    /** Paint table lines white before recognising: letters touching ruling lines read much better. */
+    eraseLines?: boolean;
   },
   onProgress?: (msg: string, fraction: number) => void,
 ): Promise<OcrPageResult[]> {
@@ -160,6 +162,13 @@ export async function ocrPages(
       report(`Rendering page ${n}`, 0);
       // Rotation 0: boxes come out in unrotated page space.
       const { canvas, scale } = await renderPageToCanvas(pdf, n, dpi, 0);
+      if (opts.eraseLines) {
+        const ctx = canvas.getContext('2d') as CanvasRenderingContext2D;
+        const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const { rasterRules } = await import('@/lib/scan/rasterRules');
+        ctx.fillStyle = '#ffffff';
+        for (const r of rasterRules(img.data, img.width, img.height, scale)) ctx.fillRect(r.x0 * scale - 2, r.y0 * scale - 2, (r.x1 - r.x0) * scale + 4, (r.y1 - r.y0) * scale + 4);
+      }
       const png = await canvasToBlob(canvas, 'image/png');
       const widthPt = canvas.width / scale;
       const heightPt = canvas.height / scale;

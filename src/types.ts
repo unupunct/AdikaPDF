@@ -17,6 +17,7 @@ export type ToolId =
   | 'text'
   | 'editText'
   | 'editImage'
+  | 'editVector'
   | 'image'
   | 'rect'
   | 'ellipse'
@@ -92,6 +93,8 @@ interface BaseObject {
   rotation: number;
   opacity: number;
   locked?: boolean;
+  /** Layer (optional content group) the object is drawn in when saved; page content objects only. */
+  layer?: string;
 }
 
 export interface TextObject extends BaseObject {
@@ -121,6 +124,12 @@ export interface TextObject extends BaseObject {
    * whose original letters are deleted from the page content when saving.
    */
   replaces?: Array<{ x: number; y: number; width: number; height: number }>;
+  /**
+   * Edit text: the style the text has in the document. Changing only its
+   * colour or size keeps the document's own font; another typeface, bold or
+   * italic is written in Adika's font.
+   */
+  original?: { fontFamily: FontFamily; bold: boolean; italic: boolean; fontSize: number; color: string };
 }
 
 /** Comment metadata shared by annotation-type objects. */
@@ -253,6 +262,24 @@ export interface ShapeObject extends BaseObject {
   fill: string | null;
 }
 
+/**
+ * A drawing that was already in the PDF (Edit → Edit drawing): its path in
+ * the object's own box at its natural size, scaled to width × height.
+ */
+export interface VectorObject extends BaseObject {
+  type: 'vector';
+  width: number;
+  height: number;
+  /** Absolute M / L / C / Z path data, 0..naturalWidth × 0..naturalHeight, y down. */
+  path: string;
+  naturalWidth: number;
+  naturalHeight: number;
+  fill: string | null;
+  stroke: string | null;
+  strokeWidth: number;
+  evenOdd: boolean;
+}
+
 export interface LineObject extends BaseObject {
   type: 'line' | 'arrow';
   /** Local coordinates relative to (x, y): [x1, y1, x2, y2]. */
@@ -265,6 +292,8 @@ export interface PenObject extends BaseObject {
   type: 'pen';
   /** Flat local coordinates relative to (x, y). */
   points: number[];
+  /** Pen pressure (0-1) at each point: the line width varies with it. */
+  pressures?: number[];
   stroke: string;
   strokeWidth: number;
 }
@@ -329,6 +358,7 @@ export type EditorObject =
   | ShapeObject
   | LineObject
   | PenObject
+  | VectorObject
   | RedactObject
   | SignatureObject
   | FieldObject

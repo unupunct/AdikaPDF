@@ -590,6 +590,11 @@ export function VerifyModal() {
         <>
           <Checkbox checked={checkRevocation} onChange={setCheckRevocation} label="Check revocation online (OCSP / CRL)" disabled={!isDesktop} />
           <div className="flex-1" />
+          {status.length ? (
+            <Button onClick={() => void import('@/actions/reports').then((m) => m.saveValidationReport())} data-testid="verify-report" title="Save what was checked as a PDF report">
+              Save report
+            </Button>
+          ) : null}
           {signatures.length ? (
             <Button
               onClick={() => void addArchiveTimestamp('http://timestamp.digicert.com').then(() => setRan(true))}

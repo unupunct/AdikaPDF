@@ -81,7 +81,12 @@ export type ModalId =
   | 'foldersearch'
   | 'certencrypt'
   | 'recover'
-  | 'replacePages';
+  | 'replacePages'
+  | 'spell'
+  | 'einvoice'
+  | 'portfolio'
+  | 'pageSize'
+  | 'customize';
 
 export interface Toast {
   id: string;
@@ -89,7 +94,7 @@ export interface Toast {
   message: string;
 }
 
-export type SidebarTab = 'pages' | 'bookmarks' | 'comments' | 'attachments' | 'layers' | 'search';
+export type SidebarTab = 'pages' | 'bookmarks' | 'comments' | 'attachments' | 'layers' | 'tags' | 'search';
 
 export interface NavPoint {
   pageId: string;
@@ -102,6 +107,12 @@ export interface DocMeta {
   author?: string;
   subject?: string;
   keywords?: string;
+  /** Copyright (XMP rights): status, notice and a web page with the terms. */
+  rightsStatus?: 'unknown' | 'copyrighted' | 'public';
+  copyright?: string;
+  copyrightUrl?: string;
+  /** Custom properties of the document (Info dictionary), replacing the file's own. */
+  custom?: Record<string, string>;
 }
 
 export interface BusyState {

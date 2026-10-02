@@ -573,7 +573,7 @@ function spansOfLine(l: TextLine): TextSpan[] {
  * (mutating the spans in `pages`). Best effort: a page whose graphics cannot
  * be read keeps its text.
  */
-export async function collectDocxGraphics(pdf: PDFDocumentProxy, pages: PageText[], onProgress?: ProgressFn): Promise<DocxPageGraphics[]> {
+export async function collectDocxGraphics(pdf: PDFDocumentProxy, pages: PageText[], onProgress?: ProgressFn, opts: { scanned?: Set<number> } = {}): Promise<DocxPageGraphics[]> {
   const out: DocxPageGraphics[] = [];
   onProgress?.(0, pages.length);
   for (let i = 0; i < pages.length; i++) {
@@ -603,9 +603,21 @@ export async function collectDocxGraphics(pdf: PDFDocumentProxy, pages: PageText
           if (fig.labels.size) p.lines = p.lines.filter((l) => !fig.labels.has(l));
         }
       }
+      // A scanned page whose text was recognised: the scan itself is not copied (its text is), and
+      // the table lines drawn in it become rules, so its tables come out as tables.
+      const scanned = opts.scanned?.has(p.pageNumber) ?? false;
+      if (scanned && render) {
+        const c = render.canvas.getContext('2d') as CanvasRenderingContext2D | null;
+        const img = c?.getImageData(0, 0, render.canvas.width, render.canvas.height);
+        if (img) {
+          const { rasterRules } = await import('@/lib/scan/rasterRules');
+          result.rules.push(...rasterRules(img.data, img.width, img.height, render.scale));
+        }
+      }
       for (const found of scan.images) {
         const b = found.box;
         if (b.x1 - b.x0 < 6 || b.y1 - b.y0 < 6) continue;
+        if (scanned && (b.x1 - b.x0) * (b.y1 - b.y0) >= 0.7 * p.width * p.height) continue;
         const clipped = { x0: Math.max(0, b.x0), y0: Math.max(0, b.y0), x1: Math.min(p.width, b.x1), y1: Math.min(p.height, b.y1) };
         if (clipped.x1 - clipped.x0 < 6 || clipped.y1 - clipped.y0 < 6) continue;
         let enc: { data: Uint8Array; type: 'png' | 'jpg' } | null = null;

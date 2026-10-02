@@ -14,6 +14,7 @@ import { verifyPdfSignatures } from '@/lib/crypto/digitalSignature';
 import { isPdfEncrypted } from '@/lib/crypto/encrypt';
 import type { PageRef } from '@/types';
 import type { Rect } from '@/lib/geometry';
+import { formattedDisplay } from '@/store/formView';
 
 export const PDF_FILTER: FileFilter[] = [{ name: 'PDF documents', extensions: ['pdf'] }];
 
@@ -91,10 +92,26 @@ async function openIntoCurrentTab(bytes: Uint8Array, name: string, path: string 
     }
     usePDFStore.getState().toast('Opened with your certificate. Saving writes an unprotected copy unless you encrypt it again (Security → Certificate).', 'info');
   }
+  // A dynamic XFA form: shown as the regular PDF form pdf.js lays out from it.
+  let xfaOriginal: Uint8Array | null = null;
+  try {
+    const { convertIfDynamicXfa } = await import('./xfaForms');
+    const conv = await withBusyThrow(`Laying out the XFA form ${name}…`, () => convertIfDynamicXfa(bytes, name, () => undefined));
+    if (conv) {
+      xfaOriginal = conv.original;
+      bytes = conv.bytes;
+    }
+  } catch (e) {
+    log('warn', `XFA conversion of ${name} failed: ${errorText(e)}`);
+    usePDFStore.getState().toast(`This XFA form could not be laid out (${errorMessage(e)}). It is shown as stored in the file.`, 'error');
+  }
   for (;;) {
     try {
       await withBusyThrow(`Opening ${name}…`, () => usePDFStore.getState().loadDocument(bytes, name, path, password));
       void refreshSignatureStatus();
+      const primary = usePDFStore.getState().pages.find((p) => p.kind === 'source')?.sourceId;
+      if (primary) void import('./xfaForms').then((m) => m.noteXfaSource(primary, xfaOriginal));
+      if (!xfaOriginal) void import('./portfolio').then((m) => m.noteOpenedPdf(bytes));
       return true;
     } catch (e) {
       if (e instanceof PasswordRequiredError) {
@@ -138,7 +155,10 @@ async function withBusyThrow<T>(message: string, fn: () => Promise<T>): Promise<
 export async function openPdfPath(path: string): Promise<boolean> {
   try {
     const bytes = await readFile(path);
-    return openPdfBytes(bytes, path.split(/[\\/]/).pop() ?? path, path);
+    const name = path.split(/[\\/]/).pop() ?? path;
+    // An e-invoice XML (or the ZIP from ANAF) opens as a readable invoice.
+    if (/\.(xml|zip)$/i.test(name)) return (await import('./einvoice')).openEInvoice(bytes, name);
+    return openPdfBytes(bytes, name, path);
   } catch (e) {
     usePDFStore.getState().toast(errorMessage(e), 'error');
     return false;
@@ -146,9 +166,11 @@ export async function openPdfPath(path: string): Promise<boolean> {
 }
 
 export async function openDialog(): Promise<void> {
-  const files = await pickFiles(PDF_FILTER, false);
+  const files = await pickFiles([...PDF_FILTER, { name: 'E-invoices (XML, e-Factura ZIP)', extensions: ['xml', 'zip'] }], false);
   const f = files[0];
-  if (f) await openPdfBytes(f.bytes, f.name, f.path);
+  if (!f) return;
+  if (/\.(xml|zip)$/i.test(f.name)) await (await import('./einvoice')).openEInvoice(f.bytes, f.name);
+  else await openPdfBytes(f.bytes, f.name, f.path);
 }
 
 export async function mergeDialog(): Promise<void> {
@@ -196,6 +218,7 @@ export async function exportCurrentPdf(
   const input = excludeObjectIds.length ? { ...doc, objects: doc.objects.filter((o) => !excludeObjectIds.includes(o.id)) } : doc;
   return buildPdf(input, {
     meta: usePDFStore.getState().docMeta,
+    fieldDisplay: formattedDisplay(input.fieldValues),
     rasterizeRedactedPage: rasterizeWithRedactions,
     onProgress: (m, f) => progress?.(m, f),
     ...extra,
@@ -227,7 +250,9 @@ export async function saveDocument(saveAs = false): Promise<boolean> {
     if (!ok) return false;
   }
   const result = await withBusy('Saving…', async (progress) => {
-    const bytes = await exportCurrentPdf({}, progress);
+    // A converted XFA form that was only filled in stays the original XFA form.
+    const xfa = await import('./xfaForms').then((m) => m.xfaSaveBytes());
+    const bytes = xfa ?? (await exportCurrentPdf({}, progress));
     const path = await saveBytes(bytes, suggestedName(), PDF_FILTER, saveAs ? null : s.filePath);
     return { path, bytes };
   });

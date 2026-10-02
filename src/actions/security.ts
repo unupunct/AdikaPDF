@@ -1,5 +1,5 @@
 /** Password protection, permissions, metadata sanitising and form-data export. */
-import { PDFCheckBox, PDFDocument, PDFDropdown, PDFOptionList, PDFRadioGroup, PDFTextField } from 'pdf-lib';
+import { PDFCheckBox, PDFDocument, PDFDropdown, PDFName, PDFOptionList, PDFRadioGroup, PDFTextField } from 'pdf-lib';
 import { usePDFStore } from '@/store/usePDFStore';
 import { exportCurrentPdf, primarySourceBytes, saveDerived, suggestedName, withBusy } from './document';
 import { encryptPdf, type PdfPermissions } from '@/lib/crypto/encrypt';
@@ -33,7 +33,10 @@ export interface FormFieldInfo {
   required: boolean;
   /** Format / range / calculation read from the field's Acrobat actions. */
   logic?: FieldLogic;
+  /** What people call the field: its tooltip, or the last part of an XFA-style name. */
+  label?: string;
 }
+
 
 /** Existing AcroForm fields of a PDF (for the fill-in panel and CSV export). */
 export async function readFormFields(bytes: Uint8Array): Promise<FormFieldInfo[]> {
@@ -44,10 +47,10 @@ export async function readFormFields(bytes: Uint8Array): Promise<FormFieldInfo[]
     return [];
   }
   const out: FormFieldInfo[] = [];
-  const { readFieldLogic } = await import('@/lib/pdf/formScripts');
+  const { fieldLabel, readFieldLogic } = await import('@/lib/pdf/formScripts');
   const logic = readFieldLogic(doc);
   for (const f of doc.getForm().getFields()) {
-    const base = { name: f.getName(), readOnly: f.isReadOnly(), options: [] as string[], multiline: false, required: f.isRequired(), logic: logic[f.getName()] };
+    const base = { name: f.getName(), readOnly: f.isReadOnly(), options: [] as string[], multiline: false, required: f.isRequired(), logic: logic[f.getName()], label: fieldLabel(f.getName(), f.acroField.dict.lookup(PDFName.of('TU'))) };
     if (f instanceof PDFTextField) out.push({ ...base, kind: 'text', value: f.getText() ?? '', multiline: f.isMultiline() });
     else if (f instanceof PDFCheckBox) out.push({ ...base, kind: 'checkbox', value: f.isChecked() });
     else if (f instanceof PDFRadioGroup) out.push({ ...base, kind: 'radio', value: f.getSelected() ?? '', options: f.getOptions() });

@@ -27,6 +27,23 @@ try {
   const tabs = await app.page.evaluate(() => { const T = window.__adika.tabs; const st = T.useTabs.getState(); return st.tabs.map((t) => T.tabInfo(t, st.activeId).name); });
   if (tabs.length !== 2) throw new Error('expected 2 tabs, got ' + JSON.stringify(tabs));
   console.log('✓ forwarded to running window, tabs:', tabs.join(' | '));
+
+  // Explorer "Combine in Adika": one process per selected file; the window combines them.
+  const a = await makePdf('combine-b.pdf', 'Part B');
+  const b = await makePdf('combine-a.pdf', 'Part A');
+  spawnSync(exe, ['--combine', a], { timeout: 20000 });
+  spawnSync(exe, ['--combine', b], { timeout: 20000 });
+  await app.page.waitForFunction(() => /combine-a-combined.pdf$/.test(window.__adika.store.getState().fileName ?? '') && window.__adika.store.getState().pages.length === 2, null, { timeout: 20000 });
+  const order = await app.page.evaluate(() => { const s = window.__adika.store.getState(); return s.pages.map((p) => s.sources[p.sourceId].name); });
+  if (order.join(',') !== 'combine-a.pdf,combine-b.pdf') throw new Error('combined in name order, got ' + order);
+  console.log('✓ combined from two launches, in name order');
+
+  // Explorer "Convert to PDF with Adika": a picture becomes a PDF.
+  const png = join(tempDir(), 'poza.png');
+  writeFileSync(png, Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64'));
+  spawnSync(exe, ['--convert', png], { timeout: 20000 });
+  await app.page.waitForFunction(() => /poza/.test(window.__adika.store.getState().fileName ?? ''), null, { timeout: 20000 });
+  console.log('✓ converted a picture from a second launch');
 } finally {
   await app.close();
 }

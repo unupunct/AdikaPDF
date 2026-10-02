@@ -32,8 +32,8 @@ import { loadFontBytes } from '@/lib/fonts';
 // ================================================================ helpers
 
 /** Sheet rows per page from the page layout (a table row with wrapped cells stays one row). */
-async function xlsxRows(pdf: PDFDocumentProxy, text: Awaited<ReturnType<typeof extractStructuredText>>, onProgress?: (done: number, total: number) => void): Promise<string[][][]> {
-  const graphics = await (await import('@/lib/pdf/docx')).collectDocxGraphics(pdf, text, onProgress);
+async function xlsxRows(pdf: PDFDocumentProxy, text: Awaited<ReturnType<typeof extractStructuredText>>, onProgress?: (done: number, total: number) => void, scanned?: Set<number>): Promise<string[][][]> {
+  const graphics = await (await import('@/lib/pdf/docx')).collectDocxGraphics(pdf, text, onProgress, { scanned });
   const rows = (await import('@/lib/pdf/exportFormats')).layoutRows(text, graphics);
   return text.map((p) => rows.filter((r) => r.pageNumber === p.pageNumber).map((r) => r.cells));
 }
@@ -342,27 +342,53 @@ const FORMAT_INFO: Record<ExportFormat, { ext: string; label: string }> = {
 export async function exportAs(req: ExportRequest): Promise<void> {
   const info = FORMAT_INFO[req.format];
   const result = await withBusy(`Converting to ${info.label}…`, (progress) =>
-    withEditedDoc(async (pdf, bytes) => {
+    withEditedDoc(async (pdf0, bytes0) => {
       const tick = (label: string) => (done: number, total: number) => progress(`${label} (${done}/${total})`, total ? done / total : null);
       const needsText = ['docx', 'odt', 'rtf', 'xlsx', 'csv', 'pptx', 'html', 'epub', 'md', 'txt', 'json'].includes(req.format);
-      const text = needsText ? await extractStructuredText(pdf, tick('Reading text'), { detectBold: true, pageNumbers: req.pageNumbers }) : [];
+      let pdf = pdf0;
+      let bytes = bytes0;
+      let text = needsText ? await extractStructuredText(pdf, tick('Reading text'), { detectBold: true, pageNumbers: req.pageNumbers }) : [];
+      // Scanned pages (no text) are recognised first; their tables are found from the lines in the scan.
+      const scanned = new Set<number>();
+      const textFormats = ['docx', 'odt', 'rtf', 'xlsx', 'csv', 'epub', 'md', 'txt', 'json'];
+      const empty = textFormats.includes(req.format) ? text.filter((p) => !p.lines.length).map((p) => p.pageNumber) : [];
+      let ocrDoc: PDFDocumentProxy | null = null;
+      if (empty.length) {
+        let lang = ['ron', 'eng'];
+        try {
+          const v = JSON.parse(localStorage.getItem('adika.ocrLangs') ?? 'null') as unknown;
+          if (Array.isArray(v) && v.length) lang = v as string[];
+        } catch {
+          /* default languages */
+        }
+        const results = await ocrPages(pdf0, { pageNumbers: empty, dpi: 300, lang, eraseLines: true }, (m, f) => progress(m, f));
+        const found = results.filter((r) => r.words.length);
+        if (found.length) {
+          for (const r of found) scanned.add(r.pageNumber);
+          bytes = await makeSearchable(bytes0, found);
+          ocrDoc = await openPdf(bytes);
+          pdf = ocrDoc;
+          text = await extractStructuredText(pdf, tick('Reading text'), { detectBold: true, pageNumbers: req.pageNumbers });
+        }
+      }
+      try {
       switch (req.format) {
         case 'docx': {
           const { collectDocxGraphics, exportToDocx } = await import('@/lib/pdf/docx');
-          const graphics = await collectDocxGraphics(pdf, text, tick('Reading images and colours'));
+          const graphics = await collectDocxGraphics(pdf, text, tick('Reading images and colours'), { scanned });
           return exportToDocx(text, baseName(), { layout: req.docxLayout, graphics });
         }
         case 'odt':
         case 'rtf': {
           // Same layout as the Word export: pictures, colours and rules come from the rendered pages.
           const { collectDocxGraphics } = await import('@/lib/pdf/docx');
-          const graphics = await collectDocxGraphics(pdf, text, tick('Reading images and colours'));
+          const graphics = await collectDocxGraphics(pdf, text, tick('Reading images and colours'), { scanned });
           const formats = await import('@/lib/pdf/exportFormats');
           if (req.format === 'odt') return formats.exportToOdt(text, baseName(), graphics);
           return new Blob([formats.exportToRtf(text, baseName(), graphics)], { type: 'application/rtf' });
         }
         case 'csv': {
-          const graphics = await (await import('@/lib/pdf/docx')).collectDocxGraphics(pdf, text, tick('Reading tables'));
+          const graphics = await (await import('@/lib/pdf/docx')).collectDocxGraphics(pdf, text, tick('Reading tables'), { scanned });
           return new Blob([(await import('@/lib/pdf/exportFormats')).exportToCsv(text, { delimiter: ',' }, graphics)], { type: 'text/csv' });
         }
         case 'json': {
@@ -371,11 +397,11 @@ export async function exportAs(req: ExportRequest): Promise<void> {
           return new Blob([json], { type: 'application/json' });
         }
         case 'epub': {
-          const graphics = await (await import('@/lib/pdf/docx')).collectDocxGraphics(pdf, text, tick('Reading tables and lists'));
+          const graphics = await (await import('@/lib/pdf/docx')).collectDocxGraphics(pdf, text, tick('Reading tables and lists'), { scanned });
           return (await import('@/lib/pdf/epub')).pdfToEpub(text, { title: baseName(), author: '' }, graphics);
         }
         case 'xlsx':
-          return exportToXlsx(text, await xlsxRows(pdf, text, tick('Reading tables')));
+          return exportToXlsx(text, await xlsxRows(pdf, text, tick('Reading tables'), scanned));
         case 'pptx':
           return exportToPptx(pdf, text, { dpi: req.dpi, title: baseName() }, tick('Rendering slides'));
         case 'png':
@@ -388,11 +414,14 @@ export async function exportAs(req: ExportRequest): Promise<void> {
           return exportToHtml(pdf, text, { dpi: req.dpi, title: baseName() }, tick('Rendering pages'));
         case 'md': {
           const { collectDocxGraphics } = await import('@/lib/pdf/docx');
-          const graphics = await collectDocxGraphics(pdf, text, tick('Reading tables and lists'));
+          const graphics = await collectDocxGraphics(pdf, text, tick('Reading tables and lists'), { scanned });
           return new Blob([(await import('@/lib/pdf/exportFormats')).exportToMarkdown(text, graphics)], { type: 'text/markdown' });
         }
         case 'txt':
           return new Blob([exportPlainText(text)], { type: 'text/plain' });
+      }
+      } finally {
+        await ocrDoc?.loadingTask.destroy().catch(() => undefined);
       }
     }, progress),
   );

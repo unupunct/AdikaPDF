@@ -3,7 +3,8 @@
  * Layers (optional content) and Search results.
  */
 import { useEffect, useState, type ReactNode } from 'react';
-import { MessagesSquare, Bookmark, FileSearch, Layers as LayersIcon, LayoutGrid, Paperclip, Save, ExternalLink } from 'lucide-react';
+import { MessagesSquare, Bookmark, FileSearch, Layers as LayersIcon, LayoutGrid, Paperclip, Save, ExternalLink, Tags as TagsIcon } from 'lucide-react';
+import { TagsPanel } from './TagsPanel';
 import { usePDFStore, type SidebarTab } from '@/store/usePDFStore';
 import { ThumbnailSidebar } from './ThumbnailSidebar';
 import { Tooltip } from '@/components/ui/primitives';
@@ -20,6 +21,7 @@ const TABS: Array<{ id: SidebarTab; label: string; icon: ReactNode }> = [
   { id: 'comments', label: 'Comments', icon: <MessagesSquare size={16} /> },
   { id: 'attachments', label: 'Attachments', icon: <Paperclip size={16} /> },
   { id: 'layers', label: 'Layers', icon: <LayersIcon size={16} /> },
+  { id: 'tags', label: 'Tags', icon: <TagsIcon size={16} /> },
   { id: 'search', label: 'Search results', icon: <FileSearch size={16} /> },
 ];
 
@@ -50,6 +52,7 @@ export function LeftSidebar() {
         {tab === 'comments' ? <CommentsPanel /> : null}
         {tab === 'attachments' ? <AttachmentsPanel /> : null}
         {tab === 'layers' ? <LayersPanel /> : null}
+        {tab === 'tags' ? <TagsPanel /> : null}
         {tab === 'search' ? <SearchResultsPanel /> : null}
       </div>
     </aside>
@@ -151,7 +154,10 @@ interface LayerRow {
 function LayersPanel() {
   const sources = useSourceIds();
   const [rows, setRows] = useState<LayerRow[] | null>(null);
+  const [selected, setSelected] = useState<string[]>([]);
+  const [renaming, setRenaming] = useState<{ key: string; name: string } | null>(null);
   const key = sources.map((s) => s.id).join('|');
+  const rowKey = (r: LayerRow) => `${r.sourceId}:${r.id}`;
   const load = async () => {
     const out: LayerRow[] = [];
     for (const s of sources) {
@@ -162,6 +168,7 @@ function LayersPanel() {
       }
     }
     setRows(out);
+    setSelected((sel) => sel.filter((k) => out.some((r) => rowKey(r) === k)));
   };
   useEffect(() => {
     void load();
@@ -173,22 +180,103 @@ function LayersPanel() {
     usePDFStore.getState().bumpRenderEpoch();
     await load();
   };
+  const readOnly = usePDFStore((s) => s.readOnlyReason !== null);
+  const chosen = (rows ?? []).filter((r) => selected.includes(rowKey(r)));
+  // Layer edits work within one document: the first selected layer's.
+  const sameSource = chosen.filter((r) => r.sourceId === chosen[0]?.sourceId);
+  const act = async (fn: (m: typeof import('@/actions/layers')) => Promise<void>) => {
+    await fn(await import('@/actions/layers'));
+    setSelected([]);
+  };
   return (
     <>
       <PanelHeader title="Layers" />
       <div className="flex-1 overflow-auto p-2" data-testid="layers-panel">
         {rows && rows.length === 0 ? <Empty>This document has no layers.</Empty> : null}
-        {rows?.map((r) => (
-          <label key={`${r.sourceId}:${r.id}`} className="flex items-center gap-2 rounded-md px-1.5 py-1 text-[12.5px] hover-app">
-            <input type="checkbox" checked={r.visible} onChange={() => void toggle(r)} className="h-3.5 w-3.5 accent-[var(--color-brand-600)]" data-testid="layer-toggle" />
-            <span className="truncate" title={r.name}>
-              {r.name}
-            </span>
-          </label>
-        ))}
-        {rows?.length ? <p className="mt-2 px-1.5 text-[11px] text-muted">Showing or hiding layers changes only the view; the file keeps all layers.</p> : null}
+        {rows?.map((r) => {
+          const k = rowKey(r);
+          const isSel = selected.includes(k);
+          return (
+            <div
+              key={k}
+              data-testid="layer-row"
+              onClick={(e) => setSelected(e.ctrlKey || e.metaKey ? (isSel ? selected.filter((x) => x !== k) : [...selected, k]) : isSel && selected.length === 1 ? [] : [k])}
+              className={cn('flex cursor-default items-center gap-2 rounded-md px-1.5 py-1 text-[12.5px]', isSel ? 'bg-brand-100 dark:bg-brand-900/40' : 'hover-app')}
+            >
+              <input
+                type="checkbox"
+                checked={r.visible}
+                onClick={(e) => e.stopPropagation()}
+                onChange={() => void toggle(r)}
+                aria-label="Show layer"
+                className="h-3.5 w-3.5 accent-[var(--color-brand-600)]"
+                data-testid="layer-toggle"
+              />
+              {renaming?.key === k ? (
+                <input
+                  autoFocus
+                  value={renaming.name}
+                  aria-label="Layer name"
+                  data-testid="layer-name-input"
+                  data-no-translate
+                  onClick={(e) => e.stopPropagation()}
+                  onChange={(e) => setRenaming({ key: k, name: e.target.value })}
+                  onKeyDown={(e) => {
+                    e.stopPropagation();
+                    if (e.key === 'Enter') {
+                      const name = renaming.name;
+                      setRenaming(null);
+                      void act((m) => m.renameLayerIn(r.sourceId, r.id, name));
+                    } else if (e.key === 'Escape') setRenaming(null);
+                  }}
+                  onBlur={() => setRenaming(null)}
+                  className="h-6 min-w-0 flex-1 rounded border border-brand-500 bg-panel-2 px-1 text-[12px] outline-none"
+                />
+              ) : (
+                <span className="truncate" title={r.name} data-no-translate onDoubleClick={() => !readOnly && setRenaming({ key: k, name: r.name })}>
+                  {r.name}
+                </span>
+              )}
+            </div>
+          );
+        })}
+        {rows?.length && !readOnly ? (
+          <div className="mt-2 flex flex-wrap gap-1 px-1">
+            <LayerBtn disabled={sameSource.length !== 1} onClick={() => setRenaming({ key: rowKey(sameSource[0]), name: sameSource[0].name })} testId="layer-rename">
+              Rename
+            </LayerBtn>
+            <LayerBtn disabled={!sameSource.length} onClick={() => void act((m) => m.deleteLayersIn(sameSource[0].sourceId, sameSource.map((r) => r.id), sameSource.map((r) => r.name)))} testId="layer-delete">
+              Delete
+            </LayerBtn>
+            <LayerBtn disabled={sameSource.length < 2} onClick={() => void act((m) => m.mergeLayersIn(sameSource[0].sourceId, sameSource.map((r) => r.id), sameSource[0].id))} testId="layer-merge">
+              Merge
+            </LayerBtn>
+            <LayerBtn
+              onClick={() => {
+                const src = (chosen[0] ?? rows[0]).sourceId;
+                void act((m) => m.flattenLayersIn(src, rows.filter((r) => r.sourceId === src && !r.visible).map((r) => r.id)));
+              }}
+              testId="layer-flatten"
+            >
+              Flatten
+            </LayerBtn>
+          </div>
+        ) : null}
+        {rows?.length ? (
+          <p className="mt-2 px-1.5 text-[11px] text-muted">
+            The checkbox shows or hides a layer on screen. Select layers (Ctrl+click for several) to rename, delete or merge them; Flatten keeps what is visible as ordinary page content.
+          </p>
+        ) : null}
       </div>
     </>
+  );
+}
+
+function LayerBtn({ children, onClick, disabled, testId }: { children: ReactNode; onClick: () => void; disabled?: boolean; testId: string }) {
+  return (
+    <button type="button" disabled={disabled} onClick={onClick} data-testid={testId} className="rounded border border-app px-2 py-0.5 text-[11.5px] hover-app disabled:cursor-default disabled:opacity-40">
+      {children}
+    </button>
   );
 }
 

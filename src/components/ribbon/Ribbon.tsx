@@ -5,6 +5,11 @@
 import type { ReactNode } from 'react';
 import {
   ArrowUpRight,
+  Scaling,
+  Spline,
+  Receipt,
+  Package,
+  ListOrdered,
   BadgeCheck,
   BookCopy,
   Brush,
@@ -74,6 +79,7 @@ import {
   MousePointerClick,
   QrCode,
 } from 'lucide-react';
+import { useXfa } from '@/actions/xfaForms';
 import { usePDFStore } from '@/store/usePDFStore';
 import type { RibbonTab, ToolId } from '@/types';
 import { Tooltip, DropdownMenu, DropdownTrigger, DropdownContent, DropdownItem } from '@/components/ui/primitives';
@@ -286,6 +292,7 @@ function EditTab() {
       <Group label="Text">
         <ToolBtn tool="editText" icon={<TextCursorInput size={I} />} label="Edit text" tip="Click any existing text to replace it" />
         <ToolBtn tool="editImage" icon={<ImagePlay size={I} />} label="Edit image" tip="Click a picture in the page to move, resize, rotate, replace or delete it" />
+        <ToolBtn tool="editVector" icon={<Spline size={I} />} label="Edit drawing" tip="Click a line, box or shape in the page to move, resize, recolour or delete it" />
         <ToolBtn tool="text" icon={<Type size={I} />} label="Add text" tip="Click to add a text box (T)" />
       </Group>
       <Group label="Insert">
@@ -408,6 +415,7 @@ function OrganizeTab() {
         <Stack>
           <Small icon={<ListTree size={i} />} label="Bookmarks from headings" disabled={!editable} onClick={() => void import('@/actions/pageOps').then((m) => m.bookmarksFromHeadings())} testId="btn-auto-bookmarks" />
           <Small icon={<Link2 size={i} />} label="Links from web addresses" disabled={!editable} onClick={() => void import('@/actions/pageOps').then((m) => m.linksFromUrls())} testId="btn-auto-links" />
+          <Small icon={<ListOrdered size={i} />} label="Contents page" disabled={!editable} onClick={() => void import('@/actions/pageOps').then((m) => m.insertContentsPage())} tip="A table of contents from the bookmarks, with links, before the first page" testId="btn-toc" />
         </Stack>
       </Group>
       <Group label="Page setup">
@@ -424,11 +432,13 @@ function OrganizeTab() {
         />
         <Stack>
           <ToolBtn big={false} tool="crop" icon={<Crop size={i} />} label="Crop tool" tip="Drag the box of the area to keep" />
+          <Small icon={<Scaling size={i} />} label="Page size" disabled={!editable} onClick={() => s.openModal('pageSize')} tip="Give pages a paper size (A4, Letter…): scale the content or resize the page around it" testId="btn-pagesize" />
         </Stack>
       </Group>
       <Group label="Combine & split">
         <Big icon={<Merge size={I} />} label="Merge PDFs" disabled={!editable} onClick={() => void mergeDialog()} tip="Append other PDF files" testId="btn-merge" />
         <Big icon={<Scissors size={I} />} label="Split / Extract" disabled={!editable} onClick={() => s.openModal('split')} testId="btn-split" />
+        <Big icon={<Package size={I} />} label="Portfolio" onClick={() => s.openModal('portfolio')} tip="One PDF that carries files of any kind, each with a description" testId="btn-portfolio" />
       </Group>
     </>
   );
@@ -436,6 +446,7 @@ function OrganizeTab() {
 
 function FormsTab() {
   const { hasDoc, s } = useDoc();
+  const xfa = useXfa((x) => s.pages.some((p) => p.sourceId && x.kinds[p.sourceId]));
   return (
     <>
       <Group label="Detect">
@@ -453,6 +464,9 @@ function FormsTab() {
       <Group label="Data">
         <Big icon={<TableProperties size={I} />} label="Fill form" disabled={!hasDoc} onClick={() => usePDFStore.setState({ inspectorOpen: true, selectedIds: [] })} tip="Fill existing form fields in the right panel" />
         <Big icon={<FileSpreadsheet size={I} />} label="Export CSV" disabled={!hasDoc} onClick={() => void exportFormCsv()} tip="Export field values as CSV" />
+        {xfa ? (
+          <Big icon={<FileCode2 size={I} />} label="XFA data" onClick={() => void import('@/actions/xfaForms').then((m) => m.exportXfaData())} tip="Save the data of this XFA form as XML (what the form submits)" testId="btn-xfa-data" />
+        ) : null}
         <Big icon={<Mails size={I} />} label="Mail merge" disabled={!hasDoc} onClick={() => s.openModal('mailmerge')} tip="Fill this form once for every row of a CSV or Excel table: one PDF per row or one combined PDF" testId="btn-mailmerge" />
         <Big icon={<BookCopy size={I} />} label="Batch CSV" onClick={() => s.openModal('export')} tip="Collect answers from many filled PDFs into one CSV (Convert → Export)" />
       </Group>
@@ -544,6 +558,9 @@ function ConvertTab() {
       </Group>
       <Group label="Print shop">
         <Big icon={<Printer size={I} />} label="Print production" disabled={!hasDoc} onClick={() => s.openModal('printprod')} tip="PDF/X preflight and conversion, grey or CMYK colours, ink preview, bleed and printer marks" testId="btn-printprod" />
+      </Group>
+      <Group label="E-invoice">
+        <Big icon={<Receipt size={I} />} label="E-invoice" onClick={() => s.openModal('einvoice')} tip="e-Factura, UBL and Factur-X / ZUGFeRD: open invoice XML as a readable PDF, show the invoice inside a PDF, embed an invoice XML" testId="btn-einvoice" />
       </Group>
       <Group label="Many files">
         <Big icon={<FileStack size={I} />} label="Batch" onClick={() => s.openModal('batch')} tip="OCR, compress, watermark, page numbers, PDF/A, protect, sanitize or flatten many PDFs at once, one operation or a saved sequence of steps" testId="btn-batch" />

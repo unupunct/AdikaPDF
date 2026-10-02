@@ -70,7 +70,15 @@ export function getSourceDoc(sourceId: string): Promise<PDFDocumentProxy> {
   return d;
 }
 
+const releaseHooks = new Set<(sourceId: string) => void>();
+
+/** Runs when a source is closed (e.g. to stop its form scripts). */
+export function onSourceRelease(fn: (sourceId: string) => void): void {
+  releaseHooks.add(fn);
+}
+
 export async function releaseSource(sourceId: string): Promise<void> {
+  for (const fn of releaseHooks) fn(sourceId);
   const d = docs.get(sourceId);
   docs.delete(sourceId);
   for (const key of [...pages.keys()]) if (key.startsWith(`${sourceId}:`)) pages.delete(key);
@@ -305,17 +313,19 @@ export function canvasToBytes(canvas: HTMLCanvasElement, type: 'image/png' | 'im
  * Pushes a form value into pdf.js' annotation storage so the page raster
  * shows the filled-in value immediately (the export writes the real value).
  */
-export async function setViewerFieldValue(sourceId: string, name: string, value: string | boolean | string[]): Promise<void> {
+export async function setViewerFieldValue(sourceId: string, name: string, value: string | boolean | string[], formatted?: string): Promise<void> {
   const doc = await getSourceDoc(sourceId);
-  const fields = (await doc.getFieldObjects()) as Record<string, Array<{ id: string; type: string; exportValues?: string }>> | null;
-  const widgets = fields?.[name];
+  type Widget = { id: string; type: string; exportValues?: string };
+  // pdf.js hands the fields over as a Map (field name -> field and widgets).
+  const fields = (await doc.getFieldObjects()) as Map<string, Widget[]> | Record<string, Widget[]> | null;
+  const widgets = fields instanceof Map ? fields.get(name) : fields?.[name];
   if (!widgets) return;
   for (const w of widgets) {
-    if (!w.id) continue;
+    if (!w.id || !w.type) continue;
     if (w.type === 'checkbox') doc.annotationStorage.setValue(w.id, { value: value === true });
     else if (w.type === 'radiobutton') doc.annotationStorage.setValue(w.id, { value: w.exportValues === value });
     else if (w.type === 'combobox' || w.type === 'listbox') doc.annotationStorage.setValue(w.id, { value: Array.isArray(value) ? value : [String(value)] });
-    else doc.annotationStorage.setValue(w.id, { value: String(value) });
+    else doc.annotationStorage.setValue(w.id, formatted !== undefined ? { value: String(value), formattedValue: formatted } : { value: String(value) });
   }
 }
 

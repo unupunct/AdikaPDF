@@ -53,7 +53,7 @@ export function useFileDrop(): boolean {
   return dragging;
 }
 
-async function handleFiles(files: File[]): Promise<void> {
+export async function handleFiles(files: File[]): Promise<void> {
   if (files.length === 0) return;
   const ext = (f: File) => f.name.split('.').pop()?.toLowerCase() ?? '';
   const pdfs = files.filter((f) => ext(f) === 'pdf');
@@ -62,6 +62,10 @@ async function handleFiles(files: File[]): Promise<void> {
   const docs = files.filter((f) => DOCUMENT_EXTENSIONS.includes(ext(f)) || CAD_EXTENSIONS.includes(ext(f)));
   const store = usePDFStore.getState();
   const hasDoc = store.pages.length > 0;
+  for (const f of files.filter((x) => ['xml', 'zip'].includes(ext(x)))) {
+    const { openEInvoice } = await import('@/actions/einvoice');
+    await openEInvoice(new Uint8Array(await f.arrayBuffer()), f.name);
+  }
 
   if (office.length) {
     store.toast('Office files dropped from Explorer: use Convert → Office to pick them (the converter needs their location on disk).', 'info');

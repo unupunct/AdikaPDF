@@ -28,6 +28,8 @@ interface BackupState {
   fieldValues: Record<string, FieldValue>;
   outline: BookmarkItem[] | null;
   sources: Array<{ id: string; name: string; pageCount: number; file: string }>;
+  /** Snapshots handed to another window: whether the document had unsaved changes. */
+  dirty?: boolean;
 }
 
 export interface BackupInfo {
@@ -66,6 +68,12 @@ async function backupActive(): Promise<void> {
   }
   let done = written.get(dir);
   if (!done) written.set(dir, (done = new Set()));
+  await writeState(dir, done);
+}
+
+/** Writes the active document (sources not yet in done, then its state) into a backup folder. */
+async function writeState(dir: string, done: Set<string>, extra: Partial<BackupState> = {}): Promise<void> {
+  const s = usePDFStore.getState();
   const used = new Set(s.pages.map((p) => p.sourceId).filter((id): id is string => !!id));
   const sources: BackupState['sources'] = [];
   for (const id of used) {
@@ -89,6 +97,7 @@ async function backupActive(): Promise<void> {
     fieldValues: s.fieldValues,
     outline: s.outline,
     sources,
+    ...extra,
   };
   // state.json last: a backup only counts once it is complete.
   await write(`${dir}/state.json`, new TextEncoder().encode(JSON.stringify(state)));
@@ -146,10 +155,28 @@ export async function discardBackups(dirs: string[]): Promise<void> {
   await Promise.all(dirs.map(remove));
 }
 
+/** The active document as a snapshot another window can open (`adoptSnapshot`). */
+export async function writeSnapshot(dir: string): Promise<void> {
+  await writeState(dir, new Set(), { dirty: usePDFStore.getState().dirty });
+}
+
+/** Opens a snapshot written by another window (a tab moved here), then removes it. */
+export async function adoptSnapshot(dir: string): Promise<void> {
+  await restore(dir, false);
+}
+
 /** Opens each backup in its own tab, with its edits (unsaved), then removes the old backup. */
 export async function recoverBackups(dirs: string[]): Promise<number> {
   let n = 0;
   for (const dir of dirs) {
+    await restore(dir, true);
+    n++;
+  }
+  return n;
+}
+
+async function restore(dir: string, crashed: boolean): Promise<void> {
+  {
     const st = JSON.parse(new TextDecoder().decode(await read(`${dir}/state.json`))) as BackupState;
     if (!activeTabIsEmpty()) newTab();
     const store = usePDFStore.getState();
@@ -173,14 +200,12 @@ export async function recoverBackups(dirs: string[]): Promise<number> {
       docMeta: st.docMeta as never,
       fileName: st.fileName,
       filePath: st.filePath,
-      dirty: true,
+      dirty: crashed ? true : (st.dirty ?? true),
       past: [],
       future: [],
       selectedIds: [],
       currentPageId: pages[0]?.id ?? null,
     });
     await remove(dir);
-    n++;
   }
-  return n;
 }

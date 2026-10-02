@@ -58,6 +58,8 @@ import {
   Minus,
   ArrowUpRight,
   MessagesSquare,
+  SpellCheck,
+  Mail,
   ChevronsDown,
   MessageSquareQuote,
   SquareDashedText,
@@ -274,6 +276,7 @@ export function HomeTab() {
         <Big icon={<FolderOpen size={I} />} label="Open" onClick={() => void openDialog()} tip="Open a PDF (Ctrl+O)" testId="btn-open" />
         <Big icon={<Save size={I} />} label="Save" disabled={!editable} onClick={() => void saveDocument(false)} tip="Save (Ctrl+S)" testId="btn-save" />
         <Big icon={<Printer size={I} />} label="Print" disabled={!hasDoc} onClick={() => usePDFStore.getState().openModal('print')} tip="Print (Ctrl+P): several pages per sheet, booklet, poster" testId="btn-print" />
+        <Big icon={<Mail size={I} />} label="E-mail" disabled={!hasDoc} onClick={() => void import('@/actions/share').then((m) => m.emailDocument())} tip="Send the document as an attachment from your mail program" testId="btn-email" />
         <Stack>
           <Small icon={<SaveAll size={i} />} label="Save as…" disabled={!editable} onClick={() => void saveDocument(true)} tip="Save a copy (Ctrl+Shift+S)" testId="btn-save-as" />
           <RecentMenu />
@@ -472,6 +475,7 @@ export function CommentTab() {
       <Group label="Manage">
         <Big icon={<MessagesSquare size={I} />} label={count ? `Comments (${count})` : 'Comments'} disabled={!hasDoc} onClick={() => usePDFStore.setState({ sidebarOpen: true, sidebarTab: 'comments' })} tip="List all comments" testId="btn-comments" />
         <CommentFileMenu />
+        <Big icon={<SpellCheck size={I} />} label="Spelling" disabled={!hasDoc || !!s.readOnlyReason} onClick={() => s.openModal('spell')} tip="Check the spelling of comments, text boxes and filled form fields (F7)" testId="btn-spell" />
         <Stack>
           <label className="flex h-[19px] items-center gap-1 px-1 text-[11px] text-muted">
             Author

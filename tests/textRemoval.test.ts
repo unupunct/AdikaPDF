@@ -121,3 +121,23 @@ describe('glyph-level text removal', () => {
     expect(removeGlyphs(doc, doc.getPage(0), boxesOf(t, 'SECRET'), 'replace')).toMatchObject({ ok: true, coversImage: true, removedGlyphs: 6 });
   });
 });
+
+describe('restyled text in the document font', () => {
+  it('writes the new letters in another colour and size, then restores the original style', async () => {
+    const doc = await standardDoc();
+    const page = doc.getPage(0);
+    const t = analyzePageText(doc, page);
+    const boxes = boxesOf(t, 'Total');
+    const r = removeGlyphs(doc, page, boxes, 'replace', [{ boxes, newWidth: 40, text: 'Total', color: '#cc0000', sizeRatio: 1.5 }]);
+    expect(r).toMatchObject({ ok: true, editNative: [true] });
+    const out = await doc.save();
+    const again = await PDFDocument.load(out);
+    const glyphs = analyzePageText(again, again.getPage(0)).glyphs;
+    const T = glyphs.find((g) => g.text === 'T')!;
+    const E = glyphs.find((g) => g.text === 'E')!; // "EUR" after it keeps black
+    expect(T.color).toBe('#cc0000');
+    expect(E.color).toBe('#000000');
+    expect(T.size / E.size).toBeCloseTo(1.5, 1);
+    expect((await pdfjsText(out)).replace(/\s+/g, ' ')).toContain('Invoice Total 1111.50 EUR');
+  });
+});

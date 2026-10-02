@@ -1,7 +1,7 @@
 {
   "name": "adika-pdf-editor",
   "private": true,
-  "version": "1.9.0",
+  "version": "1.10.0",
   "description": "Adika PDF Editor - privacy-first, offline PDF editor with e-signatures",
   "type": "module",
   "license": "MIT",
@@ -10,6 +10,7 @@
     "assets": "node scripts/copy-pdfjs-assets.mjs && node scripts/copy-ocr-assets.mjs",
     "dev": "vite",
     "build": "npm run assets && tsc -b && vite build",
+    "build:thumbs": "cargo build --release --offline --manifest-path src-tauri/thumbs/Cargo.toml",
     "preview": "vite preview",
     "typecheck": "tsc -b",
     "test": "vitest run",

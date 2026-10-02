@@ -107,6 +107,9 @@ export function CommentFileMenu() {
         <DropdownItem icon={<GitCompare size={14} />} onSelect={() => void compareWithFile()}>
           Compare with another version…
         </DropdownItem>
+        <DropdownItem icon={<GitCompare size={14} />} onSelect={() => void compareWithFile(true)}>
+          Compare with a list of changes (redline)…
+        </DropdownItem>
         <DropdownItem icon={<GitCompare size={14} />} onSelect={() => void compareVisually()}>
           Compare visually (overlay)…
         </DropdownItem>

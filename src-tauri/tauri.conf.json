@@ -1,12 +1,12 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Adika PDF Editor",
-  "version": "1.9.0",
+  "version": "1.10.0",
   "identifier": "eu.unupunct.adikapdf",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:5173",
-    "beforeBuildCommand": "npm run build",
+    "beforeBuildCommand": "npm run build && npm run build:thumbs",
     "frontendDist": "../dist"
   },
   "app": {
@@ -30,7 +30,7 @@
   "bundle": {
     "active": true,
     "targets": ["nsis"],
-    "resources": { "windows/printer.ps1": "printer.ps1" },
+    "resources": { "windows/printer.ps1": "printer.ps1", "thumbs/target/release/adika_thumbs.dll": "adika_thumbs.dll" },
     "publisher": "unupunct",
     "copyright": "Copyright (c) 2026 unupunct. MIT License.",
     "category": "Productivity",

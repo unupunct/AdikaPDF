@@ -925,6 +925,10 @@ export interface LineEdit {
   newWidth: number;
   /** The new text: written in the document's own font when all its letters are available. */
   text?: string;
+  /** Restyled text: its fill colour (#rrggbb) instead of the original one. */
+  color?: string;
+  /** Restyled text: size relative to the original letters (1.2 = 20% larger). */
+  sizeRatio?: number;
 }
 
 /**
@@ -1137,6 +1141,10 @@ function lineShifts(glyphs: Glyph[], remove: Set<number>, edits: LineEdit[], bou
 interface Native {
   first: number;
   last: number;
+  /** Restyled: the fill colour to write the letters in, and the colour to restore after them. */
+  color?: { rgb: string; restore: string };
+  /** Restyled: font resource and size to write the letters with, and the size to restore. */
+  font?: { key: string; fs: number; restore: number };
   /** Hex glyph codes, or TJ spacing numbers (for spaces the font never drew). */
   items: Array<string | number>;
   /** New text width and the width of the removed span, user space. */
@@ -1162,29 +1170,48 @@ function nativeText(it: Interpretation, remove: Set<number>, e: LineEdit): Nativ
   for (const g of it.glyphs) if (g.run.key === ref.key && g.text && [...g.text].length === 1 && !enc.has(g.text)) enc.set(g.text, g.run.bytes);
   const items: Array<string | number> = [];
   let width = 0;
+  const ratio = e.sizeRatio && Math.abs(e.sizeRatio - 1) > 1e-3 ? e.sizeRatio : 1;
+  const fs = ref.fs * ratio;
   for (const ch of e.text) {
     const bytes = enc.get(ch);
     if (bytes) {
       const code = ref.font.twoByte ? (bytes[0] << 8) | bytes[1] : bytes[0];
       const isSpace = !ref.font.twoByte && code === 32;
       items.push(bytes.map((b) => b.toString(16).padStart(2, '0')).join(''));
-      width += (ref.font.width(code) * ref.fs + ref.Tc + (isSpace ? ref.Tw : 0)) * ref.Th * ref.s;
+      width += (ref.font.width(code) * fs + ref.Tc + (isSpace ? ref.Tw : 0)) * ref.Th * ref.s;
     } else if (/\s/.test(ch)) {
       // A word space the font never drew: move by a quarter em.
       items.push(-250);
-      width += 0.25 * ref.fs * ref.Th * ref.s;
+      width += 0.25 * fs * ref.Th * ref.s;
     } else return null;
   }
   const first = it.glyphs[R[0]];
   const last = it.glyphs[R[R.length - 1]];
   const span = (last.origin[0] - first.origin[0]) * first.dir[0] + (last.origin[1] - first.origin[1]) * first.dir[1] + last.advance;
-  return { first: R[0], last: R[R.length - 1], items, width, span };
+  // Restyled letters: their own colour and size, the original ones restored after them.
+  const restyle: Pick<Native, 'color' | 'font'> = {};
+  const orig = first.color;
+  if (e.color && /^#[0-9a-f]{6}$/i.test(e.color) && e.color.toLowerCase() !== orig.toLowerCase()) restyle.color = { rgb: rgbOp(e.color), restore: rgbOp(orig) };
+  if (ratio !== 1) restyle.font = { key: ref.key, fs, restore: ref.fs };
+  return { first: R[0], last: R[R.length - 1], items, width, span, ...restyle };
+}
+
+/** "#rrggbb" -> "r g b rg". */
+function rgbOp(hex: string): string {
+  const n = parseInt(hex.slice(1), 16);
+  return `${[(n >> 16) & 255, (n >> 8) & 255, n & 255].map((v) => fmtNum(Math.round((v / 255) * 1000) / 1000)).join(' ')} rg`;
 }
 
 function rewriteShow(s: Show, remove: Set<number>, shift: Map<number, number>, glyphs: Glyph[], accIn: number, inserts: Map<number, Native>): { text: string; changed: boolean; acc: number } {
   let acc = accIn;
   let changed = false;
-  const items: string[] = [];
+  let items: string[] = [];
+  // Whole operators before the current TJ array: restyled letters get their own colour / size.
+  const ops: string[] = [];
+  const closeArray = () => {
+    if (items.length) ops.push(`[${items.join(' ')}] TJ`);
+    items = [];
+  };
   let hex = '';
   let pending = 0;
   const flushHex = () => {
@@ -1203,6 +1230,12 @@ function rewriteShow(s: Show, remove: Set<number>, shift: Map<number, number>, g
       // stays where it was and the line shift moves it as for any replacement.
       flushHex();
       flushNum();
+      const restyled = !!(ins.color || ins.font);
+      if (restyled) {
+        closeArray();
+        if (ins.color) ops.push(ins.color.rgb);
+        if (ins.font) ops.push(`/${ins.font.key} ${fmtNum(Math.round(ins.font.fs * 1000) / 1000)} Tf`);
+      }
       for (const item of ins.items) {
         if (typeof item === 'number') pending += item;
         else {
@@ -1211,6 +1244,12 @@ function rewriteShow(s: Show, remove: Set<number>, shift: Map<number, number>, g
         }
       }
       flushHex();
+      if (restyled) {
+        flushNum();
+        closeArray();
+        if (ins.font) ops.push(`/${ins.font.key} ${fmtNum(Math.round(ins.font.restore * 1000) / 1000)} Tf`);
+        if (ins.color) ops.push(ins.color.restore);
+      }
       pending += ins.width * glyphs[p.glyph!].k;
       changed = true;
     }
@@ -1235,6 +1274,8 @@ function rewriteShow(s: Show, remove: Set<number>, shift: Map<number, number>, g
   }
   flushHex();
   flushNum();
-  return { text: `${s.prefix ? `${s.prefix} ` : ''}[${items.join(' ')}] TJ`, changed, acc };
+  closeArray();
+  if (!ops.length) ops.push('[] TJ');
+  return { text: `${s.prefix ? `${s.prefix} ` : ''}${ops.join(' ')}`, changed, acc };
 }
 

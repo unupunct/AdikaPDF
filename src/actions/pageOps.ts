@@ -208,3 +208,43 @@ export async function exportImages(): Promise<number> {
   if (path) store.toast(`Exported ${result.count} image${result.count === 1 ? '' : 's'}${result.skipped ? ` (${result.skipped} skipped: unusual formats)` : ''}.`, 'success');
   return result.count;
 }
+
+/**
+ * Organize → Contents page: a table of contents made from the bookmarks,
+ * inserted before the first page, each line a link to its page. Undoable.
+ */
+export async function insertContentsPage(maxLevel = 2): Promise<boolean> {
+  const s0 = usePDFStore.getState();
+  if (s0.readOnlyReason) {
+    s0.toast(s0.readOnlyReason, 'info');
+    return false;
+  }
+  const outline = await currentOutline(s0.pages);
+  const entries: Array<{ title: string; level: number; target: number; pageId: string }> = [];
+  const walk = (items: BookmarkItem[], level: number) => {
+    for (const b of items) {
+      const target = b.pageId ? s0.pages.findIndex((p) => p.id === b.pageId) : -1;
+      if (target >= 0) entries.push({ title: b.title, level, target, pageId: b.pageId! });
+      walk(b.children, level + 1);
+    }
+  };
+  walk(outline, 0);
+  if (!entries.length) {
+    s0.toast('The document has no bookmarks to list. Add bookmarks first (Organize → Bookmarks from headings).', 'info');
+    return false;
+  }
+  const done = await withBusy('Making the contents page…', async () => {
+    const { buildTocPdf } = await import('@/lib/pdf/tocPage');
+    const { loadFontBytes } = await import('@/lib/fonts');
+    const { translate } = await import('@/lib/i18n');
+    const first = s0.pages[0];
+    const size: [number, number] = first && (first.userRotation + first.baseRotation) % 180 === 0 ? [first.width, first.height] : [595.28, 841.89];
+    const toc = await buildTocPdf(entries, { title: translate('Contents'), loadFont: loadFontBytes, size, maxLevel });
+    const { pages: fresh } = await usePDFStore.getState().addSource(toc.bytes, translate('Contents'));
+    const links: LinkObject[] = toc.links.map((l) => makeLink(fresh[l.page].id, { x: l.x, y: l.y, width: l.width, height: l.height }, { kind: 'page', pageId: entries[l.entry].pageId }));
+    usePDFStore.getState().commit((s) => ({ pages: [...fresh, ...s.pages], objects: [...s.objects, ...links], outline }));
+    return toc.links.length;
+  });
+  if (done) usePDFStore.getState().toast(`Contents page added (${done} entries).`, 'success');
+  return !!done;
+}
