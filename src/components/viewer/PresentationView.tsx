@@ -61,6 +61,7 @@ export function PresentationView() {
     const size = displaySize(page);
     const scale = Math.min(window.innerWidth / size.width, window.innerHeight / size.height);
     const handle = renderPageToCanvas(page, canvas, scale);
+    handle.promise.catch(() => undefined);
     canvas.style.width = `${size.width * scale}px`;
     canvas.style.height = `${size.height * scale}px`;
     return () => handle.cancel();

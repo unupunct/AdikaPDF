@@ -4,6 +4,7 @@
  * viewer, thumbnails, redaction and the export engines.
  */
 import * as pdfjs from 'pdfjs-dist';
+import { cappedPixelRatio } from './canvasLimits';
 import type { PDFDocumentProxy, PDFPageProxy } from 'pdfjs-dist';
 import type { TextContent, TextItem } from 'pdfjs-dist/types/src/display/api';
 import type { OptionalContentConfig } from 'pdfjs-dist/types/src/display/optional_content_config';
@@ -230,35 +231,51 @@ export interface RenderHandle {
   cancel: () => void;
 }
 
-/** Renders a page into `canvas` at `scale` (CSS px per point) × devicePixelRatio. */
-export function renderPageToCanvas(
-  page: PageRef,
-  canvas: HTMLCanvasElement,
-  scale: number,
-  pixelRatio = window.devicePixelRatio || 1,
-): RenderHandle {
+/** The thrown error when a render was cancelled before it was drawn. */
+export class RenderCancelledError extends Error {
+  constructor() {
+    super('Rendering cancelled');
+    this.name = 'RenderingCancelledException';
+  }
+}
+
+export function isRenderCancelled(e: unknown): boolean {
+  return e instanceof Error && e.name === 'RenderingCancelledException';
+}
+
+/**
+ * Renders a page into `canvas` at `scale` (CSS px per point) × devicePixelRatio.
+ * Without an explicit `pixelRatio` (on-screen pages) the bitmap is kept within
+ * the canvas limits and stretched by CSS at very high zoom. A cancelled render
+ * rejects with RenderCancelledError.
+ */
+export function renderPageToCanvas(page: PageRef, canvas: HTMLCanvasElement, scale: number, pixelRatio?: number): RenderHandle {
   let cancelled = false;
   let task: ReturnType<PDFPageProxy['render']> | null = null;
   const promise = (async () => {
     const ctx = canvas.getContext('2d');
     if (!ctx) throw new Error('Canvas unavailable');
+    const turned = totalRotation(page) % 180 !== 0;
+    const cssW = (turned ? page.height : page.width) * scale;
+    const cssH = (turned ? page.width : page.height) * scale;
+    const ratio = pixelRatio ?? cappedPixelRatio(cssW, cssH, window.devicePixelRatio || 1);
     if (page.kind === 'blank' || !page.sourceId) {
-      const w = (totalRotation(page) % 180 === 0 ? page.width : page.height) * scale;
-      const h = (totalRotation(page) % 180 === 0 ? page.height : page.width) * scale;
-      canvas.width = Math.round(w * pixelRatio);
-      canvas.height = Math.round(h * pixelRatio);
+      canvas.width = Math.round(cssW * ratio);
+      canvas.height = Math.round(cssH * ratio);
       ctx.fillStyle = '#ffffff';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
       return;
     }
     const p = await getPdfPage(page.sourceId, page.sourceIndex);
-    if (cancelled) return;
-    const viewport = p.getViewport({ scale: scale * pixelRatio, rotation: totalRotation(page) });
-    // Render off-screen first so the visible canvas never flashes blank.
-    const off = document.createElement('canvas');
+    if (cancelled) throw new RenderCancelledError();
+    const viewport = p.getViewport({ scale: scale * ratio, rotation: totalRotation(page) });
+    // A canvas showing an earlier rendering is redrawn off-screen first so it
+    // never flashes blank; an empty one is drawn directly (no second bitmap).
+    const direct = canvas.width === 0 || canvas.height === 0;
+    const off = direct ? canvas : document.createElement('canvas');
     off.width = Math.round(viewport.width);
     off.height = Math.round(viewport.height);
-    const offCtx = off.getContext('2d');
+    const offCtx = direct ? ctx : off.getContext('2d');
     if (!offCtx) throw new Error('Canvas unavailable');
     offCtx.fillStyle = '#ffffff';
     offCtx.fillRect(0, 0, off.width, off.height);
@@ -272,13 +289,22 @@ export function renderPageToCanvas(
     try {
       await task.promise;
     } catch (e) {
-      if (e instanceof Error && e.name === 'RenderingCancelledException') return;
+      if (!direct) off.width = off.height = 0;
+      if (isRenderCancelled(e)) throw new RenderCancelledError();
       throw e;
     }
-    if (cancelled) return;
+    if (direct) {
+      if (cancelled) throw new RenderCancelledError();
+      return;
+    }
+    if (cancelled) {
+      off.width = off.height = 0;
+      throw new RenderCancelledError();
+    }
     canvas.width = off.width;
     canvas.height = off.height;
     ctx.drawImage(off, 0, 0);
+    off.width = off.height = 0;
   })();
   return {
     promise,
