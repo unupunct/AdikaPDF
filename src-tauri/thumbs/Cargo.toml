@@ -1,6 +1,6 @@
 [package]
 name = "adika-thumbs"
-version = "1.9.0"
+version = "1.10.0"
 description = "Explorer thumbnails for PDF files (Adika PDF Editor), drawn by the Windows PDF renderer"
 edition = "2021"
 license = "MIT"
