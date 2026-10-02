@@ -50,6 +50,7 @@ export function installGlobalErrorLogging(): void {
   window.addEventListener('error', (e) => {
     // Resource load errors have no message; skip them.
     if (!e.message) return;
+    if (e.error instanceof Error && e.error.name === 'AbortError') return;
     log('error', `Uncaught ${e.message} at ${e.filename}:${e.lineno}:${e.colno}${e.error?.stack ? `\n${e.error.stack}` : ''}`);
   });
   window.addEventListener('unhandledrejection', (e) => {

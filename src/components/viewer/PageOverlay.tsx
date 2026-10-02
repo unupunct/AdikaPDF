@@ -7,6 +7,7 @@
  * Stage is scaled by the zoom factor.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { isTypingTarget } from '@/hooks/shortcutKeys';
 import { Circle, Group, Layer, Line, Rect, Stage, Transformer } from 'react-konva';
 import type Konva from 'konva';
 import type { EditorObject, FieldKind, LineObject, NoteObject, PageRef, TextObject, ToolId } from '@/types';
@@ -295,7 +296,8 @@ export function PageOverlay({ page, zoom }: { page: PageRef; zoom: number }) {
     if (!polyDraft) return;
     const onKey = (e: KeyboardEvent) => {
       const pd = polyRef.current;
-      if (!pd) return;
+      // Keys typed into a field (search box, page number…) are not for the drawing.
+      if (!pd || isTypingTarget(e.target)) return;
       if (e.key === 'Enter') finishPoly(pd);
       else if (e.key === 'Escape') setPolyDraft(null);
       else if (e.key === 'Backspace') setPolyDraft({ ...pd, points: pd.points.slice(0, -2) });

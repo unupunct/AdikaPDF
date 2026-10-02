@@ -19,6 +19,7 @@ function selectPageText(pageId: string | null): void {
 }
 import type { ToolId } from '@/types';
 import { comboOf, runCommand, useCustomize } from '@/store/customize';
+import { isTypingTarget, shortcutAllowed } from './shortcutKeys';
 
 const TOOL_KEYS: Record<string, ToolId> = {
   s: 'selectText',
@@ -33,11 +34,6 @@ const TOOL_KEYS: Record<string, ToolId> = {
   p: 'pen',
 };
 
-function isTyping(target: EventTarget | null): boolean {
-  const el = target as HTMLElement | null;
-  if (!el) return false;
-  return el.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName);
-}
 
 export function useShortcuts(): void {
   useEffect(() => {
@@ -46,10 +42,13 @@ export function useShortcuts(): void {
       const mod = e.ctrlKey || e.metaKey;
       const key = e.key.toLowerCase();
       if (s.modal || s.busy || s.presentation) return;
+      // While typing only a few shortcuts work; AltGr characters (Ctrl+Alt) are never shortcuts.
+      const typing = isTypingTarget(e.target);
+      if (!shortcutAllowed(e, typing)) return;
       // The user's own shortcuts come first (they may take a built-in one's place).
       const combo = comboOf(e);
       const mine = combo ? useCustomize.getState().shortcuts.find((x) => x.combo === combo) : undefined;
-      if (mine && !isTyping(e.target)) {
+      if (mine && !typing) {
         e.preventDefault();
         void runCommand(mine);
         return;
@@ -176,7 +175,7 @@ export function useShortcuts(): void {
         s.setZoom(s.zoom, 'width');
         return;
       }
-      if (isTyping(e.target)) return;
+      if (typing) return;
       if (mod && key === 'z') {
         e.preventDefault();
         if (e.shiftKey) s.redo();

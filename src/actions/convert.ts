@@ -342,7 +342,7 @@ const FORMAT_INFO: Record<ExportFormat, { ext: string; label: string }> = {
 
 export async function exportAs(req: ExportRequest): Promise<void> {
   const info = FORMAT_INFO[req.format];
-  const result = await withBusy(`Converting to ${info.label}…`, (progress) =>
+  const result = await withBusy(`Converting to ${info.label}…`, (progress, signal) =>
     withEditedDoc(async (pdf0, bytes0) => {
       const tick = (label: string) => (done: number, total: number) => progress(`${label} (${done}/${total})`, total ? done / total : null);
       const needsText = ['docx', 'odt', 'rtf', 'xlsx', 'csv', 'pptx', 'html', 'epub', 'md', 'txt', 'json'].includes(req.format);
@@ -362,7 +362,7 @@ export async function exportAs(req: ExportRequest): Promise<void> {
         } catch {
           /* default languages */
         }
-        const results = await ocrPages(pdf0, { pageNumbers: empty, dpi: 300, lang, eraseLines: true }, (m, f) => progress(m, f));
+        const results = await ocrPages(pdf0, { pageNumbers: empty, dpi: 300, lang, eraseLines: true, signal }, (m, f) => progress(m, f));
         const found = results.filter((r) => r.words.length);
         if (found.length) {
           for (const r of found) scanned.add(r.pageNumber);
@@ -434,7 +434,7 @@ export async function exportAs(req: ExportRequest): Promise<void> {
 
 export async function runOcr(opts: { pageNumbers: number[]; dpi: number; lang: string; editable?: { family: 'sans' | 'serif' } }): Promise<void> {
   const editable = opts.editable;
-  const out = await withBusy('Recognising text (OCR)…', (progress) =>
+  const out = await withBusy('Recognising text (OCR)…', (progress, signal) =>
     withEditedDoc(async (pdf, bytes) => {
       const { groupLines, lineColors, makeEditable } = await import('@/lib/pdf/editableScan');
       const pages: import('@/lib/pdf/editableScan').EditablePage[] = [];
@@ -452,9 +452,11 @@ export async function runOcr(opts: { pageNumbers: number[]; dpi: number; lang: s
                   lines: groupLines(r.words).map((l) => ({ text: l.words.map((w) => w.text).join(' '), x: l.x, y: l.y, width: l.width, height: l.height, ...lineColors(pixels, l) })),
                 })
             : undefined,
+          signal,
         },
         (m, f) => progress(m, f),
       );
+      signal.throwIfAborted();
       const words = results.reduce((n, r) => n + r.words.length, 0);
       if (editable) {
         progress('Writing editable text…', null);
@@ -473,9 +475,9 @@ export async function runOcr(opts: { pageNumbers: number[]; dpi: number; lang: s
 }
 
 export async function runCompress(opts: CompressOptions): Promise<{ before: number; after: number } | undefined> {
-  const out = await withBusy('Compressing…', async (progress) => {
+  const out = await withBusy('Compressing…', async (progress, signal) => {
     const bytes = await exportCurrentPdf({}, progress);
-    return compressPdf(bytes, opts, (d, t) => progress(`Optimising images (${d}/${t})`, t ? d / t : null));
+    return compressPdf(bytes, opts, (d, t) => progress(`Optimising images (${d}/${t})`, t ? d / t : null), signal);
   });
   if (!out) return undefined;
   if (out.after >= out.before) {
@@ -488,9 +490,11 @@ export async function runCompress(opts: CompressOptions): Promise<{ before: numb
 
 export async function runPdfA(meta: PdfAMeta): Promise<string[] | undefined> {
   const level = meta.level ?? '2b';
-  const out = await withBusy(`Converting to PDF/A-${level}…`, async (progress) => {
+  const out = await withBusy(`Converting to PDF/A-${level}…`, async (progress, signal) => {
     const bytes = await exportCurrentPdf({}, progress);
+    signal.throwIfAborted();
     const r = await convertToPdfADetailed(bytes, meta);
+    signal.throwIfAborted();
     return { pdfa: r.bytes, warnings: [...r.notes, ...(await pdfaWarnings(r.bytes, level))] };
   });
   if (!out) return undefined;

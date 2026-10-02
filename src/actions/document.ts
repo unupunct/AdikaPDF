@@ -33,6 +33,7 @@ export function isAbortError(e: unknown): boolean {
  * Runs `fn` with the busy overlay and turns failures into an error toast.
  * A callback that takes the `signal` argument can be cancelled: the overlay
  * shows Cancel, and a cancelled run returns undefined (its result is dropped).
+ * Once cancelled, `progress` throws too, so any loop that reports progress stops.
  */
 export async function withBusy<T>(message: string, fn: (progress: (msg: string, fraction: number | null) => void, signal: AbortSignal) => Promise<T>): Promise<T | undefined> {
   const store = usePDFStore.getState();
@@ -40,7 +41,11 @@ export async function withBusy<T>(message: string, fn: (progress: (msg: string, 
   const abort = fn.length >= 2 ? controller : undefined;
   store.setBusy({ message, progress: null, abort });
   try {
-    const result = await fn((msg, fraction) => usePDFStore.getState().setBusy({ message: msg, progress: fraction, abort }), controller.signal);
+    const progress = (msg: string, fraction: number | null) => {
+      if (abort) controller.signal.throwIfAborted();
+      usePDFStore.getState().setBusy({ message: msg, progress: fraction, abort });
+    };
+    const result = await fn(progress, controller.signal);
     if (controller.signal.aborted) throw controller.signal.reason;
     return result;
   } catch (e) {

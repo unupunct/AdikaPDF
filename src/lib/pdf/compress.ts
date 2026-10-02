@@ -365,6 +365,7 @@ export async function compressPdf(
   bytes: Uint8Array,
   opts: CompressOptions,
   onProgress?: (done: number, total: number) => void,
+  signal?: AbortSignal,
 ): Promise<CompressResult> {
   const before = bytes.length;
   const doc = await PDFDocument.load(bytes, { updateMetadata: false });
@@ -402,6 +403,7 @@ export async function compressPdf(
   let done = 0;
   onProgress?.(0, total);
   for (const { ref, stream } of images) {
+    signal?.throwIfAborted();
     try {
       if (canImage && !maskRefs.has(refKey(ref))) {
         const replaced = await recompressImage(doc, ref, stream, drawn.get(refKey(ref)), quality, maxDpi);
