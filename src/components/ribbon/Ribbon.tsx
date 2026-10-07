@@ -2,7 +2,7 @@
  * Top ribbon: Home, Edit, Sign, Organize, Forms, Security, Convert. Every
  * button maps to a store action or an operation in src/actions.
  */
-import type { ReactNode } from 'react';
+import { useEffect, useRef, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react';
 import {
   ArrowUpRight,
   Scaling,
@@ -138,9 +138,50 @@ export function Ribbon() {
   const tab = usePDFStore((s) => s.ribbonTab);
   const setTab = usePDFStore((s) => s.setRibbonTab);
   const hasDoc = usePDFStore((s) => s.pages.length > 0);
+  const listRef = useRef<HTMLDivElement>(null);
+  const focusTab = (id: RibbonTab) => listRef.current?.querySelector<HTMLButtonElement>(`[data-testid="tab-${id}"]`)?.focus();
+
+  // Pressing and releasing Alt on its own moves the focus to the ribbon tabs (as in Office).
+  useEffect(() => {
+    let armed = false;
+    const down = (e: KeyboardEvent) => {
+      armed = e.key === 'Alt' && !e.ctrlKey && !e.shiftKey && !e.metaKey && !e.repeat;
+    };
+    const up = (e: KeyboardEvent) => {
+      if (e.key !== 'Alt' || !armed) return;
+      armed = false;
+      const st = usePDFStore.getState();
+      if (st.modal || st.busy || st.presentation) return;
+      e.preventDefault();
+      focusTab(st.ribbonTab);
+    };
+    const reset = () => (armed = false);
+    window.addEventListener('keydown', down, true);
+    window.addEventListener('keyup', up, true);
+    window.addEventListener('mousedown', reset, true);
+    window.addEventListener('blur', reset);
+    return () => {
+      window.removeEventListener('keydown', down, true);
+      window.removeEventListener('keyup', up, true);
+      window.removeEventListener('mousedown', reset, true);
+      window.removeEventListener('blur', reset);
+    };
+  }, []);
+
+  // Arrow keys move between the tabs (one tab stop for the whole list).
+  const onTabKey = (e: ReactKeyboardEvent) => {
+    const i = RIBBON_TABS.findIndex((t) => t.id === tab);
+    const n = RIBBON_TABS.length;
+    const next = e.key === 'ArrowRight' ? (i + 1) % n : e.key === 'ArrowLeft' ? (i - 1 + n) % n : e.key === 'Home' ? 0 : e.key === 'End' ? n - 1 : -1;
+    if (next < 0) return;
+    e.preventDefault();
+    setTab(RIBBON_TABS[next].id);
+    focusTab(RIBBON_TABS[next].id);
+  };
+
   return (
     <div className="shrink-0 border-b border-app bg-panel">
-      <div role="tablist" aria-label="Ribbon" className="flex h-8 items-end gap-0.5 px-2">
+      <div ref={listRef} role="tablist" aria-label="Ribbon" className="flex h-8 items-end gap-0.5 px-2" onKeyDown={onTabKey}>
         {RIBBON_TABS.map((t) => (
           <button
             key={t.id}
@@ -148,6 +189,7 @@ export function Ribbon() {
             type="button"
             data-testid={`tab-${t.id}`}
             aria-selected={tab === t.id}
+            tabIndex={tab === t.id ? 0 : -1}
             onClick={() => setTab(t.id)}
             className={cn(
               'relative h-7 rounded-t-md px-3 text-[13px] font-medium',
@@ -159,7 +201,7 @@ export function Ribbon() {
           </button>
         ))}
       </div>
-      <div data-testid="ribbon" className={cn('flex h-[84px] items-stretch gap-0 overflow-x-auto border-t border-app px-1.5 py-1.5', !hasDoc && tab !== 'home' && tab !== 'convert' && tab !== 'view' && 'opacity-60')}>
+      <div data-testid="ribbon" role="tabpanel" className={cn('flex h-[84px] items-stretch gap-0 overflow-x-auto border-t border-app px-1.5 py-1.5', !hasDoc && tab !== 'home' && tab !== 'convert' && tab !== 'view' && 'opacity-60')}>
         <TabContent tab={tab} />
       </div>
     </div>

@@ -123,3 +123,26 @@ select,
 .animate-indeterminate {
   animation: adika-indeterminate 1.2s ease-in-out infinite;
 }
+
+/* Windows high contrast: backgrounds are replaced by system colours, so
+   selected and active states also get an outline. */
+@media (forced-colors: active) {
+  [aria-pressed='true'],
+  [aria-selected='true'],
+  [aria-checked='true'][role='radio'],
+  [aria-current='page'],
+  [data-state='active'],
+  [data-highlighted] {
+    outline: 2px solid Highlight;
+    outline-offset: -2px;
+  }
+  :focus-visible {
+    outline: 2px solid Highlight;
+    outline-offset: 1px;
+  }
+  .animate-indeterminate,
+  [role='progressbar'] > div {
+    background: Highlight;
+    forced-color-adjust: none;
+  }
+}

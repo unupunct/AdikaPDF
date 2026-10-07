@@ -92,6 +92,8 @@ export interface BtnProps {
   disabled?: boolean;
   tip?: string;
   testId?: string;
+  /** Accessible name of an icon-only button (no visible label). */
+  name?: string;
 }
 
 export const I = 22;
@@ -129,13 +131,13 @@ export function Big({ icon, label, onClick, active, disabled, tip, testId }: Btn
   );
 }
 
-export function Small({ icon, label, onClick, active, disabled, tip, testId }: BtnProps) {
+export function Small({ icon, label, onClick, active, disabled, tip, testId, name }: BtnProps) {
   return (
     <Tooltip content={tip ?? label}>
       <button
         type="button"
         data-testid={testId}
-        aria-label={label || tip}
+        aria-label={label || name || tip}
         data-tip={tip}
         aria-pressed={active}
         disabled={disabled}
@@ -233,7 +235,7 @@ export function PageNavigator() {
   const hasLabel = current && labels[current.id] && labels[current.id] !== String(idx + 1);
   return (
     <div className="flex items-center gap-0.5">
-      <Small icon={<ChevronLeft size={i} />} label="" tip="Previous page (PageUp)" disabled={idx <= 0} onClick={() => step(-1)} testId="btn-prev-page" />
+      <Small icon={<ChevronLeft size={i} />} label="" name="Previous page" tip="Previous page (PageUp)" disabled={idx <= 0} onClick={() => step(-1)} testId="btn-prev-page" />
       <input
         ref={ref}
         data-testid="page-input"
@@ -259,7 +261,7 @@ export function PageNavigator() {
       <span className="px-0.5 text-[11px] text-muted" data-testid="page-count">
         {hasLabel ? `(${idx + 1} of ${pages.length})` : `of ${pages.length}`}
       </span>
-      <Small icon={<ChevronRight size={i} />} label="" tip="Next page (PageDown)" disabled={idx < 0 || idx >= pages.length - 1} onClick={() => step(1)} testId="btn-next-page" />
+      <Small icon={<ChevronRight size={i} />} label="" name="Next page" tip="Next page (PageDown)" disabled={idx < 0 || idx >= pages.length - 1} onClick={() => step(1)} testId="btn-next-page" />
     </div>
   );
 }
@@ -314,11 +316,11 @@ export function HomeTab() {
       <Group label="Zoom">
         <Stack>
           <div className="flex items-center gap-0.5">
-            <Small icon={<ZoomOut size={i} />} label="" tip="Zoom out (Ctrl+-)" disabled={!hasDoc} onClick={() => s.setZoom(s.zoom / 1.2)} testId="btn-zoom-out" />
+            <Small icon={<ZoomOut size={i} />} label="" name="Zoom out" tip="Zoom out (Ctrl+-)" disabled={!hasDoc} onClick={() => s.setZoom(s.zoom / 1.2)} testId="btn-zoom-out" />
             <span data-testid="zoom-level" className="w-12 text-center text-[11.5px] tabular-nums">
               {zoomPct}%
             </span>
-            <Small icon={<ZoomIn size={i} />} label="" tip="Zoom in (Ctrl+=)" disabled={!hasDoc} onClick={() => s.setZoom(s.zoom * 1.2)} testId="btn-zoom-in" />
+            <Small icon={<ZoomIn size={i} />} label="" name="Zoom in" tip="Zoom in (Ctrl+=)" disabled={!hasDoc} onClick={() => s.setZoom(s.zoom * 1.2)} testId="btn-zoom-in" />
           </div>
           <Small icon={<MoveHorizontal size={i} />} label="Fit width" active={s.fitMode === 'width'} disabled={!hasDoc} onClick={() => s.setZoom(s.zoom, 'width')} />
           <Small icon={<Maximize size={i} />} label="Fit page" active={s.fitMode === 'page'} disabled={!hasDoc} onClick={() => s.setZoom(s.zoom, 'page')} />

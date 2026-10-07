@@ -264,10 +264,10 @@ export function Field({ label, children, hint }: { label: string; children: Reac
   );
 }
 
-export function Checkbox({ checked, onChange, label, disabled }: { checked: boolean; onChange: (v: boolean) => void; label: React.ReactNode; disabled?: boolean }) {
+export function Checkbox({ checked, onChange, label, disabled, ariaLabel }: { checked: boolean; onChange: (v: boolean) => void; label: React.ReactNode; disabled?: boolean; ariaLabel?: string }) {
   return (
     <label className={cn('flex cursor-default items-center gap-2 py-1 text-[13px]', disabled && 'opacity-50')}>
-      <input type="checkbox" className="h-4 w-4 accent-[var(--color-brand-600)]" checked={checked} disabled={disabled} onChange={(e) => onChange(e.target.checked)} />
+      <input type="checkbox" aria-label={ariaLabel} className="h-4 w-4 accent-[var(--color-brand-600)]" checked={checked} disabled={disabled} onChange={(e) => onChange(e.target.checked)} />
       {label}
     </label>
   );
