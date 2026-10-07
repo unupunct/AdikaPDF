@@ -4,7 +4,8 @@ import { usePDFStore } from '@/store/usePDFStore';
 import { exportCurrentPdf } from './document';
 import { loadFontBytes } from '@/lib/fonts';
 import { combineMerged, fileNameFor, formFieldNames, mergeRow, readTable, type DataTable } from '@/lib/mailMerge';
-import { fileStamp, isDesktop, pickFiles, pickFolder, saveBytes, writeFile } from '@/lib/platform';
+import { fileStamp, isDesktop, pickFiles, pickFolder, writeFile } from '@/lib/platform';
+import { saveFileQuiet } from '@/actions/saveGuard';
 
 export interface MergeJob {
   table: DataTable;
@@ -79,9 +80,9 @@ export async function runMailMerge(job: MergeJob, onProgress: (done: number, tot
   onProgress(rows.length, rows.length);
   let target: string | null = folder;
   if (job.output === 'combined' && parts.length) {
-    target = await saveBytes(await combineMerged(parts), `${base}-merged.pdf`, [{ name: 'PDF document', extensions: ['pdf'] }]);
+    target = await saveFileQuiet(await combineMerged(parts), `${base}-merged.pdf`, [{ name: 'PDF document', extensions: ['pdf'] }]);
   } else if (zip && written) {
-    target = await saveBytes(await zip.generateAsync({ type: 'uint8array' }), `${base}-merged.zip`, [{ name: 'ZIP archive', extensions: ['zip'] }]);
+    target = await saveFileQuiet(await zip.generateAsync({ type: 'uint8array' }), `${base}-merged.zip`, [{ name: 'ZIP archive', extensions: ['zip'] }]);
   }
   return { written, target, problems };
 }

@@ -23,7 +23,8 @@ import {
 import { createSelfSignedIdentity, exportP12, identityFromCertificateDer, loadP12, qcStatementsOf, type SigningIdentity } from '@/lib/crypto/digitalSignature';
 import type { TrustedListCache } from '@/lib/crypto/euTrustedList';
 import { errorMessage } from '@/actions/document';
-import { isDesktop, pickFiles, pickPaths, pkcs11DetectModules, pkcs11ListTokens, saveBytes, winstoreList, type Pkcs11Module, type StoreCertificate, type TokenCertificate, type TokenInfo } from '@/lib/platform';
+import { isDesktop, pickFiles, pickPaths, pkcs11DetectModules, pkcs11ListTokens, winstoreList, type Pkcs11Module, type StoreCertificate, type TokenCertificate, type TokenInfo } from '@/lib/platform';
+import { saveFileQuiet } from '@/actions/saveGuard';
 import type { SignatureValidation } from '@/types';
 import { cn } from '@/lib/cn';
 
@@ -239,7 +240,7 @@ export function CertificateModal() {
                 disabled={exportPass.length < 4}
                 onClick={async () => {
                   const bytes = exportP12(identity, exportPass);
-                  const path = await saveBytes(bytes, `${identity.name.replace(/[^\w.-]+/g, '_')}.p12`, [{ name: 'Digital ID', extensions: ['p12'] }]);
+                  const path = await saveFileQuiet(bytes, `${identity.name.replace(/[^\w.-]+/g, '_')}.p12`, [{ name: 'Digital ID', extensions: ['p12'] }]);
                   if (path) usePDFStore.getState().toast('Digital ID saved. Keep it and its password safe.', 'success');
                 }}
               >

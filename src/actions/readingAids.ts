@@ -6,7 +6,7 @@ import { create } from 'zustand';
 import { usePDFStore } from '@/store/usePDFStore';
 import { getTextContent, renderPageToCanvas } from '@/lib/pdf/pdfService';
 import { pauseReading, read, resumeReading, speechAvailable, speechText, stopReading, useReadAloud, type TextPiece } from '@/lib/readAloud';
-import { saveBytes } from '@/lib/platform';
+import { saveFileQuiet } from '@/actions/saveGuard';
 import { log } from '@/lib/log';
 import type { PageRef } from '@/types';
 import { useAutoScroll } from '@/components/viewer/AutoScroll';
@@ -155,7 +155,7 @@ export async function saveLastSnapshot(): Promise<void> {
   const last = useSnapshot.getState().last;
   if (!last) return;
   const base = (usePDFStore.getState().fileName ?? 'snapshot').replace(/\.pdf$/i, '');
-  const path = await saveBytes(new Uint8Array(await last.blob.arrayBuffer()), `${base} - snapshot.png`, [{ name: 'PNG image', extensions: ['png'] }]);
+  const path = await saveFileQuiet(new Uint8Array(await last.blob.arrayBuffer()), `${base} - snapshot.png`, [{ name: 'PNG image', extensions: ['png'] }]);
   if (path) usePDFStore.getState().toast(path === 'downloaded' ? 'Downloaded.' : `Saved to ${path}`, 'success');
 }
 

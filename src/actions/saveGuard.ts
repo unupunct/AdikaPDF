@@ -54,3 +54,8 @@ export async function saveFile(bytes: Uint8Array | Blob, suggestedName: string, 
   if (path && opts.successMessage !== false) usePDFStore.getState().toast(opts.successMessage ?? (path === 'downloaded' ? 'Downloaded.' : `Saved to ${path}`), 'success');
   return path;
 }
+
+/** `saveFile` for callers that show their own success message. */
+export function saveFileQuiet(bytes: Uint8Array | Blob, suggestedName: string, filters: FileFilter[]): Promise<string | null> {
+  return saveFile(bytes, suggestedName, filters, { successMessage: false });
+}

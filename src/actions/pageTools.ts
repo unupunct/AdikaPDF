@@ -10,7 +10,8 @@ import { usePDFStore } from '@/store/usePDFStore';
 import { exportCurrentPdf, openPdfBytes, refreshSignatureStatus, withBusy, PDF_FILTER } from './document';
 import { replaceWholeDocument } from './sourceRewrite';
 import { askConfirm } from '@/store/useDialogs';
-import { pickFiles, saveBytes } from '@/lib/platform';
+import { pickFiles } from '@/lib/platform';
+import { saveFileQuiet } from '@/actions/saveGuard';
 import { openPdf } from '@/lib/pdf/pdfService';
 import { loadFontBytes } from '@/lib/fonts';
 import { log } from '@/lib/log';
@@ -122,7 +123,7 @@ export async function exportComments(format: 'xfdf' | 'fdf'): Promise<void> {
     return;
   }
   const name = pdfName.replace(/\.pdf$/i, '') + `.${format}`;
-  const path = await saveBytes(out.data, name, [{ name: format.toUpperCase(), extensions: [format] }]);
+  const path = await saveFileQuiet(out.data, name, [{ name: format.toUpperCase(), extensions: [format] }]);
   if (path) usePDFStore.getState().toast(`Exported ${out.count} comment${out.count === 1 ? '' : 's'}${path === 'downloaded' ? '.' : ` to ${path}`}`, 'success');
 }
 

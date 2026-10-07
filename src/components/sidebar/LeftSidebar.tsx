@@ -9,7 +9,7 @@ import { usePDFStore, type SidebarTab } from '@/store/usePDFStore';
 import { ThumbnailSidebar } from './ThumbnailSidebar';
 import { Tooltip } from '@/components/ui/primitives';
 import { getEmbeddedFiles, getLayerConfig, type EmbeddedFile } from '@/lib/pdf/pdfService';
-import { saveBytes } from '@/lib/platform';
+import { saveFileQuiet } from '@/actions/saveGuard';
 import { usePageLabels } from '@/hooks/usePageLabels';
 import { cn } from '@/lib/cn';
 import { CommentsPanel } from './CommentsPanel';
@@ -102,7 +102,7 @@ function AttachmentsPanel() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
   const save = async (f: EmbeddedFile) => {
-    const path = await saveBytes(f.content, f.filename, [{ name: 'Attachment', extensions: [f.filename.split('.').pop() ?? '*'] }]);
+    const path = await saveFileQuiet(f.content, f.filename, [{ name: 'Attachment', extensions: [f.filename.split('.').pop() ?? '*'] }]);
     if (path) usePDFStore.getState().toast(path === 'downloaded' ? 'Downloaded.' : `Saved to ${path}`, 'success');
   };
   const openPdf = async (f: EmbeddedFile) => {
