@@ -207,7 +207,8 @@ describe('comments already in the file', () => {
     const squares = second.filter((a) => a.subtype === 'Square');
     expect(squares).toHaveLength(1);
     expect(Array.from(squares[0].color ?? [])).toEqual([0, 0, 255]);
-    expect(second.length).toBe(first.length);
+    // The copy has every annotation of the original except pop-ups (they belong to the original's comments).
+    expect(second.length).toBe(first.filter((a) => a.subtype !== 'Popup').length);
   });
 
   it('removes taken-over comments under a redaction box, edited or not', async () => {

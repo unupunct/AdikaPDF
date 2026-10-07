@@ -716,6 +716,8 @@ export interface PlannedAnnotPage {
   page: PDFPage;
   /** The page the annotations were read from (the source page itself when edited in place); null when the page was rebuilt (raster). */
   origin: PDFPage | null;
+  /** For a copied page: which copy (value) stands for which original annotation (key, its ref as text). */
+  copies?: Map<string, PDFRef>;
 }
 
 export interface FileAnnotEdits {
@@ -737,7 +739,7 @@ export function prepareFileAnnotEdits(planned: PlannedAnnotPage[], objects: Edit
   const targets = new Map<string, PDFRef>();
   // All targets first: a copied page finds its annotations by their place in the original page's /Annots.
   const work: Array<{ ref: PageRef; page: PDFPage; resolved: Array<{ id: string; target: PDFRef | null }> }> = [];
-  for (const { ref, page, origin } of planned) {
+  for (const { ref, page, origin, copies } of planned) {
     if (!ref.takenAnnots?.length || !origin) continue;
     const annots = annotsOf(page);
     const originAnnots = annotsOf(origin);
@@ -746,6 +748,7 @@ export function prepareFileAnnotEdits(planned: PlannedAnnotPage[], objects: Edit
       const r = parseAnnotId(id);
       if (!r) return null;
       if (origin === page) return indexOfRef(annots, r) >= 0 ? r : null;
+      if (copies) return copies.get(r.toString()) ?? null;
       // A copied page: same position in its /Annots.
       const k = indexOfRef(originAnnots, r);
       const copy = k >= 0 ? annots.get(k) : undefined;

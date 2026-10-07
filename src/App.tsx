@@ -61,7 +61,7 @@ export default function App() {
       const adopt = w.adoptRequest();
       if (adopt || (await w.windowLabel()) !== 'main') {
         const r = await import('@/lib/recovery');
-        if (adopt) await r.adoptSnapshot(adopt).catch((e: unknown) => usePDFStore.getState().toast(String(e), 'error'));
+        if (adopt) await w.adoptIntoThisWindow(adopt).catch((e: unknown) => usePDFStore.getState().toast(String(e), 'error'));
         r.startAutoBackup();
         return;
       }

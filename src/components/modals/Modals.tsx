@@ -132,6 +132,11 @@ function ConfirmPrompt() {
       footer={
         <>
           {c.messageOnly ? null : <Button onClick={() => c.resolve(false)}>Cancel</Button>}
+          {c.altLabel ? (
+            <Button onClick={() => c.resolve('alt')} data-testid="confirm-alt">
+              {c.altLabel}
+            </Button>
+          ) : null}
           <Button variant={c.danger ? 'danger' : 'primary'} onClick={() => c.resolve(true)} data-testid="confirm-ok">
             {c.confirmLabel}
           </Button>

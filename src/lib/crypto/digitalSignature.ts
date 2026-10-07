@@ -2361,7 +2361,8 @@ export async function verifyPdfSignatures(pdfBytes: Uint8Array, opts: VerifyOpti
         r.modifiedAfterSigning =
           later.other ||
           (docMdp === 1 && (later.form || later.signatures || !!later.annotations)) ||
-          (docMdp !== 3 && !!later.annotations);
+          // Certified documents allow: 1 nothing, 2 form filling and signing, 3 also comments; a plain signature allows comments.
+          (docMdp === 2 && !!later.annotations);
         const tail = pdfBytes.subarray(c + d);
         const revisions = (bytesToBinary(tail).match(/%%EOF/g) ?? []).length;
         const allowed = [
