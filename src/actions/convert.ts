@@ -207,13 +207,36 @@ export async function importTextLike(kind: 'html' | 'markdown' | 'text', o: Html
   const f = files[0];
   if (!f) return;
   await withBusy('Rendering to PDF…', async () => {
-    const text = new TextDecoder('utf-8').decode(f.bytes);
-    let html: string;
-    if (kind === 'html') html = prepareHtmlFile(text, f.path ? f.path.replace(/[\\/][^\\/]*$/, '') : null, o);
-    else if (kind === 'markdown') html = wrapHtml(await marked.parse(text, { gfm: true }), f.name, o);
-    else html = wrapHtml(`<pre style="background:none;padding:0">${escapeHtml(text)}</pre>`, f.name, o);
-    await deliverPdf(await htmlToPdf({ html }), f.name, append);
+    await deliverPdf(await textLikeToPdf(f.bytes, f.name, f.path, kind, o), f.name, append);
   });
+}
+
+/**
+ * Untrusted HTML (a web page file, raw HTML inside Markdown): scripts, forms,
+ * frames and remote resources are removed (the e-mail sanitiser); relative
+ * images and styles next to the file still resolve through <base>.
+ */
+async function safeHtml(html: string): Promise<string> {
+  const { sanitizeHtml } = await import('@/lib/pdf/email');
+  return sanitizeHtml(html, { allowRemote: false, resolveRef: () => null, blocked: 0 });
+}
+
+export function textKind(name: string): 'html' | 'markdown' | 'text' | null {
+  const ext = name.split('.').pop()?.toLowerCase() ?? '';
+  if (['html', 'htm', 'xhtml'].includes(ext)) return 'html';
+  if (['md', 'markdown'].includes(ext)) return 'markdown';
+  if (['txt', 'log', 'csv', 'json', 'xml'].includes(ext)) return 'text';
+  return null;
+}
+
+/** A web page, Markdown or plain-text file rendered to PDF (offline, by Edge). */
+export async function textLikeToPdf(bytes: Uint8Array, name: string, path: string | null, kind: 'html' | 'markdown' | 'text', o: HtmlPageOptions): Promise<Uint8Array> {
+  const text = new TextDecoder('utf-8').decode(bytes);
+  let html: string;
+  if (kind === 'html') html = prepareHtmlFile(await safeHtml(text), path ? path.replace(/[\\/][^\\/]*$/, '') : null, o);
+  else if (kind === 'markdown') html = wrapHtml(await safeHtml(await marked.parse(text, { gfm: true })), name, o);
+  else html = wrapHtml(`<pre style="background:none;padding:0">${escapeHtml(text)}</pre>`, name, o);
+  return htmlToPdf({ html });
 }
 
 export async function importUrl(url: string, append: boolean): Promise<void> {

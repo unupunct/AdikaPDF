@@ -16,6 +16,7 @@ mod scanner;
 mod automation;
 mod spellcheck;
 mod shellops;
+mod pathguard;
 
 use percent_encoding::percent_decode_str;
 use std::path::PathBuf;
@@ -45,6 +46,7 @@ fn write_file(request: Request<'_>) -> Result<(), String> {
             .map_err(|e| format!("bad path encoding: {e}"))?
             .into_owned(),
     );
+    let path = pathguard::check_write_file(&path)?;
     let InvokeBody::Raw(bytes) = request.body() else {
         return Err("expected a raw byte body".into());
     };
@@ -107,18 +109,26 @@ pub fn run() {
     if batch {
         automation::attach_console();
     }
-    let mut builder = tauri::Builder::default();
+    let mut builder = tauri::Builder::default().manage(shellops::LaunchQueue::default());
     if !batch {
         // A second launch (Explorer "Open with", the virtual printer) hands its
         // files to the running window, which opens them as new tabs.
-        builder = builder.plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
+        builder = builder.plugin(tauri_plugin_single_instance::init(|app, argv, cwd| {
             // Open, combine (Explorer's "Combine in Adika") or convert: the running window does it.
-            let req = shellops::launch_from_args(argv);
-            if let Some(w) = app.get_webview_window("main") {
+            // Relative names are the second instance's, so they are resolved against its folder.
+            let cwd = std::path::PathBuf::from(cwd);
+            let req = shellops::launch_from_args_in(argv, Some(cwd.as_path()).filter(|p| !p.as_os_str().is_empty()));
+            let window = app.get_webview_window("main");
+            if let Some(w) = &window {
                 let _ = w.unminimize();
                 let _ = w.set_focus();
-                if !req.files.is_empty() {
-                    let _ = w.emit("adika://launch", req);
+            }
+            if !req.files.is_empty() {
+                // Queued while the window is still starting (it has not subscribed yet).
+                if let Some(req) = app.state::<shellops::LaunchQueue>().offer(req) {
+                    if let Some(w) = &window {
+                        let _ = w.emit("adika://launch", req);
+                    }
                 }
             }
         }));
@@ -179,6 +189,7 @@ pub fn run() {
             spellcheck::spell_check,
             spellcheck::spell_add,
             shellops::launch_request,
+            shellops::take_pending_launches,
             shellops::mail_prepare,
             shellops::mail_send,
             shellops::reveal_in_explorer,
