@@ -15,6 +15,14 @@ import type { PageRef } from '@/types';
 const dataOf = (xml: string) => parseXml(xml);
 
 describe('XML', () => {
+  it('keeps line breaks and tabs in attributes', () => {
+    const el = parseXml('<a/>');
+    el.attrs.push(['note', 'line 1\nline 2\tx\r']);
+    const xml = serializeXml(el);
+    expect(xml).toBe('<a note="line 1&#10;line 2&#9;x&#13;"/>');
+    expect(parseXml(xml).attrs[0][1]).toBe('line 1\nline 2\tx\r');
+  });
+
   it('round-trips text, attributes, CDATA and entities', () => {
     const src = '<a x="1 &amp; 2"><b>t &lt; u</b><c><![CDATA[<raw>]]></c><d/></a>';
     const el = parseXml(src);

@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import JSZip from 'jszip';
 import { PDFDocument, StandardFonts } from 'pdf-lib';
 import * as pdfjs from 'pdfjs-dist/legacy/build/pdf.mjs';
-import { combineMerged, fileNameFor, formFieldNames, matchColumns, mergeRow, parseCsv, readTable, readXlsx } from '@/lib/mailMerge';
+import { combineMerged, excelNumber, fileNameFor, formFieldNames, matchColumns, mergeRow, parseCsv, readTable, readXlsx } from '@/lib/mailMerge';
 import { runSequence, sequenceProblem, sequenceSuffix, type BatchOp } from '@/lib/batch';
 import { isPdfEncrypted } from '@/lib/crypto/encrypt';
 import type { FontVariant } from '@/lib/fonts';
@@ -84,6 +84,18 @@ describe('mail merge: tables', () => {
     const t = await readTable('date.xlsx', bytes);
     expect(t.headers).toEqual(['Nume', 'Data', 'Column 3', 'Activ']);
     expect(t.rows[0].Nume).toBe('Popescu & fiul');
+  });
+
+  it('shows stored numbers as Excel does, without binary noise', async () => {
+    expect(excelNumber(12.300000000000001)).toBe('12.3');
+    expect(excelNumber(0.1 + 0.2)).toBe('0.3');
+    expect(excelNumber(1234.5, 2)).toBe('1234.50');
+    const zip = new JSZip();
+    zip.file('xl/workbook.xml', '<workbook xmlns:r="r"><sheets><sheet name="S" sheetId="1" r:id="rId1"/></sheets></workbook>');
+    zip.file('xl/_rels/workbook.xml.rels', '<Relationships><Relationship Id="rId1" Type="ws" Target="worksheets/s.xml"/></Relationships>');
+    zip.file('xl/styles.xml', '<styleSheet><numFmts count="1"><numFmt numFmtId="164" formatCode="#,##0.000"/></numFmts><cellXfs count="3"><xf numFmtId="0"/><xf numFmtId="4"/><xf numFmtId="164"/></cellXfs></styleSheet>');
+    zip.file('xl/worksheets/s.xml', '<worksheet><sheetData><row r="1"><c r="A1"><v>12.300000000000001</v></c><c r="B1" s="1"><v>1500</v></c><c r="C1" s="2"><v>2.5</v></c><c r="D1"><v>-3.0000000000000004</v></c><c r="E1" t="str"><v>007</v></c></row></sheetData></worksheet>');
+    expect(await readXlsx(await zip.generateAsync({ type: 'uint8array' }))).toEqual([['12.3', '1500.00', '2.500', '-3', '007']]);
   });
 
   it('matches columns to fields ignoring case, spaces and diacritics; builds safe file names', () => {
