@@ -1935,10 +1935,11 @@ export async function verifyPdfSignatures(pdfBytes: Uint8Array, opts: VerifyOpti
         // Adding validation data, signatures and field values after signing is allowed (as in Acrobat).
         const later = await classifyLaterChanges(pdfBytes.subarray(0, c + d), pdfBytes);
         r.laterChanges = later;
-        r.modifiedAfterSigning = later.other || (r.certified === 1 && (later.form || later.signatures));
+        // Certified documents allow: 1 nothing, 2 form filling and signing, 3 also comments.
+        r.modifiedAfterSigning = later.other || (r.certified === 1 && (later.form || later.signatures || later.comments)) || (r.certified === 2 && later.comments);
         const tail = pdfBytes.subarray(c + d);
         const revisions = (bytesToBinary(tail).match(/%%EOF/g) ?? []).length;
-        const allowed = [later.ltv ? 'validation data was added' : '', later.signatures ? 'more signatures were added' : '', later.form ? 'form fields were filled in' : ''].filter(Boolean);
+        const allowed = [later.ltv ? 'validation data was added' : '', later.signatures ? 'more signatures were added' : '', later.form ? 'form fields were filled in' : '', later.comments ? 'comments were added' : ''].filter(Boolean);
         if (!r.modifiedAfterSigning && allowed.length) notes.push(`After signing, ${allowed.join(', ')} (allowed changes).`);
         else
           notes.push(
@@ -2035,6 +2036,8 @@ export interface LaterChanges {
   signatures: boolean;
   /** Form fields were filled in. */
   form: boolean;
+  /** Comments (annotations) were added or changed. */
+  comments: boolean;
   /** Anything else (pages, content, fields added or removed…). */
   other: boolean;
 }
@@ -2045,7 +2048,7 @@ export interface LaterChanges {
  * and field values are the changes Acrobat allows after signing.
  */
 export async function classifyLaterChanges(signedRevision: Uint8Array, full: Uint8Array): Promise<LaterChanges> {
-  const res: LaterChanges = { ltv: false, signatures: false, form: false, other: false };
+  const res: LaterChanges = { ltv: false, signatures: false, form: false, comments: false, other: false };
   let a: PDFDocument;
   let b: PDFDocument;
   try {
@@ -2095,6 +2098,10 @@ export async function classifyLaterChanges(signedRevision: Uint8Array, full: Uin
   const isSigWidget = (v: unknown) => {
     const d = v instanceof PDFRef ? b.context.lookup(v) : v;
     return d instanceof PDFDict && d.lookup(PDFName.of('FT')) === PDFName.of('Sig');
+  };
+  const isWidget = (v: unknown) => {
+    const d = v instanceof PDFRef ? b.context.lookup(v) : v;
+    return d instanceof PDFDict && d.lookup(PDFName.of('Subtype')) === PDFName.of('Widget');
   };
   // A document timestamp (PAdES B-LTA) is allowed even on "no changes" certified documents.
   const isDocTimestamp = (v: unknown) => {
@@ -2146,6 +2153,7 @@ export async function classifyLaterChanges(signedRevision: Uint8Array, full: Uin
           const refs = (obj.lookup(PDFName.of('Annots')) as PDFArray).asArray().slice(-added.length);
           if (refs.every(isDocTimestamp)) res.ltv = true;
           else if (refs.every(isSigWidget)) res.signatures = true;
+          else if (refs.every((r) => !isWidget(r))) res.comments = true;
           else res.other = true;
         }
       }
@@ -2156,6 +2164,9 @@ export async function classifyLaterChanges(signedRevision: Uint8Array, full: Uin
           else res.form = true;
         } else res.other = true;
       }
+    } else if (obj.has(PDFName.of('Subtype')) && obj.lookup(PDFName.of('Type')) !== PDFName.of('XObject')) {
+      // Another annotation (a comment, its pop-up or a reply) changed.
+      res.comments = true;
     } else res.other = true;
   }
   return res;

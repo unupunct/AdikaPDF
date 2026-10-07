@@ -1146,68 +1146,7 @@ export async function buildPdf(input: ExportInput, options: ExportOptions = {}):
   if (input.outline) writeOutline(doc, input.outline, pageById);
 
   // 7. Form appearances, flattening, metadata.
-  const form = doc.getForm();
-  if (form.getFields().length > 0) {
-    const acro = lookupDict(doc, doc.catalog.get(PDFName.of('AcroForm')));
-    const logic = readFieldLogic(doc);
-    writeCalcOrder(doc, logic);
-    // Calculated fields get their values now, so the file is right even where form scripts do not run.
-    const names = form.getFields().map((f) => f.getName());
-    for (const name of calcOrder(logic)) {
-      const l = logic[name];
-      const get = (n: string) => {
-        try {
-          return parseNumber(form.getTextField(n).getText() ?? '');
-        } catch {
-          return NaN;
-        }
-      };
-      const v = calculate(l.calc!, names, get);
-      const dec = l.format && l.format.kind !== 'date' ? l.format.decimals + (l.format.kind === 'percent' ? 2 : 0) : 6;
-      try {
-        form.getTextField(name).setText(Number.isFinite(v) ? String(Math.round(v * 10 ** dec) / 10 ** dec) : '');
-      } catch {
-        /* not a text field */
-      }
-    }
-    if (ctx.fieldFont) {
-      // Formatted fields show "1.234,50 lei" on the page but keep the plain value (1234.5) as the PDF standard asks.
-      const raw = new Map<PDFTextField, string>();
-      for (const [name, l] of Object.entries(logic)) {
-        if (!l.format) continue;
-        try {
-          const f = form.getTextField(name);
-          const v = f.getText() ?? '';
-          if (!v) continue;
-          raw.set(f, v);
-          f.setText(displayValue(l.format, v));
-        } catch {
-          /* not a text field */
-        }
-      }
-      for (const [key, shown] of Object.entries(options.fieldDisplay ?? {})) {
-        if (!baseSourceId || !key.startsWith(`${baseSourceId}::`)) continue;
-        const name = key.slice(baseSourceId.length + 2);
-        if (logic[name]?.format) continue;
-        try {
-          const f = form.getTextField(name);
-          const v = f.getText() ?? '';
-          if (!v || v === shown || raw.has(f)) continue;
-          raw.set(f, v);
-          f.setText(shown);
-        } catch {
-          /* not a text field */
-        }
-      }
-      try {
-        form.updateFieldAppearances(ctx.fieldFont);
-      } catch {
-        /* a field with an odd appearance stream: keep its original look */
-      }
-      for (const [f, v] of raw) f.acroField.dict.set(PDFName.of('V'), PDFHexString.fromText(v));
-    }
-    acro?.set(PDFName.of('NeedAppearances'), PDFBool.False);
-  }
+  finishForm(doc, ctx.fieldFont, options.fieldDisplay, baseSourceId);
   if (options.flatten) flattenDocument(doc, ctx.fieldFont);
 
   if (options.title) doc.setTitle(options.title);
@@ -1257,6 +1196,200 @@ export async function buildPdf(input: ExportInput, options: ExportOptions = {}):
   await doc.flush();
   dropUnreachableObjects(doc);
   return doc.save({ useObjectStreams: true, updateFieldAppearances: !keepXfa });
+}
+
+/** Calculated values, formatted display text and appearances of the form's fields. */
+function finishForm(doc: PDFDocument, fieldFont: PDFFont | null, fieldDisplay: Record<string, string> | undefined, baseSourceId: string | null): void {
+  const form = doc.getForm();
+  if (form.getFields().length === 0) return;
+  const acro = lookupDict(doc, doc.catalog.get(PDFName.of('AcroForm')));
+  const logic = readFieldLogic(doc);
+  writeCalcOrder(doc, logic);
+  // Calculated fields get their values now, so the file is right even where form scripts do not run.
+  const names = form.getFields().map((f) => f.getName());
+  for (const name of calcOrder(logic)) {
+    const l = logic[name];
+    const get = (n: string) => {
+      try {
+        return parseNumber(form.getTextField(n).getText() ?? '');
+      } catch {
+        return NaN;
+      }
+    };
+    const v = calculate(l.calc!, names, get);
+    const dec = l.format && l.format.kind !== 'date' ? l.format.decimals + (l.format.kind === 'percent' ? 2 : 0) : 6;
+    try {
+      const f = form.getTextField(name);
+      const text = Number.isFinite(v) ? String(Math.round(v * 10 ** dec) / 10 ** dec) : '';
+      if ((f.getText() ?? '') !== text) f.setText(text);
+    } catch {
+      /* not a text field */
+    }
+  }
+  if (fieldFont) {
+    // Formatted fields show "1.234,50 lei" on the page but keep the plain value (1234.5) as the PDF standard asks.
+    const raw = new Map<PDFTextField, string>();
+    for (const [name, l] of Object.entries(logic)) {
+      if (!l.format) continue;
+      try {
+        const f = form.getTextField(name);
+        const v = f.getText() ?? '';
+        if (!v) continue;
+        raw.set(f, v);
+        f.setText(displayValue(l.format, v));
+      } catch {
+        /* not a text field */
+      }
+    }
+    for (const [key, shown] of Object.entries(fieldDisplay ?? {})) {
+      if (!baseSourceId || !key.startsWith(`${baseSourceId}::`)) continue;
+      const name = key.slice(baseSourceId.length + 2);
+      if (logic[name]?.format) continue;
+      try {
+        const f = form.getTextField(name);
+        const v = f.getText() ?? '';
+        if (!v || v === shown || raw.has(f)) continue;
+        raw.set(f, v);
+        f.setText(shown);
+      } catch {
+        /* not a text field */
+      }
+    }
+    try {
+      form.updateFieldAppearances(fieldFont);
+    } catch {
+      /* a field with an odd appearance stream: keep its original look */
+    }
+    for (const [f, v] of raw) f.acroField.dict.set(PDFName.of('V'), PDFHexString.fromText(v));
+  }
+  acro?.set(PDFName.of('NeedAppearances'), PDFBool.False);
+}
+
+// ---------------------------------------------------------------- incremental save
+
+/** Objects saved as annotations (not page content), so an incremental update can add them. */
+function isAnnotationObject(o: EditorObject): boolean {
+  switch (o.type) {
+    case 'note':
+    case 'markup':
+    case 'stamp':
+    case 'poly':
+    case 'attachment':
+    case 'measure':
+    case 'link':
+      return true;
+    case 'text':
+      return !!o.annotation && !o.replaces?.length;
+    default:
+      return false;
+  }
+}
+
+/**
+ * Whether the edits can be saved as an incremental update of the opened file:
+ * only comments, form values and bookmarks, on the file's own pages in their
+ * order (no page content, page changes, redactions, text edits or new fields).
+ * Returns why not, or null when they can.
+ */
+export function incrementalBlocker(input: ExportInput, meta?: import('@/store/usePDFStore').DocMeta | null): string | null {
+  const base = baseSourceOf(input.pages, input.baseSourceId);
+  const src = base ? input.sources[base] : undefined;
+  if (!src || !src.original) return 'The document was rewritten since it was opened.';
+  if (src.password) return 'The document is encrypted.';
+  if (input.pages.length !== src.pageCount || input.pages.some((p, i) => p.kind !== 'source' || p.sourceId !== base || p.sourceIndex !== i || p.userRotation !== 0)) {
+    return 'Pages were added, removed, moved or rotated.';
+  }
+  if (input.objects.some((o) => !isAnnotationObject(o))) return 'The page content was edited.';
+  if (Object.keys(input.fieldValues).some((k) => !k.startsWith(`${base}::`))) return 'Form values of another document.';
+  if (meta) return 'The document properties were changed.';
+  return null;
+}
+
+/**
+ * Saves comments, form values and bookmarks as an incremental update
+ * appended to the opened file: the original bytes stay as they are, so
+ * digital signatures stay valid (as Acrobat does). Check `incrementalBlocker` first.
+ */
+export async function buildIncrementalPdf(input: ExportInput, options: ExportOptions = {}): Promise<Uint8Array> {
+  const why = incrementalBlocker(input);
+  if (why) throw new ExportError(why);
+  const baseSourceId = baseSourceOf(input.pages, input.baseSourceId)!;
+  const opts = { measure: options.measure ?? canvasMeasure, loadFont: options.loadFont ?? loadFontBytes };
+  const { incrementalUpdate } = await import('./incremental');
+  const res = await incrementalUpdate(input.sources[baseSourceId].bytes, async (doc) => {
+    doc.registerFontkit(fontkit);
+    if (xfaKindOf(doc)) throw new ExportError('XFA forms are saved in full.');
+    const docPages = doc.getPages();
+    const prefix = `${baseSourceId}::`;
+    const formTouched = Object.keys(input.fieldValues).some((k) => k.startsWith(prefix)) && applyFieldValues(doc, input.fieldValues, baseSourceId);
+    const ctx: DrawContext = { doc, fonts: new Map(), fontTexts: collectFontTexts(input.objects), images: new Map(), opts, fieldFont: null, fieldNames: [], fieldObjects: [] };
+    if (formTouched) ctx.fieldFont = await doc.embedFont(await opts.loadFont({ family: 'sans', bold: false, italic: false }), { subset: false });
+    const pageById = new Map(input.pages.map((p, i) => [p.id, docPages[i]]));
+    const sans = () => fontFor(ctx, { family: 'sans', bold: false, italic: false });
+    for (let i = 0; i < input.pages.length; i++) {
+      const ref = input.pages[i];
+      const page = docPages[i];
+      const list = input.objects.filter((o) => o.pageId === ref.id);
+      if (!list.length) continue;
+      options.onProgress?.('Applying edits', i / input.pages.length);
+      const pm = displayToPdfMatrix(totalRotation(ref), visibleBox(page));
+      for (const o of list) {
+        const review = (o as { reviewStatus?: ReviewState }).reviewStatus;
+        const annotsBefore = page.node.Annots()?.size() ?? 0;
+        switch (o.type) {
+          case 'text': {
+            const v = { family: o.fontFamily, bold: o.bold, italic: o.italic };
+            writeFreeText(doc, page, pm, o, await fontFor(ctx, v), opts.measure(v, o.fontSize));
+            break;
+          }
+          case 'note':
+            writeNote(doc, page, pm, o);
+            break;
+          case 'markup':
+            writeMarkup(doc, page, pm, o);
+            break;
+          case 'stamp':
+            writeStamp(doc, page, pm, o, await sans(), await fontFor(ctx, { family: 'sans', bold: true, italic: false }), o.src ? await imageFor(ctx, o.src) : null);
+            break;
+          case 'poly':
+            writePoly(doc, page, pm, o);
+            break;
+          case 'attachment':
+            writeAttachment(doc, page, pm, o);
+            break;
+          case 'measure':
+            writeMeasure(doc, page, pm, o, await sans());
+            break;
+          case 'link':
+            writeLink(doc, page, pm, o, o.target.kind === 'page' ? (pageById.get(o.target.pageId) ?? null) : null);
+            break;
+        }
+        if (review && review !== 'None') {
+          const annots = page.node.Annots();
+          for (let k = annotsBefore; annots && k < annots.size(); k++) {
+            const r = annots.get(k);
+            const d = annots.lookup(k);
+            if (r instanceof PDFRef && d instanceof PDFDict && d.lookup(PDFName.of('Subtype')) !== PDFName.of('Popup')) {
+              addReviewReply(doc, page, r, review, (o as { author?: string }).author ?? '');
+              break;
+            }
+          }
+        }
+      }
+    }
+    if (input.outline) writeOutline(doc, input.outline, pageById);
+    if (formTouched) {
+      // Only values and appearances change (what filling in means after signing): each field keeps its own /DA.
+      const DA = PDFName.of('DA');
+      const kept = doc.getForm().getFields().map((f) => [f.acroField.dict, f.acroField.dict.get(DA)] as const);
+      finishForm(doc, ctx.fieldFont, options.fieldDisplay, baseSourceId);
+      for (const [dict, da] of kept) {
+        if (da) dict.set(DA, da);
+        else dict.delete(DA);
+      }
+    }
+  });
+  return res.bytes;
 }
 
 /**

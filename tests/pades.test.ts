@@ -158,7 +158,7 @@ describe('PAdES baseline signatures (eIDAS)', () => {
     expect(ts.chainStatus).toBe('trusted');
     expect(ts.message).toMatch(/Document timestamp by Adika Test TSA/);
     expect(sig.integrity).toBe('valid');
-    expect(sig.laterChanges).toEqual({ ltv: true, signatures: false, form: false, other: false });
+    expect(sig.laterChanges).toEqual({ ltv: true, signatures: false, form: false, comments: false, other: false });
     expect(sig.modifiedAfterSigning).toBe(false);
     expect(sig.padesLevel).toBe('B-LTA');
   });

@@ -99,7 +99,7 @@ describe('long-term validation and certified documents', () => {
     expect(r.revocationDetails).toMatch(/saved in the file/);
     expect(r.ltv).toBe(true);
     expect(r.coversWholeFile).toBe(false);
-    expect(r.laterChanges).toEqual({ ltv: true, signatures: false, form: false, other: false });
+    expect(r.laterChanges).toEqual({ ltv: true, signatures: false, form: false, comments: false, other: false });
     expect(r.modifiedAfterSigning).toBe(false);
     // Other readers still open it.
     const task = pdfjs.getDocument({ data: ltv.slice(), verbosity: 0 });

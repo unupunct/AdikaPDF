@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { PDFDict, PDFDocument, PDFName, StandardFonts } from 'pdf-lib';
-import { buildPdf } from '@/lib/pdf/exportPdf';
-import type { PageRef, SourceDoc } from '@/types';
+import { buildIncrementalPdf, buildPdf, incrementalBlocker } from '@/lib/pdf/exportPdf';
+import type { EditorObject, PageRef, SourceDoc } from '@/types';
 import type { FontVariant } from '@/lib/fonts';
 
 const fontsDir = join(process.cwd(), 'node_modules', '@expo-google-fonts');
@@ -44,6 +44,48 @@ describe('base document', () => {
     // Without a base given, the first page's source is the base (as before).
     const plain = await PDFDocument.load(await buildPdf({ sources: { main, other }, pages, objects: [], fieldValues: {} }, exportOpts));
     expect(plain.getTitle()).not.toBe('Main title');
+  });
+});
+
+describe('incremental save', () => {
+  it('a signed document gets a comment and a field value appended; its signature stays valid', async () => {
+    const plain = await makeSource('signed', ['Contract', 'Page two'], (d) => {
+      d.getForm().createTextField('name').addToPage(d.getPage(1), { x: 20, y: 300, width: 150, height: 20 });
+    });
+    const { createSelfSignedIdentity, signPdf, verifyPdfSignatures } = await import('@/lib/crypto/digitalSignature');
+    const identity = await createSelfSignedIdentity({ name: 'Test Signer', email: 't@example.com', organization: 'Adika', country: 'ro' });
+    const signed = await signPdf(plain.bytes, { identity, pageIndex: 0, rect: [0, 0, 0, 0] });
+    const src: SourceDoc = { ...plain, bytes: signed, original: true };
+    const pages = pageRefs(src, [0, 1]);
+    const comment = { id: 'n1', type: 'note', pageId: pages[0].id, x: 40, y: 40, rotation: 0, opacity: 1, width: 20, height: 20, text: 'Looks good', color: '#facc15', author: 'Ana', createdAt: '2026-10-01T10:00:00Z', modifiedAt: '2026-10-01T10:00:00Z' } as EditorObject;
+    const input = { sources: { signed: src }, pages, objects: [comment], fieldValues: { 'signed::name': 'Ana Pop' }, baseSourceId: 'signed' };
+    expect(incrementalBlocker(input)).toBeNull();
+    const out = await buildIncrementalPdf(input, exportOpts);
+    // The signed bytes are untouched; the update follows them.
+    expect(Buffer.from(out.subarray(0, signed.length)).equals(Buffer.from(signed))).toBe(true);
+    const [v] = await verifyPdfSignatures(out);
+    expect(v.integrity).toBe('valid');
+    expect((v as { modifiedAfterSigning?: boolean }).modifiedAfterSigning).toBe(false);
+    expect(v.laterChanges).toMatchObject({ comments: true, form: true, other: false });
+    const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
+    const doc = await pdfjs.getDocument({ data: out.slice() }).promise;
+    const a1 = (await (await doc.getPage(1)).getAnnotations()) as Array<{ subtype: string; contentsObj?: { str: string } }>;
+    expect(a1.some((a) => a.subtype === 'Text' && a.contentsObj?.str === 'Looks good')).toBe(true);
+    const a2 = (await (await doc.getPage(2)).getAnnotations()) as Array<{ fieldName?: string; fieldValue?: unknown }>;
+    expect(a2.find((a) => a.fieldName === 'name')?.fieldValue).toBe('Ana Pop');
+  });
+
+  it('is refused for page content, page changes and rewritten files', async () => {
+    const src: SourceDoc = { ...(await makeSource('s', ['A', 'B'])), original: true };
+    const pages = pageRefs(src, [0, 1]);
+    const base = { sources: { s: src }, pages, objects: [], fieldValues: {}, baseSourceId: 's' };
+    expect(incrementalBlocker(base)).toBeNull();
+    expect(incrementalBlocker({ ...base, pages: [pages[1], pages[0]] })).not.toBeNull();
+    expect(incrementalBlocker({ ...base, pages: [pages[0], { ...pages[1], userRotation: 90 }] })).not.toBeNull();
+    const rect = { id: 'r', type: 'rect', pageId: pages[0].id, x: 0, y: 0, rotation: 0, opacity: 1, width: 5, height: 5, stroke: '#000', fill: null, strokeWidth: 1 } as EditorObject;
+    expect(incrementalBlocker({ ...base, objects: [rect] })).not.toBeNull();
+    expect(incrementalBlocker({ ...base, sources: { s: { ...src, original: false } } })).not.toBeNull();
+    expect(incrementalBlocker(base, { title: 'x' })).not.toBeNull();
   });
 });
 
