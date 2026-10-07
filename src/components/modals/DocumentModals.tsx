@@ -527,6 +527,7 @@ export function OcrModal() {
   const [dpi, setDpi] = useState(300);
   const [langs, setLangs] = useState<string[]>(() => loadOcrLangs());
   const [output, setOutput] = useState<'searchable' | 'sans' | 'serif'>('searchable');
+  const [straighten, setStraighten] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const toggleLang = (code: string) => {
@@ -539,7 +540,7 @@ export function OcrModal() {
       const pageNumbers = scope === 'all' ? Array.from({ length: count }, (_, i) => i + 1) : scope === 'current' ? [Math.max(1, current)] : [...new Set(parseRanges(range, count).flat())];
       saveOcrLangs(langs);
       close();
-      await runOcr({ pageNumbers, dpi, lang: langs.join('+'), editable: output === 'searchable' ? undefined : { family: output } });
+      await runOcr({ pageNumbers, dpi, lang: langs.join('+'), straighten, editable: output === 'searchable' ? undefined : { family: output } });
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
@@ -585,6 +586,9 @@ export function OcrModal() {
       <Field label="Resolution" hint="300 DPI is best for typical scans; 400 for small print.">
         <Select value={String(dpi)} onChange={(v) => setDpi(Number(v))} ariaLabel="OCR resolution" options={[{ value: '200', label: '200 DPI (fast)' }, { value: '300', label: '300 DPI (recommended)' }, { value: '400', label: '400 DPI (small text)' }]} />
       </Field>
+      {output === 'searchable' ? (
+        <Checkbox checked={straighten} onChange={setStraighten} label="Straighten page orientation" />
+      ) : null}
       <Field label="Document languages" hint="Pick every language that appears in the scan. Fewer languages = faster and more accurate.">
         <div className="flex flex-wrap gap-1.5" data-testid="ocr-langs">
           {OCR_LANGUAGES.map((l) => (

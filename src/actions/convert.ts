@@ -432,7 +432,7 @@ export async function exportAs(req: ExportRequest): Promise<void> {
 
 // ================================================================ OCR / compress / PDF-A / flatten
 
-export async function runOcr(opts: { pageNumbers: number[]; dpi: number; lang: string; editable?: { family: 'sans' | 'serif' } }): Promise<void> {
+export async function runOcr(opts: { pageNumbers: number[]; dpi: number; lang: string; straighten?: boolean; editable?: { family: 'sans' | 'serif' } }): Promise<void> {
   const editable = opts.editable;
   const out = await withBusy('Recognising text (OCR)…', (progress) =>
     withEditedDoc(async (pdf, bytes) => {
