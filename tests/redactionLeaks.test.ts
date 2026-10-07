@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { PDFArray, PDFDict, PDFDocument, PDFName, PDFRef, PDFString } from 'pdf-lib';
 import { buildPdf } from '@/lib/pdf/exportPdf';
+import { readXfaPackets, xfaDataXml } from '@/lib/pdf/xfa';
+import { staticXfaPdf } from './helpers/xfaForms';
 import { PNG_1PX, contains, everything, loadFont, measure, pageRefs, pdfjsText, rasterize, sourceOf } from './helpers/redaction';
 
 const SECRETS = ['ALPHASECRET', 'BETASECRET', 'GAMMASECRET', 'PIECESECRET', 'THUMBSECRET', 'FIELDSECRET', 'LINKSECRET'];
@@ -106,5 +108,23 @@ describe('nothing keeps a redacted, rasterised or deleted page alive', () => {
     // The tagged span kept its MCID but lost the redacted text; page 1's thumbnail and private data are gone.
     expect(doc.getPage(0).node.get(PDFName.of('Thumb'))).toBeUndefined();
     expect(doc.getPage(0).node.get(PDFName.of('PieceInfo'))).toBeUndefined();
+  });
+
+  it('a static XFA field under a box is emptied in the XFA data too', async () => {
+    const src = { ...sourceOf(await staticXfaPdf()), pageCount: 1 };
+    const [ref] = pageRefs(src, 1, 612, 792);
+    const out = await buildPdf(
+      { sources: { [src.id]: src }, pages: [ref], objects: [{ id: 'r', type: 'redact', pageId: ref.id, x: 140, y: 60, width: 280, height: 40, rotation: 0, opacity: 1, fill: '#000000' }], fieldValues: {} },
+      { loadFont, measure, rasterizeRedactedPage: rasterize },
+    );
+    const doc = await PDFDocument.load(out);
+    const packets = readXfaPackets(doc);
+    expect(packets).not.toBeNull();
+    {
+      const data = xfaDataXml(packets)!;
+      expect(data).not.toContain('Ana Pop');
+      expect(data).toContain('<Country>Germany</Country>');
+    }
+    expect(contains(await everything(out), 'Ana Pop')).toBe(false);
   });
 });

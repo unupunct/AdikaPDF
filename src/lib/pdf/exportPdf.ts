@@ -581,7 +581,30 @@ function orderForRedaction(list: EditorObject[], rects: Rect[]): EditorObject[] 
 }
 
 /** Opens a graphics state whose clip leaves out every redaction box (closed with Q). */
-function clipOutRedactions(page: PDFPage, pm: Matrix, rects: Rect[]): void {
+/** Full names of the form fields with a widget overlapping one of `boxes` (PDF user space). */
+function fieldsUnder(doc: PDFDocument, page: PDFPage, boxes: Box[]): string[] {
+  const out: string[] = [];
+  for (const ref of widgetRefs(doc, page)) {
+    const w = lookupDict(doc, ref);
+    const rect = w?.lookup(PDFName.of('Rect'));
+    if (!(rect instanceof PDFArray) || rect.size() < 4) continue;
+    const r = [0, 1, 2, 3].map((k) => (rect.lookup(k) as PDFNumber).asNumber());
+    const b = { x0: Math.min(r[0], r[2]), y0: Math.min(r[1], r[3]), x1: Math.max(r[0], r[2]), y1: Math.max(r[1], r[3]) };
+    if (!boxes.some((x) => x.x0 < b.x1 && b.x0 < x.x1 && x.y0 < b.y1 && b.y0 < x.y1)) continue;
+    const parts: string[] = [];
+    let d: PDFDict | undefined = w;
+    for (let depth = 0; d && depth < 32; depth++) {
+      const t = d.lookup(PDFName.of('T'));
+      if (t instanceof PDFString || t instanceof PDFHexString) parts.unshift(t.decodeText());
+      d = lookupDict(doc, d.get(PDFName.of('Parent')));
+    }
+    if (parts.length) out.push(parts.join('.'));
+  }
+  return out;
+}
+
+function clipOutRedactions(
+page: PDFPage, pm: Matrix, rects: Rect[]): void {
   page.pushOperators(pushGraphicsState());
   // One even-odd clip per box: the clips intersect, so overlapping boxes stay out too.
   for (const d of rects) {
@@ -874,6 +897,7 @@ export async function buildPdf(input: ExportInput, options: ExportOptions = {}):
   // Redacted letters' marked-content ids per page, and annotations taken off (for the structure tree).
   const redactedMcids = new Map<string, Set<number>>();
   const goneAnnots = new Set<string>();
+  const redactedFields = new Set<string>();
   const noteRemoval = (page: PDFPage, res: { mcids: number[]; removedAnnotRefs: string[] }) => {
     if (res.mcids.length) redactedMcids.set(page.ref.toString(), new Set([...(redactedMcids.get(page.ref.toString()) ?? []), ...res.mcids]));
     for (const r of res.removedAnnotRefs) goneAnnots.add(r);
@@ -890,6 +914,8 @@ export async function buildPdf(input: ExportInput, options: ExportOptions = {}):
     };
     const editable = ref.kind === 'source' && !!ref.sourceId;
     if (redactions?.length) {
+      // Static XFA keeps its own copy of the values: fields under a box are emptied there too.
+      if (staticXfa) for (const name of fieldsUnder(doc, page, redactions.map(toPdf))) redactedFields.add(name);
       const res = editable ? removeGlyphs(doc, page, redactions.map(toPdf), 'redact') : null;
       if (res?.ok) noteRemoval(page, res);
       if (!res?.ok) {
@@ -1196,6 +1222,7 @@ export async function buildPdf(input: ExportInput, options: ExportOptions = {}):
     }
     const prefix = `${baseSourceId}::`;
     const values = Object.fromEntries(Object.entries(input.fieldValues).filter(([k]) => k.startsWith(prefix)).map(([k, v]) => [k.slice(prefix.length), v]));
+    for (const name of redactedFields) values[name] = '';
     keepXfa = restoreStaticXfa(doc, staticXfa, values) === 'synced';
   }
   // Nothing may keep a deleted or rasterised page (and its text) alive: tags, bookmarks, links, open action.
