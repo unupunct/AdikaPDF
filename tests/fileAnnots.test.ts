@@ -159,6 +159,33 @@ describe('comments already in the file', () => {
     expect(hlDict.lookup(PDFName.of('M'))).toBeDefined();
   });
 
+  it('rewrites edited shapes, lines and polygons with new appearances', async () => {
+    const { src, ids } = await source();
+    const list = await read(src);
+    const circle = take(list, ids.circle);
+    const line = take(list, ids.line);
+    const poly = take(list, ids.polygon);
+    const objects = [
+      { ...circle, stroke: '#ff0000', y: circle.y + 50 },
+      { ...line, stroke: '#0000ff', strokeWidth: 4 },
+      { ...poly, fill: '#00ff00' },
+    ] as EditorObject[];
+    const out = await buildPdf({ sources: { src }, pages: [pageRef([ids.circle, ids.line, ids.polygon])], objects, fieldValues: {} }, opts);
+    const after = await annots(out);
+    const byId = (id: string) => after.find((a) => a.id === id)! as Raw & { lineCoordinates?: number[]; borderStyle?: { width: number }; hasAppearance?: boolean; interiorColor?: Uint8ClampedArray };
+    expect(Array.from(byId(ids.circle).color ?? [])).toEqual([255, 0, 0]);
+    expect(byId(ids.circle).rect[1]).toBeLessThan(400);
+    expect(Array.from(byId(ids.line).color ?? [])).toEqual([0, 0, 255]);
+    expect(byId(ids.line).borderStyle?.width).toBe(4);
+    expect(byId(ids.line).hasAppearance).toBe(true);
+    const doc = await PDFDocument.load(out);
+    const dicts = (doc.getPage(0).node.Annots() as PDFArray).asArray().map((r) => doc.context.lookup(r) as PDFDict);
+    const pg = dicts.find((x) => (x.lookup(PDFName.of('NM')) as PDFString | undefined)?.decodeText() === 'nm-pg')!;
+    expect((pg.lookup(PDFName.of('IC')) as PDFArray).asArray().map(String)).toEqual(['0', '1', '0']);
+    expect((pg.lookup(PDFName.of('Contents')) as PDFHexString).decodeText()).toBe('Triunghi');
+    expect(after.length).toBe((await annots(src.bytes)).length);
+  });
+
   it('deletes a parent with its popup and replies', async () => {
     const { src, ids } = await source();
     const out = await buildPdf({ sources: { src }, pages: [pageRef([ids.note])], objects: [], fieldValues: {} }, opts);
