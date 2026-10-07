@@ -45,6 +45,7 @@ import {
   PDFTextField,
   StandardFonts,
   clip,
+  clipEvenOdd,
   concatTransformationMatrix,
   degrees,
   drawObject,
@@ -73,6 +74,7 @@ import type {
 } from '@/types';
 import {
   displaySize,
+  objectDisplayBounds,
   displayToPdfMatrix,
   multiply,
   rotateCw,
@@ -91,6 +93,8 @@ import { writeAttachment, writeLink, writeMeasure, writePoly, writeStamp } from 
 import { prepareFileAnnotEdits } from './fileAnnots';
 import { writeOutline } from './outline';
 import { dropUnreachableObjects } from './prune';
+import { retargetPageRefs, scrubStructTree } from './redactCleanup';
+
 import { removeGlyphs, type Box, type LineEdit } from './textRemoval';
 import { readFieldLogic, writeCalcOrder, writeFieldLogic } from './formScripts';
 import { readXfaPackets, restoreStaticXfa, xfaKindOf } from './xfa';
@@ -553,6 +557,64 @@ function drawPen(page: PDFPage, pm: Matrix, o: PenObject): void {
   });
 }
 
+// ---------------------------------------------------------------- redaction
+
+/** Objects whose content cannot be cut: under a redaction box they are left out. */
+const CLIPPABLE = new Set<EditorObject['type']>(['rect', 'ellipse', 'highlight', 'line', 'arrow']);
+
+/**
+ * What happens to an object under a redaction box: plain shapes and lines are
+ * clipped out of the boxes; text, pictures, ink, drawings, comments and
+ * fields are dropped (their data would otherwise stay in the file), and so
+ * are comments taken over from the file.
+ */
+export function redactionFate(o: EditorObject, rects: Rect[]): 'keep' | 'clip' | 'drop' {
+  if (o.type === 'redact') return 'keep';
+  const b = objectDisplayBounds(o);
+  const eps = 0.01;
+  const hit = rects.some((r) => b.x < r.x + r.width - eps && r.x < b.x + b.width - eps && b.y < r.y + r.height - eps && r.y < b.y + b.height - eps);
+  if (!hit) return 'keep';
+  // A comment taken over from the file is written back as an annotation, which a clip cannot cut.
+  return CLIPPABLE.has(o.type) && !o.fileAnnot ? 'clip' : 'drop';
+}
+
+/** The objects of a redacted page: those under a box dropped, the boxes themselves last so nothing is drawn over them. */
+function orderForRedaction(list: EditorObject[], rects: Rect[]): EditorObject[] {
+  return [...list.filter((o) => o.type !== 'redact' && redactionFate(o, rects) !== 'drop'), ...list.filter((o) => o.type === 'redact')];
+}
+
+/** Full names of the form fields with a widget overlapping one of `boxes` (PDF user space). */
+function fieldsUnder(doc: PDFDocument, page: PDFPage, boxes: Box[]): string[] {
+  const out: string[] = [];
+  for (const ref of widgetRefs(doc, page)) {
+    const w = lookupDict(doc, ref);
+    const rect = w?.lookup(PDFName.of('Rect'));
+    if (!(rect instanceof PDFArray) || rect.size() < 4) continue;
+    const r = [0, 1, 2, 3].map((k) => (rect.lookup(k) as PDFNumber).asNumber());
+    const b = { x0: Math.min(r[0], r[2]), y0: Math.min(r[1], r[3]), x1: Math.max(r[0], r[2]), y1: Math.max(r[1], r[3]) };
+    if (!boxes.some((x) => x.x0 < b.x1 && b.x0 < x.x1 && x.y0 < b.y1 && b.y0 < x.y1)) continue;
+    const parts: string[] = [];
+    let d: PDFDict | undefined = w;
+    for (let depth = 0; d && depth < 32; depth++) {
+      const t = d.lookup(PDFName.of('T'));
+      if (t instanceof PDFString || t instanceof PDFHexString) parts.unshift(t.decodeText());
+      d = lookupDict(doc, d.get(PDFName.of('Parent')));
+    }
+    if (parts.length) out.push(parts.join('.'));
+  }
+  return out;
+}
+
+/** Opens a graphics state whose clip leaves out every redaction box (closed with Q). */
+function clipOutRedactions(page: PDFPage, pm: Matrix, rects: Rect[]): void {
+  page.pushOperators(pushGraphicsState());
+  // One even-odd clip per box: the clips intersect, so overlapping boxes stay out too.
+  for (const d of rects) {
+    const r = transformRectBounds(pm, d);
+    page.pushOperators(rectangle(-1e5, -1e5, 2e5, 2e5), rectangle(r.x, r.y, r.width, r.height), clipEvenOdd(), endPath());
+  }
+}
+
 // ---------------------------------------------------------------- forms
 
 /** The value of a form field as text (fields created from objects first, then the document's own). */
@@ -834,6 +896,14 @@ export async function buildPdf(input: ExportInput, options: ExportOptions = {}):
   const replacerScale = new Map<string, number>();
   // Replacements the engine wrote into the page in the document's own font.
   const replacerNative = new Set<string>();
+  // Redacted letters' marked-content ids per page, and annotations taken off (for the structure tree).
+  const redactedMcids = new Map<string, Set<number>>();
+  const goneAnnots = new Set<string>();
+  const redactedFields = new Set<string>();
+  const noteRemoval = (page: PDFPage, res: { mcids: number[]; removedAnnotRefs: string[] }) => {
+    if (res.mcids.length) redactedMcids.set(page.ref.toString(), new Set([...(redactedMcids.get(page.ref.toString()) ?? []), ...res.mcids]));
+    for (const r of res.removedAnnotRefs) goneAnnots.add(r);
+  };
   for (let k = 0; k < planned.length; k++) {
     const { ref, page } = planned[k];
     const redactions = redactsByPage.get(ref.id);
@@ -846,7 +916,10 @@ export async function buildPdf(input: ExportInput, options: ExportOptions = {}):
     };
     const editable = ref.kind === 'source' && !!ref.sourceId;
     if (redactions?.length) {
+      // Static XFA keeps its own copy of the values: fields under a box are emptied there too.
+      if (staticXfa) for (const name of fieldsUnder(doc, page, redactions.map(toPdf))) redactedFields.add(name);
       const res = editable ? removeGlyphs(doc, page, redactions.map(toPdf), 'redact') : null;
+      if (res?.ok) noteRemoval(page, res);
       if (!res?.ok) {
         if (!options.rasterizeRedactedPage) throw new ExportError('Redaction needs a page rasterizer.');
         const raster = await options.rasterizeRedactedPage(ref, redactions);
@@ -878,6 +951,7 @@ export async function buildPdf(input: ExportInput, options: ExportOptions = {}):
         };
       });
       const res = editable ? removeGlyphs(doc, page, edits.flatMap((e) => e.boxes), 'replace', edits) : null;
+      if (res?.ok) noteRemoval(page, res);
       if (!res?.ok || res.coversImage) coverReplaced.add(ref.id);
       else {
         replacers.forEach((o, i) => {
@@ -935,15 +1009,28 @@ export async function buildPdf(input: ExportInput, options: ExportOptions = {}):
     if (!list) continue;
     const rotation: Rotation = rasterized ? 0 : totalRotation(ref);
     const pm = displayToPdfMatrix(rotation, visibleBox(page));
-    for (const o of list) {
+    const redactRects = redactsByPage.get(ref.id) ?? [];
+    if (redactRects.length && coverReplaced.has(ref.id)) {
+      // Replacement text under a box is left out; the old letters it should have covered still are.
+      for (const o of list) {
+        if (o.type !== 'text' || !o.replaces?.length || redactionFate(o, redactRects) !== 'drop') continue;
+        withMatrix(page, pm, () => {
+          for (const r of o.replaces!) page.drawRectangle({ x: r.x, y: r.y, width: r.width, height: r.height, color: rgb(1, 1, 1) });
+        });
+      }
+    }
+    for (const o of redactRects.length ? orderForRedaction(list, redactRects) : list) {
       if (fileEdits.skip(o)) continue;
       const review = (o as { reviewStatus?: ReviewState }).reviewStatus;
       const annotsBefore = page.node.Annots()?.size() ?? 0;
+      const clipped = redactRects.length > 0 && redactionFate(o, redactRects) === 'clip';
+      if (clipped) clipOutRedactions(page, pm, redactRects);
       // An object in a layer: its page content is marked as that layer's.
       const layer = o.layer && LAYERED.has(o.type) && !(o.type === 'text' && o.annotation) ? layerForContent(ctx.doc, page, o.layer) : null;
       if (layer) page.pushOperators(PDFOperator.of('BDC' as never, [PDFName.of('OC'), PDFName.of(layer)]));
       if (!fileEdits.write(ctx.doc, page, pm, o)) await writeObject(o);
       if (layer) page.pushOperators(PDFOperator.of('EMC' as never));
+      if (clipped) page.pushOperators(popGraphicsState());
       const original = fileEdits.adopt(ctx.doc, page, o, annotsBefore);
       if (review && review !== 'None' && original) addReviewReply(ctx.doc, page, original, review, (o as { author?: string }).author ?? '');
       else if (review && review !== 'None') {
@@ -1150,12 +1237,43 @@ export async function buildPdf(input: ExportInput, options: ExportOptions = {}):
     }
     const prefix = `${baseSourceId}::`;
     const values = Object.fromEntries(Object.entries(input.fieldValues).filter(([k]) => k.startsWith(prefix)).map(([k, v]) => [k.slice(prefix.length), v]));
+    for (const name of redactedFields) values[name] = '';
     keepXfa = restoreStaticXfa(doc, staticXfa, values) === 'synced';
   }
+  // Nothing may keep a deleted or rasterised page (and its text) alive: tags, bookmarks, links, open action.
+  cleanUpGonePages(doc, baseOriginal, planned, baseSourceId, redactedMcids, goneAnnots);
   // Embed fonts/images first, then drop orphans (replaced or deleted pages).
   await doc.flush();
   dropUnreachableObjects(doc);
   return doc.save({ useObjectStreams: true, updateFieldAppearances: !keepXfa });
+}
+
+/** Original pages no longer in the document: their references move to the page that replaced them, or go. */
+function cleanUpGonePages(doc: PDFDocument, original: PDFPage[], planned: PlannedPage[], baseSourceId: string | null, mcids: Map<string, Set<number>>, goneAnnots: Set<string>): void {
+  const live = new Set(planned.map((p) => p.page.ref.toString()));
+  const fates = new Map<string, PDFRef | null>();
+  original.forEach((page, i) => {
+    if (live.has(page.ref.toString())) return;
+    const next = planned.find((p) => p.ref.sourceId === baseSourceId && p.ref.sourceIndex === i);
+    fates.set(page.ref.toString(), next ? next.page.ref : null);
+  });
+  scrubStructTree(doc, { gonePages: new Set(fates.keys()), goneObjs: goneAnnots, mcids });
+  retargetPageRefs(doc, fates);
+  // The calculation order may still name fields that were removed with their pages.
+  const acro = lookupDict(doc, doc.catalog.get(PDFName.of('AcroForm')));
+  const co = acro?.lookup(PDFName.of('CO'));
+  if (acro && co instanceof PDFArray) {
+    const inTree = new Set<string>();
+    const walk = (ref: unknown, depth = 0) => {
+      if (!(ref instanceof PDFRef) || depth > 32 || inTree.has(ref.toString())) return;
+      inTree.add(ref.toString());
+      const kids = lookupDict(doc, ref)?.lookup(PDFName.of('Kids'));
+      if (kids instanceof PDFArray) for (let i = 0; i < kids.size(); i++) walk(kids.get(i), depth + 1);
+    };
+    const fields = acroFormFields(doc, false);
+    for (let i = 0; fields && i < fields.size(); i++) walk(fields.get(i));
+    for (let i = co.size() - 1; i >= 0; i--) if (!inTree.has(String(co.get(i)))) co.remove(i);
+  }
 }
 
 /**

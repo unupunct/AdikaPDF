@@ -78,6 +78,7 @@ import {
   Printer,
   MousePointerClick,
   QrCode,
+  EyeOff,
 } from 'lucide-react';
 import { useXfa } from '@/actions/xfaForms';
 import { usePDFStore } from '@/store/usePDFStore';
@@ -543,6 +544,7 @@ function SecurityTab() {
         <Big icon={<Lock size={I} />} label="Password" disabled={!hasDoc} onClick={() => s.openModal('password')} tip="AES-256 encryption and permissions" testId="btn-protect" />
         <Big icon={<KeyRound size={I} />} label="Certificate" disabled={!hasDoc} onClick={() => s.openModal('certencrypt')} tip="Encrypt for chosen people's certificates: no shared password" testId="btn-certencrypt" />
         <Big icon={<ShieldOff size={I} />} label="Sanitize" disabled={!hasDoc} onClick={() => void import('@/actions/security').then((m) => m.sanitizeDocument())} tip="Remove metadata, XMP and hidden info" />
+        <Big icon={<EyeOff size={I} />} label="Hidden info" disabled={!hasDoc} onClick={() => s.openModal('hiddenInfo')} tip="Find and remove hidden information: metadata, scripts, attachments, comments, form data, hidden layers and text, earlier versions" testId="btn-hidden-info" />
       </Group>
       <Group label="Accessibility">
         <Big icon={<Accessibility size={I} />} label="Accessibility" disabled={!hasDoc} onClick={() => s.openModal('accessibility')} tip="Check and fix what screen readers need: tags, reading order, title, language, picture descriptions (PDF/UA)" testId="btn-accessibility" />

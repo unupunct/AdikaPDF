@@ -209,4 +209,19 @@ describe('comments already in the file', () => {
     expect(Array.from(squares[0].color ?? [])).toEqual([0, 0, 255]);
     expect(second.length).toBe(first.length);
   });
+
+  it('removes taken-over comments under a redaction box, edited or not', async () => {
+    const { src, ids } = await source();
+    const list = await read(src);
+    const square = take(list, ids.square);
+    const hl = take(list, ids.highlight);
+    const box = (x: number, y: number, width: number, height: number) => ({ id: `rd${x}`, type: 'redact', pageId: 'p1', x, y, width, height, rotation: 0, opacity: 1, fill: '#000000' });
+    const objects = [square, { ...hl, color: '#00ff00' }, box(90, 310, 130, 100), box(40, 80, 230, 30)] as EditorObject[];
+    const out = await buildPdf({ sources: { src }, pages: [pageRef([ids.square, ids.highlight])], objects, fieldValues: {} }, opts);
+    const after = await annots(out);
+    expect(after.find((a) => a.id === ids.square)).toBeUndefined();
+    expect(after.find((a) => a.id === ids.highlight)).toBeUndefined();
+    expect(after.some((a) => a.subtype === 'Square' || a.subtype === 'Highlight')).toBe(false);
+    expect(after.some((a) => a.subtype === 'Circle')).toBe(true);
+  });
 });

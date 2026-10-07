@@ -1,0 +1,290 @@
+{
+  "Removing hidden information…": {
+    "ro": "Se elimină informațiile ascunse…",
+    "de": "Versteckte Informationen werden entfernt…",
+    "fr": "Suppression des informations masquées…",
+    "hu": "Rejtett információk eltávolítása…",
+    "it": "Rimozione delle informazioni nascoste…",
+    "es": "Eliminando la información oculta…"
+  },
+  "Hidden information removed. Save the document to keep the change.": {
+    "ro": "Informațiile ascunse au fost eliminate. Salvați documentul pentru a păstra modificarea.",
+    "de": "Versteckte Informationen entfernt. Speichern Sie das Dokument, um die Änderung zu behalten.",
+    "fr": "Informations masquées supprimées. Enregistrez le document pour conserver la modification.",
+    "hu": "A rejtett információk eltávolítva. A módosítás megtartásához mentse a dokumentumot.",
+    "it": "Informazioni nascoste rimosse. Salva il documento per mantenere la modifica.",
+    "es": "Información oculta eliminada. Guarde el documento para conservar el cambio."
+  },
+  "Details": {
+    "ro": "Detalii",
+    "de": "Details",
+    "fr": "Détails",
+    "hu": "Részletek",
+    "it": "Dettagli",
+    "es": "Detalles"
+  },
+  "Remove hidden information": {
+    "ro": "Eliminare informații ascunse",
+    "de": "Versteckte Informationen entfernen",
+    "fr": "Supprimer les informations masquées",
+    "hu": "Rejtett információk eltávolítása",
+    "it": "Rimuovi informazioni nascoste",
+    "es": "Eliminar información oculta"
+  },
+  "What the document carries besides its visible pages. Tick what to remove; the change can be undone until you save.": {
+    "ro": "Ce conține documentul în afară de paginile vizibile. Bifați ce doriți să eliminați; modificarea poate fi anulată până la salvare.",
+    "de": "Was das Dokument außer seinen sichtbaren Seiten enthält. Markieren Sie, was entfernt werden soll; die Änderung lässt sich bis zum Speichern rückgängig machen.",
+    "fr": "Ce que le document contient en plus de ses pages visibles. Cochez ce qu’il faut supprimer ; la modification peut être annulée jusqu’à l’enregistrement.",
+    "hu": "Amit a dokumentum a látható oldalain kívül tartalmaz. Jelölje be, mit szeretne eltávolítani; a módosítás mentésig visszavonható.",
+    "it": "Ciò che il documento contiene oltre alle pagine visibili. Seleziona cosa rimuovere; la modifica può essere annullata fino al salvataggio.",
+    "es": "Lo que el documento contiene además de sus páginas visibles. Marque lo que desea eliminar; el cambio se puede deshacer hasta que guarde."
+  },
+  "Scan again": {
+    "ro": "Verificare din nou",
+    "de": "Erneut prüfen",
+    "fr": "Analyser à nouveau",
+    "hu": "Újbóli ellenőrzés",
+    "it": "Analizza di nuovo",
+    "es": "Analizar de nuevo"
+  },
+  "Remove selected": {
+    "ro": "Eliminare selecție",
+    "de": "Auswahl entfernen",
+    "fr": "Supprimer la sélection",
+    "hu": "Kijelöltek eltávolítása",
+    "it": "Rimuovi selezionati",
+    "es": "Eliminar lo seleccionado"
+  },
+  "No hidden information found.": {
+    "ro": "Nu s-au găsit informații ascunse.",
+    "de": "Keine versteckten Informationen gefunden.",
+    "fr": "Aucune information masquée trouvée.",
+    "hu": "Nem található rejtett információ.",
+    "it": "Nessuna informazione nascosta trovata.",
+    "es": "No se encontró información oculta."
+  },
+  "Any removal keeps only the current version of the file: earlier versions go, and digital signatures will no longer be valid.": {
+    "ro": "Orice eliminare păstrează doar versiunea curentă a fișierului: versiunile anterioare dispar, iar semnăturile digitale nu vor mai fi valide.",
+    "de": "Jedes Entfernen behält nur die aktuelle Version der Datei: Frühere Versionen entfallen, und digitale Signaturen sind nicht mehr gültig.",
+    "fr": "Toute suppression ne conserve que la version actuelle du fichier : les versions antérieures disparaissent et les signatures numériques ne seront plus valides.",
+    "hu": "Bármilyen eltávolítás csak a fájl jelenlegi változatát tartja meg: a korábbi változatok elvesznek, és a digitális aláírások érvénytelenné válnak.",
+    "it": "Qualsiasi rimozione mantiene solo la versione attuale del file: le versioni precedenti vengono eliminate e le firme digitali non saranno più valide.",
+    "es": "Cualquier eliminación conserva solo la versión actual del archivo: las versiones anteriores desaparecen y las firmas digitales dejarán de ser válidas."
+  },
+  "Hidden info": {
+    "ro": "Info ascunse",
+    "de": "Verstecktes",
+    "fr": "Infos masquées",
+    "hu": "Rejtett adatok",
+    "it": "Info nascoste",
+    "es": "Info oculta"
+  },
+  "Find and remove hidden information: metadata, scripts, attachments, comments, form data, hidden layers and text, earlier versions": {
+    "ro": "Găsiți și eliminați informațiile ascunse: metadate, scripturi, atașamente, comentarii, date din formulare, straturi și text ascunse, versiuni anterioare",
+    "de": "Versteckte Informationen finden und entfernen: Metadaten, Skripte, Anhänge, Kommentare, Formulardaten, ausgeblendete Ebenen und Texte, frühere Versionen",
+    "fr": "Trouver et supprimer les informations masquées : métadonnées, scripts, pièces jointes, commentaires, données de formulaire, calques et texte masqués, versions antérieures",
+    "hu": "Rejtett információk keresése és eltávolítása: metaadatok, szkriptek, mellékletek, megjegyzések, űrlapadatok, rejtett rétegek és szöveg, korábbi változatok",
+    "it": "Trova e rimuovi le informazioni nascoste: metadati, script, allegati, commenti, dati dei moduli, livelli e testo nascosti, versioni precedenti",
+    "es": "Buscar y eliminar información oculta: metadatos, scripts, adjuntos, comentarios, datos de formularios, capas y texto ocultos, versiones anteriores"
+  },
+  "Metadata": {
+    "ro": "Metadate",
+    "de": "Metadaten",
+    "fr": "Métadonnées",
+    "hu": "Metaadatok",
+    "it": "Metadati",
+    "es": "Metadatos"
+  },
+  "Document properties, XMP and metadata attached to pictures, fonts and pages": {
+    "ro": "Proprietățile documentului, XMP și metadatele atașate imaginilor, fonturilor și paginilor",
+    "de": "Dokumenteigenschaften, XMP und Metadaten von Bildern, Schriften und Seiten",
+    "fr": "Propriétés du document, XMP et métadonnées attachées aux images, polices et pages",
+    "hu": "Dokumentumtulajdonságok, XMP és a képekhez, betűtípusokhoz és oldalakhoz csatolt metaadatok",
+    "it": "Proprietà del documento, XMP e metadati allegati a immagini, caratteri e pagine",
+    "es": "Propiedades del documento, XMP y metadatos adjuntos a imágenes, fuentes y páginas"
+  },
+  "JavaScript": {
+    "ro": "JavaScript",
+    "de": "JavaScript",
+    "fr": "JavaScript",
+    "hu": "JavaScript",
+    "it": "JavaScript",
+    "es": "JavaScript"
+  },
+  "Document, page, field and comment scripts and actions": {
+    "ro": "Scripturi și acțiuni ale documentului, paginilor, câmpurilor și comentariilor",
+    "de": "Skripte und Aktionen von Dokument, Seiten, Feldern und Kommentaren",
+    "fr": "Scripts et actions du document, des pages, des champs et des commentaires",
+    "hu": "A dokumentum, az oldalak, a mezők és a megjegyzések szkriptjei és műveletei",
+    "it": "Script e azioni di documento, pagine, campi e commenti",
+    "es": "Scripts y acciones del documento, las páginas, los campos y los comentarios"
+  },
+  "Attached files": {
+    "ro": "Fișiere atașate",
+    "de": "Angehängte Dateien",
+    "fr": "Fichiers joints",
+    "hu": "Csatolt fájlok",
+    "it": "File allegati",
+    "es": "Archivos adjuntos"
+  },
+  "Embedded files and file attachment comments": {
+    "ro": "Fișiere încorporate și comentarii cu fișiere atașate",
+    "de": "Eingebettete Dateien und Dateianhang-Kommentare",
+    "fr": "Fichiers incorporés et commentaires avec pièce jointe",
+    "hu": "Beágyazott fájlok és fájlmelléklet-megjegyzések",
+    "it": "File incorporati e commenti con file allegati",
+    "es": "Archivos incrustados y comentarios con archivos adjuntos"
+  },
+  "Comments and markup": {
+    "ro": "Comentarii și marcaje de text",
+    "de": "Kommentare und Markierungen",
+    "fr": "Commentaires et annotations",
+    "hu": "Megjegyzések és jelölések",
+    "it": "Commenti e annotazioni",
+    "es": "Comentarios y marcas"
+  },
+  "Notes, highlights, stamps, drawings and their replies": {
+    "ro": "Note, evidențieri, ștampile, desene și răspunsurile la ele",
+    "de": "Notizen, Hervorhebungen, Stempel, Zeichnungen und deren Antworten",
+    "fr": "Notes, surlignages, tampons, dessins et leurs réponses",
+    "hu": "Jegyzetek, kiemelések, bélyegzők, rajzok és a rájuk adott válaszok",
+    "it": "Note, evidenziazioni, timbri, disegni e relative risposte",
+    "es": "Notas, resaltados, sellos, dibujos y sus respuestas"
+  },
+  "Form field values": {
+    "ro": "Valorile câmpurilor de formular",
+    "de": "Werte der Formularfelder",
+    "fr": "Valeurs des champs de formulaire",
+    "hu": "Űrlapmezők értékei",
+    "it": "Valori dei campi modulo",
+    "es": "Valores de los campos de formulario"
+  },
+  "What was typed or chosen in the form fields (the fields stay, empty)": {
+    "ro": "Ce s-a scris sau ales în câmpurile formularului (câmpurile rămân, goale)",
+    "de": "Was in die Formularfelder eingegeben oder ausgewählt wurde (die Felder bleiben leer erhalten)",
+    "fr": "Ce qui a été saisi ou choisi dans les champs du formulaire (les champs restent, vides)",
+    "hu": "Amit az űrlapmezőkbe beírtak vagy kiválasztottak (a mezők üresen megmaradnak)",
+    "it": "Ciò che è stato digitato o scelto nei campi del modulo (i campi restano, vuoti)",
+    "es": "Lo que se escribió o eligió en los campos del formulario (los campos se conservan, vacíos)"
+  },
+  "Hidden layers": {
+    "ro": "Straturi ascunse",
+    "de": "Ausgeblendete Ebenen",
+    "fr": "Calques masqués",
+    "hu": "Rejtett rétegek",
+    "it": "Livelli nascosti",
+    "es": "Capas ocultas"
+  },
+  "Layers that are switched off, and their content": {
+    "ro": "Straturile dezactivate și conținutul lor",
+    "de": "Ausgeschaltete Ebenen und ihr Inhalt",
+    "fr": "Calques désactivés et leur contenu",
+    "hu": "A kikapcsolt rétegek és tartalmuk",
+    "it": "Livelli disattivati e il loro contenuto",
+    "es": "Capas desactivadas y su contenido"
+  },
+  "Hidden text": {
+    "ro": "Text ascuns",
+    "de": "Versteckter Text",
+    "fr": "Texte masqué",
+    "hu": "Rejtett szöveg",
+    "it": "Testo nascosto",
+    "es": "Texto oculto"
+  },
+  "Invisible text (such as the text layer of a scan), text off the page or too small to read": {
+    "ro": "Text invizibil (de exemplu stratul de text al unei scanări), text în afara paginii sau prea mic pentru a fi citit",
+    "de": "Unsichtbarer Text (etwa die Textebene eines Scans), Text außerhalb der Seite oder zu klein zum Lesen",
+    "fr": "Texte invisible (comme la couche de texte d’un document numérisé), texte hors de la page ou trop petit pour être lu",
+    "hu": "Láthatatlan szöveg (például egy szkennelt dokumentum szövegrétege), az oldalon kívüli vagy olvashatatlanul kicsi szöveg",
+    "it": "Testo invisibile (come il livello di testo di una scansione), testo fuori pagina o troppo piccolo per essere letto",
+    "es": "Texto invisible (como la capa de texto de un escaneo), texto fuera de la página o demasiado pequeño para leerse"
+  },
+  "The outline shown in the Bookmarks panel": {
+    "ro": "Cuprinsul afișat în panoul Marcaje",
+    "de": "Die Gliederung im Lesezeichen-Bereich",
+    "fr": "Le sommaire affiché dans le panneau Signets",
+    "hu": "A Könyvjelzők panelen megjelenő vázlat",
+    "it": "La struttura mostrata nel pannello Segnalibri",
+    "es": "El esquema que se muestra en el panel Marcadores"
+  },
+  "Structure tags and alternate text": {
+    "ro": "Etichete de structură și text alternativ",
+    "de": "Struktur-Tags und Alternativtext",
+    "fr": "Balises de structure et texte de remplacement",
+    "hu": "Szerkezeti címkék és helyettesítő szöveg",
+    "it": "Tag di struttura e testo alternativo",
+    "es": "Etiquetas de estructura y texto alternativo"
+  },
+  "Tags for screen readers, with picture descriptions and replacement text": {
+    "ro": "Etichete pentru cititoarele de ecran, cu descrierile imaginilor și textul de înlocuire",
+    "de": "Tags für Bildschirmleser, mit Bildbeschreibungen und Ersatztext",
+    "fr": "Balises pour les lecteurs d’écran, avec descriptions d’images et texte de remplacement",
+    "hu": "Képernyőolvasóknak szóló címkék képleírásokkal és helyettesítő szöveggel",
+    "it": "Tag per i lettori di schermo, con descrizioni delle immagini e testo sostitutivo",
+    "es": "Etiquetas para lectores de pantalla, con descripciones de imágenes y texto de sustitución"
+  },
+  "Page thumbnails": {
+    "ro": "Miniaturi ale paginilor",
+    "de": "Seitenminiaturen",
+    "fr": "Vignettes des pages",
+    "hu": "Oldalbélyegképek",
+    "it": "Miniature delle pagine",
+    "es": "Miniaturas de las páginas"
+  },
+  "Small page images stored in the file": {
+    "ro": "Imagini mici ale paginilor stocate în fișier",
+    "de": "Kleine Seitenbilder, die in der Datei gespeichert sind",
+    "fr": "Petites images des pages enregistrées dans le fichier",
+    "hu": "A fájlban tárolt kis oldalképek",
+    "it": "Piccole immagini delle pagine salvate nel file",
+    "es": "Imágenes pequeñas de las páginas guardadas en el archivo"
+  },
+  "Private application data": {
+    "ro": "Date private ale aplicațiilor",
+    "de": "Private Anwendungsdaten",
+    "fr": "Données privées d’applications",
+    "hu": "Alkalmazások privát adatai",
+    "it": "Dati privati delle applicazioni",
+    "es": "Datos privados de aplicaciones"
+  },
+  "Data other programs keep in the file (PieceInfo)": {
+    "ro": "Date pe care alte programe le păstrează în fișier (PieceInfo)",
+    "de": "Daten, die andere Programme in der Datei ablegen (PieceInfo)",
+    "fr": "Données que d’autres programmes conservent dans le fichier (PieceInfo)",
+    "hu": "Más programok által a fájlban tárolt adatok (PieceInfo)",
+    "it": "Dati che altri programmi conservano nel file (PieceInfo)",
+    "es": "Datos que otros programas guardan en el archivo (PieceInfo)"
+  },
+  "Links to web pages and files": {
+    "ro": "Legături către pagini web și fișiere",
+    "de": "Links zu Webseiten und Dateien",
+    "fr": "Liens vers des pages web et des fichiers",
+    "hu": "Weboldalakra és fájlokra mutató hivatkozások",
+    "it": "Collegamenti a pagine web e file",
+    "es": "Vínculos a páginas web y archivos"
+  },
+  "Links that open web addresses, other files or programs": {
+    "ro": "Legături care deschid adrese web, alte fișiere sau programe",
+    "de": "Links, die Webadressen, andere Dateien oder Programme öffnen",
+    "fr": "Liens qui ouvrent des adresses web, d’autres fichiers ou des programmes",
+    "hu": "Webcímeket, más fájlokat vagy programokat megnyitó hivatkozások",
+    "it": "Collegamenti che aprono indirizzi web, altri file o programmi",
+    "es": "Vínculos que abren direcciones web, otros archivos o programas"
+  },
+  "Earlier versions": {
+    "ro": "Versiuni anterioare",
+    "de": "Frühere Versionen",
+    "fr": "Versions antérieures",
+    "hu": "Korábbi változatok",
+    "it": "Versioni precedenti",
+    "es": "Versiones anteriores"
+  },
+  "Previous saves kept inside the file (incremental updates)": {
+    "ro": "Salvări anterioare păstrate în fișier (actualizări incrementale)",
+    "de": "Frühere Speicherstände in der Datei (inkrementelle Aktualisierungen)",
+    "fr": "Enregistrements précédents conservés dans le fichier (mises à jour incrémentielles)",
+    "hu": "A fájlban megőrzött korábbi mentések (növekményes frissítések)",
+    "it": "Salvataggi precedenti conservati nel file (aggiornamenti incrementali)",
+    "es": "Guardados anteriores conservados en el archivo (actualizaciones incrementales)"
+  }
+}
