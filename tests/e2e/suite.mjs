@@ -651,6 +651,7 @@ test('certify, then a second signature on the signed file: both stay valid', asy
   await page.waitForSelector('[data-testid="signature-card"]', { timeout: 15000 });
   const text = await page.textContent('[data-testid="verify-modal"]');
   assert(/Allowed changes after signing: more signatures/.test(text) && /form filling and signing allowed/.test(text), 'verify dialog explains it');
+  assert(!(await page.$('[data-testid="signature-warning"]')), 'no algorithm or certificate warnings for signatures made by the app');
   await page.keyboard.press('Escape');
   const status = await page.textContent('[data-testid="status-signatures"]');
   assert(/2 signatures · intact/.test(status), `status bar (${status})`);

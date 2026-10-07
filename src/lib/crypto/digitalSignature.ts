@@ -2356,7 +2356,7 @@ export async function verifyPdfSignatures(pdfBytes: Uint8Array, opts: VerifyOpti
       if (!r.coversWholeFile) {
         // Adding validation data, signatures and field values after signing is allowed (as in Acrobat).
         const docMdp = signedView ? docMdpLevel(signedView.catalog) : r.certified ?? null;
-        const later = await classifyLaterChanges(pdfBytes.subarray(0, c + d), pdfBytes, { locked: fieldLock(f.field) ?? undefined });
+        const later = await classifyLaterChanges(pdfBytes.subarray(0, c + d), pdfBytes, { locked: fieldLock(f.field) ?? undefined, views: { signed: signedView, final: finalView } });
         r.laterChanges = later;
         r.modifiedAfterSigning =
           later.other ||
@@ -2480,6 +2480,8 @@ export interface LaterChanges {
 export interface LaterChangeRules {
   /** Fields the signature locked (FieldMDP): changing them is not allowed. */
   locked?: (fullName: string) => boolean;
+  /** Already loaded views of the signed revision and of the final file (saves parsing them again). */
+  views?: { signed?: RevisionView | null; final?: RevisionView | null };
 }
 
 /** LTV structures reachable from /DSS: the dictionaries and arrays ('container') and the data streams in them. */
@@ -2529,8 +2531,8 @@ export async function classifyLaterChanges(signedRevision: Uint8Array, full: Uin
   let a: RevisionView;
   let b: RevisionView;
   try {
-    a = loadRevision(full, signedRevision.length);
-    b = loadRevision(full);
+    a = rules.views?.signed ?? loadRevision(full, signedRevision.length);
+    b = rules.views?.final ?? loadRevision(full);
   } catch {
     return { ...res, other: true, reasons: ['The cross-reference data of the later revisions cannot be read.'] };
   }
