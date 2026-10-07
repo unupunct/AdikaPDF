@@ -60,7 +60,7 @@ export async function openPdfBytes(bytes: Uint8Array, name: string, path: string
   const open = !replaceCurrent && path ? tabWithPath(path) : null;
   if (open) {
     switchTab(open);
-    usePDFStore.getState().toast(` is already open.`, 'info');
+    usePDFStore.getState().toast(`Already open in a tab: ${name}`, 'info');
     return true;
   }
   const stampAtRead = path ? await fileStamp(path).catch(() => null) : null;

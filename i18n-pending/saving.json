@@ -47,13 +47,13 @@
     "it": "sono stati aggiunti commenti",
     "es": "se añadieron comentarios"
   },
-  "{0} is already open.": {
-    "ro": "{0} este deja deschis.",
-    "de": "{0} ist bereits geöffnet.",
-    "fr": "{0} est déjà ouvert.",
-    "hu": "{0} már meg van nyitva.",
-    "it": "{0} è già aperto.",
-    "es": "{0} ya está abierto."
+  "Already open in a tab: {0}": {
+    "ro": "Deja deschis într-o filă: {0}",
+    "de": "Bereits in einem Tab geöffnet: {0}",
+    "fr": "Déjà ouvert dans un onglet : {0}",
+    "hu": "Már meg van nyitva egy lapon: {0}",
+    "it": "Già aperto in una scheda: {0}",
+    "es": "Ya está abierto en una pestaña: {0}"
   },
   "The file changed on disk": {
     "ro": "Fișierul s-a modificat pe disc",
