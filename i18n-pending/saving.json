@@ -1,0 +1,42 @@
+{
+  "This PDF is protected by its author (an owner password restricts changes), so it opens read-only: Adika cannot save it without removing that protection. To edit it, use an unprotected copy from its author.": {
+    "ro": "Acest PDF este protejat de autorul său (o parolă de proprietar restricționează modificările), așa că se deschide doar pentru citire: Adika nu îl poate salva fără a elimina această protecție. Pentru a-l edita, folosiți o copie neprotejată de la autor.",
+    "de": "Dieses PDF ist von seinem Autor geschützt (ein Besitzerkennwort schränkt Änderungen ein) und wird daher schreibgeschützt geöffnet: Adika kann es nicht speichern, ohne diesen Schutz zu entfernen. Zum Bearbeiten verwenden Sie eine ungeschützte Kopie vom Autor.",
+    "fr": "Ce PDF est protégé par son auteur (un mot de passe propriétaire limite les modifications) ; il s’ouvre donc en lecture seule : Adika ne peut pas l’enregistrer sans retirer cette protection. Pour le modifier, utilisez une copie non protégée fournie par son auteur.",
+    "hu": "Ezt a PDF-et a szerzője védi (egy tulajdonosi jelszó korlátozza a módosításokat), ezért csak olvasásra nyílik meg: az Adika nem tudja menteni a védelem eltávolítása nélkül. A szerkesztéshez kérjen védelem nélküli példányt a szerzőtől.",
+    "it": "Questo PDF è protetto dal suo autore (una password di proprietario limita le modifiche), quindi si apre in sola lettura: Adika non può salvarlo senza rimuovere tale protezione. Per modificarlo, usa una copia non protetta fornita dall’autore.",
+    "es": "Este PDF está protegido por su autor (una contraseña de propietario restringe los cambios), así que se abre en modo de solo lectura: Adika no puede guardarlo sin quitar esa protección. Para editarlo, use una copia sin protección de su autor."
+  },
+  "The document stays in this window: {0}": {
+    "ro": "Documentul rămâne în această fereastră: {0}",
+    "de": "Das Dokument bleibt in diesem Fenster: {0}",
+    "fr": "Le document reste dans cette fenêtre : {0}",
+    "hu": "A dokumentum ebben az ablakban marad: {0}",
+    "it": "Il documento resta in questa finestra: {0}",
+    "es": "El documento se queda en esta ventana: {0}"
+  },
+  "The new window did not open the document in time.": {
+    "ro": "Fereastra nouă nu a deschis documentul la timp.",
+    "de": "Das neue Fenster hat das Dokument nicht rechtzeitig geöffnet.",
+    "fr": "La nouvelle fenêtre n’a pas ouvert le document à temps.",
+    "hu": "Az új ablak nem nyitotta meg időben a dokumentumot.",
+    "it": "La nuova finestra non ha aperto il documento in tempo.",
+    "es": "La nueva ventana no abrió el documento a tiempo."
+  },
+  "the new window could not open it.": {
+    "ro": "fereastra nouă nu l-a putut deschide.",
+    "de": "das neue Fenster konnte es nicht öffnen.",
+    "fr": "la nouvelle fenêtre n’a pas pu l’ouvrir.",
+    "hu": "az új ablak nem tudta megnyitni.",
+    "it": "la nuova finestra non è riuscita ad aprirlo.",
+    "es": "la nueva ventana no pudo abrirlo."
+  },
+  "The document needs its password to open.": {
+    "ro": "Documentul are nevoie de parolă pentru a se deschide.",
+    "de": "Zum Öffnen des Dokuments ist sein Kennwort erforderlich.",
+    "fr": "Le document a besoin de son mot de passe pour s’ouvrir.",
+    "hu": "A dokumentum megnyitásához meg kell adni a jelszavát.",
+    "it": "Per aprire il documento serve la sua password.",
+    "es": "El documento necesita su contraseña para abrirse."
+  }
+}

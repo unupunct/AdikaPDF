@@ -32,12 +32,17 @@ export async function convertIfDynamicXfa(bytes: Uint8Array, name: string, progr
   return { bytes: r.bytes, original: bytes };
 }
 
+/** The original XFA file of a converted source (for snapshots and backups). */
+export function xfaOriginalOf(sourceId: string): Uint8Array | null {
+  return originals.get(sourceId) ?? null;
+}
+
 /** After opening: remember the original of a converted form, or note a static XFA form. */
-export async function noteXfaSource(sourceId: string, original: Uint8Array | null): Promise<void> {
+export async function noteXfaSource(sourceId: string, original: Uint8Array | null, quiet = false): Promise<void> {
   if (original) {
     originals.set(sourceId, original);
     useXfa.setState((s) => ({ kinds: { ...s.kinds, [sourceId]: 'dynamic' } }));
-    usePDFStore.getState().toast('This is a dynamic XFA form. Adika shows it as a regular PDF form: fill it in and save, and it stays an XFA form.', 'info');
+    if (!quiet) usePDFStore.getState().toast('This is a dynamic XFA form. Adika shows it as a regular PDF form: fill it in and save, and it stays an XFA form.', 'info');
     return;
   }
   const src = usePDFStore.getState().sources[sourceId];
