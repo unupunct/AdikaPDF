@@ -24,6 +24,7 @@ import { CertEncryptModal, CertKeyDialog } from './CertEncryptModals';
 import { RecoverModal } from './RecoverModal';
 import { PrintModal } from './PrintModal';
 import { ReplacePagesModal } from './ReplacePagesModal';
+import { HiddenInfoModal } from './HiddenInfoModal';
 
 export function Modals() {
   return (
@@ -65,6 +66,7 @@ export function Modals() {
       <RecoverModal />
       <PrintModal />
       <ReplacePagesModal />
+      <HiddenInfoModal />
       <PasswordPrompt />
       <ConfirmPrompt />
     </>

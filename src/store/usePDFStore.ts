@@ -86,7 +86,8 @@ export type ModalId =
   | 'einvoice'
   | 'portfolio'
   | 'pageSize'
-  | 'customize';
+  | 'customize'
+  | 'hiddenInfo';
 
 export interface Toast {
   id: string;
