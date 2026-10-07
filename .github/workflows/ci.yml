@@ -55,3 +55,8 @@ jobs:
         working-directory: src-tauri/thumbs
       - run: cargo check --locked
         working-directory: src-tauri
+      - run: cargo test --locked
+        working-directory: src-tauri
+      # Renders a PDF with Windows.Data.Pdf, also on a single-threaded apartment like Explorer.
+      - run: cargo test --locked
+        working-directory: src-tauri/thumbs

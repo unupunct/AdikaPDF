@@ -89,22 +89,86 @@
 !macroend
 
 
-!macro NSIS_HOOK_PREINSTALL
-  ; Stop a running print helper so its files can be replaced.
-  nsExec::Exec 'taskkill /F /FI "IMAGENAME eq adika-pdf-editor.exe"'
-  Pop $0
-  ; Explorer's thumbnail host keeps the thumbnail handler loaded: let it go.
-  nsExec::Exec 'taskkill /F /FI "MODULES eq adika_thumbs.dll"'
+; Stops the print helpers (adika-pdf-editor.exe --print-watcher: no window, nothing
+; to save) of every user. Editor windows are left alone.
+!macro AdikaStopPrintWatchers
+  nsExec::Exec `powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "Get-CimInstance Win32_Process -Filter \"Name='${MAINBINARYNAME}.exe'\" | Where-Object { $$_.CommandLine -like '*--print-watcher*' } | ForEach-Object { Stop-Process -Id $$_.ProcessId -Force }"`
   Pop $0
 !macroend
 
+; Asks running editor windows to close (WM_CLOSE: Adika offers to save unsaved
+; documents) and waits; if one stays open, the user closes it and clicks Retry.
+; Silent and passive runs skip this: Tauri's own check then stops the program.
+!macro AdikaCloseEditors
+  !define AdikaCE ${__LINE__}
+  adika_check_${AdikaCE}:
+  !if "${INSTALLMODE}" == "currentUser"
+    nsis_tauri_utils::FindProcessCurrentUser "${MAINBINARYNAME}.exe"
+  !else
+    nsis_tauri_utils::FindProcess "${MAINBINARYNAME}.exe"
+  !endif
+  Pop $R0
+  ${If} $R0 = 0
+  ${AndIfNot} ${Silent}
+  ${AndIf} $PassiveMode <> 1
+    nsExec::Exec 'taskkill /FI "IMAGENAME eq ${MAINBINARYNAME}.exe"'
+    Pop $0
+    StrCpy $R1 0
+    adika_wait_${AdikaCE}:
+      Sleep 500
+      !if "${INSTALLMODE}" == "currentUser"
+        nsis_tauri_utils::FindProcessCurrentUser "${MAINBINARYNAME}.exe"
+      !else
+        nsis_tauri_utils::FindProcess "${MAINBINARYNAME}.exe"
+      !endif
+      Pop $R0
+      IntOp $R1 $R1 + 1
+      ${If} $R0 = 0
+      ${AndIf} $R1 < 16
+        Goto adika_wait_${AdikaCE}
+      ${EndIf}
+    ${If} $R0 = 0
+      MessageBox MB_RETRYCANCEL|MB_ICONEXCLAMATION "${PRODUCTNAME} is running. Save your work and close it, then click Retry." /SD IDCANCEL IDRETRY adika_check_${AdikaCE}
+      Abort
+    ${EndIf}
+  ${EndIf}
+  !undef AdikaCE
+!macroend
+
+; The thumbnail DLL may be loaded by Explorer or by any program showing a file
+; dialog, which locks it; a loaded DLL can still be renamed. It is moved aside and
+; deleted now, or at the next restart when still in use (no program is stopped).
+!macro AdikaRetireThumbs
+  ${If} ${FileExists} "$INSTDIR\adika_thumbs.dll"
+    System::Call 'kernel32::GetTickCount()i.r1'
+    Rename "$INSTDIR\adika_thumbs.dll" "$INSTDIR\adika_thumbs.$1.old"
+    Delete "$INSTDIR\adika_thumbs.$1.old"
+    ${If} ${FileExists} "$INSTDIR\adika_thumbs.$1.old"
+      ; MOVEFILE_DELAY_UNTIL_REBOOT, without asking for a restart now.
+      System::Call 'kernel32::MoveFileExW(w "$INSTDIR\adika_thumbs.$1.old", p 0, i 4)i'
+    ${EndIf}
+  ${EndIf}
+  ; Copies retired by earlier updates that are no longer in use.
+  Delete "$INSTDIR\adika_thumbs.*.old"
+!macroend
+
+!macro NSIS_HOOK_PREINSTALL
+  !insertmacro AdikaStopPrintWatchers
+  !insertmacro AdikaCloseEditors
+  !insertmacro AdikaRetireThumbs
+!macroend
+
 !macro NSIS_HOOK_POSTINSTALL
-  ; A "logs" folder next to the program, writable by every user (Program Files
-  ; is read-only for normal apps), so crash logs can be found in the install path.
+  ; Logs are kept per user (%LOCALAPPDATA%\Adika PDF Editor\logs); this folder only
+  ; holds the setup logs. Older versions made it writable by every user and wrote
+  ; everyone's logs here: those logs go and the folder gets the normal permissions.
+  ${If} ${FileExists} "$INSTDIR\logs\*.*"
+    Delete "$INSTDIR\logs\adika-*.log"
+    Delete "$INSTDIR\logs\crash-*.log"
+    nsExec::Exec 'icacls "$INSTDIR\logs" /reset /T /Q'
+    Pop $0
+  ${EndIf}
   CreateDirectory "$INSTDIR\logs"
-  ; *S-1-5-32-545 = BUILTIN\Users (language independent). (OI)(CI)M = modify, inherited.
-  nsExec::Exec 'icacls "$INSTDIR\logs" /grant *S-1-5-32-545:(OI)(CI)M /Q'
-  Pop $0
 
   ; Virtual printer "Adika PDF Editor" (needs administrator rights: per-machine install).
   ; printer.ps1 is installed next to the exe as a bundle resource.
@@ -122,19 +186,39 @@
 !macroend
 
 !macro NSIS_HOOK_PREUNINSTALL
-  nsExec::Exec 'taskkill /F /FI "IMAGENAME eq adika-pdf-editor.exe"'
-  Pop $0
-  nsExec::ExecToLog 'powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$INSTDIR\printer.ps1" -Action uninstall'
+  !insertmacro AdikaStopPrintWatchers
+  !insertmacro AdikaCloseEditors
+  ; An update (old version removed before the new one is installed) keeps what the
+  ; first install changed in Windows; a real uninstall puts it back.
+  ${If} $UpdateMode = 1
+    nsExec::ExecToLog 'powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$INSTDIR\printer.ps1" -Action uninstall'
+  ${Else}
+    nsExec::ExecToLog 'powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$INSTDIR\printer.ps1" -Action uninstall -RestoreSystem'
+  ${EndIf}
   Pop $0
   DeleteRegValue HKLM "Software\Microsoft\Windows\CurrentVersion\Run" "Adika PDF Printer"
   DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "Adika PDF Printer"
   !insertmacro AdikaShellMenuRemove
   nsExec::Exec 'regsvr32.exe /s /u "$INSTDIR\adika_thumbs.dll"'
   Pop $0
-  nsExec::Exec 'taskkill /F /FI "MODULES eq adika_thumbs.dll"'
-  Pop $0
+  !insertmacro AdikaRetireThumbs
 !macroend
 
 !macro NSIS_HOOK_POSTUNINSTALL
   RMDir /r "$INSTDIR\logs"
+  ; A thumbnail DLL still in use is deleted at the next restart: the folder goes then too.
+  RMDir "$INSTDIR"
+  ${If} ${FileExists} "$INSTDIR\*.*"
+  ${AndIf} $UpdateMode <> 1
+    System::Call 'kernel32::MoveFileExW(w "$INSTDIR", p 0, i 4)i'
+  ${EndIf}
+  ; "Delete the application data" also removes what Adika keeps for this user:
+  ; recovery backups (document content), printed PDFs, logs, caches, and the
+  ; e-mail attachment folder. Other users' profiles are theirs to clean.
+  ${If} $DeleteAppDataCheckboxState = 1
+  ${AndIf} $UpdateMode <> 1
+    SetShellVarContext current
+    RMDir /r "$LOCALAPPDATA\Adika PDF Editor"
+    RMDir /r "$TEMP\Adika PDF Editor"
+  ${EndIf}
 !macroend

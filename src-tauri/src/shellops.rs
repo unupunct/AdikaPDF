@@ -3,6 +3,8 @@
 //! document by e-mail through the default mail program (Simple MAPI).
 
 use serde::Serialize;
+use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 
 #[derive(Serialize, Clone, Debug, PartialEq)]
 pub struct LaunchRequest {
@@ -13,6 +15,12 @@ pub struct LaunchRequest {
 
 /// Reads a command line: `--combine a.pdf b.pdf`, `--convert report.docx`, or plain files to open.
 pub fn launch_from_args<I: IntoIterator<Item = String>>(args: I) -> LaunchRequest {
+    launch_from_args_in(args, None)
+}
+
+/// Like `launch_from_args`, with relative paths taken from `cwd` (the folder a
+/// second instance was started in, not this process's own).
+pub fn launch_from_args_in<I: IntoIterator<Item = String>>(args: I, cwd: Option<&Path>) -> LaunchRequest {
     let mut action = "open".to_string();
     let mut files = Vec::new();
     for a in args.into_iter().skip(1) {
@@ -23,8 +31,12 @@ pub fn launch_from_args<I: IntoIterator<Item = String>>(args: I) -> LaunchReques
             _ => {
                 let lower = a.to_ascii_lowercase();
                 let wanted = action == "convert" || lower.ends_with(".pdf") || lower.ends_with(".xml") || lower.ends_with(".zip");
-                if wanted && std::path::Path::new(&a).is_file() {
-                    files.push(a);
+                let path = match cwd {
+                    Some(dir) if Path::new(&a).is_relative() => dir.join(&a),
+                    _ => PathBuf::from(&a),
+                };
+                if wanted && path.is_file() {
+                    files.push(path.to_string_lossy().into_owned());
                 }
             }
         }
@@ -36,6 +48,38 @@ pub fn launch_from_args<I: IntoIterator<Item = String>>(args: I) -> LaunchReques
 #[tauri::command]
 pub fn launch_request() -> LaunchRequest {
     launch_from_args(std::env::args())
+}
+
+/// Requests of later launches. Until the window listens for them (it pulls
+/// the queue right after registering its listener) they wait here, so files
+/// arriving during a cold start (Explorer's "Combine" starts one process per
+/// file) are not lost.
+#[derive(Default)]
+pub struct LaunchQueue(Mutex<(bool, Vec<LaunchRequest>)>);
+
+impl LaunchQueue {
+    /// The request to emit now, or None when it was queued for later.
+    pub fn offer(&self, req: LaunchRequest) -> Option<LaunchRequest> {
+        let mut q = self.0.lock().unwrap_or_else(|e| e.into_inner());
+        if q.0 {
+            return Some(req);
+        }
+        q.1.push(req);
+        None
+    }
+
+    /// Everything queued; from now on requests are emitted directly.
+    pub fn take(&self) -> Vec<LaunchRequest> {
+        let mut q = self.0.lock().unwrap_or_else(|e| e.into_inner());
+        q.0 = true;
+        std::mem::take(&mut q.1)
+    }
+}
+
+/// Called by the window once it listens for `adika://launch`.
+#[tauri::command]
+pub fn take_pending_launches(queue: tauri::State<'_, LaunchQueue>) -> Vec<LaunchRequest> {
+    queue.take()
 }
 
 #[cfg(windows)]
@@ -128,8 +172,9 @@ pub async fn open_document_window(app: tauri::AppHandle, adopt: String) -> Resul
     if adopt.is_empty() || !adopt.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_') {
         return Err("Invalid window request".into());
     }
+    static NEXT: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(1);
     let millis = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis()).unwrap_or(0);
-    let label = format!("doc-{millis}");
+    let label = format!("doc-{millis}-{}", NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed));
     let url = tauri::WebviewUrl::App(format!("index.html?adopt={adopt}").into());
     let mut b = tauri::WebviewWindowBuilder::new(&app, &label, url).title("Adika PDF Editor").inner_size(1280.0, 860.0).min_inner_size(900.0, 600.0);
     // The end-to-end tests' own WebView profile, like the main window.
@@ -145,7 +190,19 @@ pub async fn open_document_window(app: tauri::AppHandle, adopt: String) -> Resul
 /// Shows a file selected in Explorer.
 #[tauri::command]
 pub fn reveal_in_explorer(path: String) -> Result<(), String> {
-    std::process::Command::new("explorer.exe").arg(format!("/select,{path}")).spawn().map(|_| ()).map_err(|e| e.to_string())
+    if path.contains('"') {
+        return Err("Invalid path".into());
+    }
+    let mut cmd = std::process::Command::new("explorer.exe");
+    // Quoted by hand: Explorer reads /select,"path" (commas and spaces in the path stay intact).
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.raw_arg(format!("/select,\"{path}\""));
+    }
+    #[cfg(not(windows))]
+    cmd.arg(format!("/select,{path}"));
+    cmd.spawn().map(|_| ()).map_err(|e| e.to_string())
 }
 
 #[cfg(test)]
@@ -168,5 +225,21 @@ mod tests {
         // A Word file is only taken for converting.
         assert!(launch_from_args(s(&["exe", &d])).files.is_empty());
         assert_eq!(launch_from_args(s(&["exe", "--convert", &d])), LaunchRequest { action: "convert".into(), files: vec![d] });
+        // A second instance started elsewhere: relative names are taken from its own folder.
+        let req = launch_from_args_in(s(&["exe", "a.pdf"]), Some(&dir));
+        assert_eq!(req.files, vec![dir.join("a.pdf").to_string_lossy().to_string()]);
+        assert!(launch_from_args_in(s(&["exe", "a.pdf"]), Some(&std::env::temp_dir().join("adika-nowhere"))).files.is_empty());
+    }
+
+    #[test]
+    fn queues_launches_until_the_window_listens() {
+        let q = LaunchQueue::default();
+        let req = |f: &str| LaunchRequest { action: "combine".into(), files: vec![f.into()] };
+        assert_eq!(q.offer(req("a.pdf")), None);
+        assert_eq!(q.offer(req("b.pdf")), None);
+        assert_eq!(q.take(), vec![req("a.pdf"), req("b.pdf")]);
+        // Listening now: later requests go straight to the window, nothing is queued twice.
+        assert_eq!(q.offer(req("c.pdf")), Some(req("c.pdf")));
+        assert!(q.take().is_empty());
     }
 }

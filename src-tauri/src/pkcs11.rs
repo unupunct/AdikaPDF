@@ -97,9 +97,7 @@ fn context(module: &str) -> Result<&'static Pkcs11, String> {
     if let Some(ctx) = map.get(module) {
         return Ok(ctx);
     }
-    if !Path::new(module).is_file() {
-        return Err(format!("PKCS#11 module not found: {module}"));
-    }
+    crate::pathguard::check_module(module)?;
     let ctx = Pkcs11::new(module).map_err(|e| format!("Could not load {module}: {e}"))?;
     match ctx.initialize(CInitializeArgs::new(CInitializeFlags::OS_LOCKING_OK)) {
         Ok(()) => {}

@@ -26,6 +26,9 @@ pub async fn http_request(request: Request<'_>) -> Result<Response, String> {
         return Err("Only http(s) URLs are allowed.".into());
     }
     let method = header(&request, "x-method").unwrap_or("GET").to_ascii_uppercase();
+    if method != "GET" && method != "POST" {
+        return Err("Only GET and POST requests are allowed.".into());
+    }
     let content_type = header(&request, "x-content-type").map(str::to_string);
     let body = match request.body() {
         InvokeBody::Raw(b) => b.clone(),

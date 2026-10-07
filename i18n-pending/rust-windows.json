@@ -1,0 +1,82 @@
+{
+  "This document is password-protected. Remove the password in Office, then convert it again.": {
+    "ro": "Acest document este protejat cu parolă. Eliminați parola în Office, apoi convertiți-l din nou.",
+    "de": "Dieses Dokument ist kennwortgeschützt. Entfernen Sie das Kennwort in Office und konvertieren Sie es dann erneut.",
+    "fr": "Ce document est protégé par un mot de passe. Supprimez le mot de passe dans Office, puis convertissez-le à nouveau.",
+    "hu": "Ez a dokumentum jelszóval védett. Távolítsa el a jelszót az Office-ban, majd konvertálja újra.",
+    "it": "Questo documento è protetto da password. Rimuovi la password in Office, quindi convertilo di nuovo.",
+    "es": "Este documento está protegido con contraseña. Quite la contraseña en Office y vuelva a convertirlo."
+  },
+  "Windows PowerShell is blocked on this computer (execution policy, language mode or application control set by your organisation). Adika needs it for Office conversion and scanning; ask your administrator to allow it.": {
+    "ro": "Windows PowerShell este blocat pe acest computer (politică de execuție, mod de limbaj sau control al aplicațiilor setate de organizația dvs.). Adika are nevoie de el pentru conversia Office și scanare; cereți administratorului să îl permită.",
+    "de": "Windows PowerShell ist auf diesem Computer gesperrt (Ausführungsrichtlinie, Sprachmodus oder Anwendungssteuerung Ihrer Organisation). Adika benötigt es für die Office-Konvertierung und das Scannen; bitten Sie Ihren Administrator, es zuzulassen.",
+    "fr": "Windows PowerShell est bloqué sur cet ordinateur (stratégie d’exécution, mode de langage ou contrôle des applications défini par votre organisation). Adika en a besoin pour la conversion Office et la numérisation ; demandez à votre administrateur de l’autoriser.",
+    "hu": "A Windows PowerShell le van tiltva ezen a számítógépen (a szervezete által beállított végrehajtási házirend, nyelvi mód vagy alkalmazásvezérlés miatt). Az Adikának szüksége van rá az Office-konvertáláshoz és a szkenneléshez; kérje meg a rendszergazdát, hogy engedélyezze.",
+    "it": "Windows PowerShell è bloccato su questo computer (criterio di esecuzione, modalità linguaggio o controllo delle applicazioni impostati dalla tua organizzazione). Adika ne ha bisogno per la conversione Office e la scansione; chiedi all’amministratore di consentirlo.",
+    "es": "Windows PowerShell está bloqueado en este equipo (directiva de ejecución, modo de lenguaje o control de aplicaciones establecidos por su organización). Adika lo necesita para la conversión de Office y el escaneo; pida a su administrador que lo permita."
+  },
+  "Adika does not write into system or program folders: {0}": {
+    "ro": "Adika nu scrie în folderele sistemului sau ale programelor: {0}",
+    "de": "Adika schreibt nicht in System- oder Programmordner: {0}",
+    "fr": "Adika n’écrit pas dans les dossiers système ou des programmes : {0}",
+    "hu": "Az Adika nem ír rendszer- vagy programmappákba: {0}",
+    "it": "Adika non scrive nelle cartelle di sistema o dei programmi: {0}",
+    "es": "Adika no escribe en carpetas del sistema ni de programas: {0}"
+  },
+  "Adika does not write program files: {0}": {
+    "ro": "Adika nu scrie fișiere de program: {0}",
+    "de": "Adika schreibt keine Programmdateien: {0}",
+    "fr": "Adika n’écrit pas de fichiers de programme : {0}",
+    "hu": "Az Adika nem ír programfájlokat: {0}",
+    "it": "Adika non scrive file di programma: {0}",
+    "es": "Adika no escribe archivos de programa: {0}"
+  },
+  "Invalid file name: {0}": {
+    "ro": "Nume de fișier nevalid: {0}",
+    "de": "Ungültiger Dateiname: {0}",
+    "fr": "Nom de fichier non valide : {0}",
+    "hu": "Érvénytelen fájlnév: {0}",
+    "it": "Nome file non valido: {0}",
+    "es": "Nombre de archivo no válido: {0}"
+  },
+  "Invalid path": {
+    "ro": "Cale nevalidă",
+    "de": "Ungültiger Pfad",
+    "fr": "Chemin non valide",
+    "hu": "Érvénytelen elérési út",
+    "it": "Percorso non valido",
+    "es": "Ruta no válida"
+  },
+  "A PKCS#11 module must be a DLL on this computer: {0}": {
+    "ro": "Un modul PKCS#11 trebuie să fie un DLL de pe acest computer: {0}",
+    "de": "Ein PKCS#11-Modul muss eine DLL auf diesem Computer sein: {0}",
+    "fr": "Un module PKCS#11 doit être une DLL présente sur cet ordinateur : {0}",
+    "hu": "A PKCS#11-modulnak ezen a számítógépen lévő DLL-nek kell lennie: {0}",
+    "it": "Un modulo PKCS#11 deve essere una DLL presente su questo computer: {0}",
+    "es": "Un módulo PKCS#11 debe ser una DLL de este equipo: {0}"
+  },
+  "A PKCS#11 module must be a .dll file: {0}": {
+    "ro": "Un modul PKCS#11 trebuie să fie un fișier .dll: {0}",
+    "de": "Ein PKCS#11-Modul muss eine .dll-Datei sein: {0}",
+    "fr": "Un module PKCS#11 doit être un fichier .dll : {0}",
+    "hu": "A PKCS#11-modulnak .dll fájlnak kell lennie: {0}",
+    "it": "Un modulo PKCS#11 deve essere un file .dll: {0}",
+    "es": "Un módulo PKCS#11 debe ser un archivo .dll: {0}"
+  },
+  "PKCS#11 modules are not loaded from temporary folders: {0}": {
+    "ro": "Modulele PKCS#11 nu sunt încărcate din foldere temporare: {0}",
+    "de": "PKCS#11-Module werden nicht aus temporären Ordnern geladen: {0}",
+    "fr": "Les modules PKCS#11 ne sont pas chargés depuis des dossiers temporaires : {0}",
+    "hu": "A PKCS#11-modulok nem tölthetők be ideiglenes mappákból: {0}",
+    "it": "I moduli PKCS#11 non vengono caricati da cartelle temporanee: {0}",
+    "es": "Los módulos PKCS#11 no se cargan desde carpetas temporales: {0}"
+  },
+  "Only GET and POST requests are allowed.": {
+    "ro": "Sunt permise doar cereri GET și POST.",
+    "de": "Nur GET- und POST-Anfragen sind erlaubt.",
+    "fr": "Seules les requêtes GET et POST sont autorisées.",
+    "hu": "Csak GET és POST kérések engedélyezettek.",
+    "it": "Sono consentite solo richieste GET e POST.",
+    "es": "Solo se permiten solicitudes GET y POST."
+  }
+}

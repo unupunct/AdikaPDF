@@ -5,7 +5,7 @@
 //! down machine) the fallback is `%LOCALAPPDATA%\Adika PDF Editor\logs`.
 //!
 //! * `adika-YYYY-MM-DD.log` — one line per event (errors, warnings, key actions)
-//! * `crash-YYYYMMDD-HHMMSS.log` — full details of every crash: Rust panics
+//! * `crash-YYYYMMDD-HHMMSS-mmm-<pid>.log` — full details of every crash: Rust panics
 //!   (with backtrace) and UI crashes reported by the WebView.
 //! Files older than 30 days are deleted at start-up; a daily log stops
 //! growing at 20 MB.
@@ -66,7 +66,7 @@ pub fn write(level: &str, message: &str) {
 
 /// Writes a separate crash report and notes it in the daily log.
 pub fn write_crash(source: &str, details: &str) -> PathBuf {
-    let path = dir().join(format!("crash-{}.log", Local::now().format("%Y%m%d-%H%M%S")));
+    let path = dir().join(format!("crash-{}-{}.log", Local::now().format("%Y%m%d-%H%M%S-%3f"), std::process::id()));
     let report = format!(
         "Adika PDF Editor {version} crash report\nTime: {time}\nSource: {source}\nOS: {os} {arch}\n\n{details}\n",
         version = env!("CARGO_PKG_VERSION"),

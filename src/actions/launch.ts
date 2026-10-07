@@ -61,6 +61,8 @@ async function convertFile(path: string): Promise<void> {
       const images = /^tiff?$/.test(ext) ? decodeTiff(bytes) : [await imageFileToDataUrl(bytes, name)];
       return convert.imagesToPdf(images, { pageSize: 'a4', orientation: 'auto', marginMm: 10 });
     }
+    const text = convert.textKind(name);
+    if (text) return convert.textLikeToPdf(bytes, name, path, text, { pageSize: 'A4', landscape: false, marginMm: 15 });
     if (ext === 'dxf') {
       const [{ DXF_DEFAULT_OPTIONS, decodeDxf, dxfToPdf }, { loadFontBytes }] = await Promise.all([import('@/lib/pdf/dxf'), import('@/lib/fonts')]);
       return (await dxfToPdf(decodeDxf(bytes), { ...DXF_DEFAULT_OPTIONS, loadFont: () => loadFontBytes({ family: 'sans', bold: false, italic: false }) })).bytes;
