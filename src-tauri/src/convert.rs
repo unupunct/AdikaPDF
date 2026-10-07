@@ -208,7 +208,7 @@ switch ($Kind) {
       # 17 = wdExportFormatPDF, 0 = print quality, 1 = bookmarks from headings
       $doc.ExportAsFixedFormat($Out, 17, $false, 0, 0, 1, 1, 0, $true, $true, 1, $true, $true, $false)
       $doc.Close(0); Release $doc
-    } finally { try { if ($own -or $app.Documents.Count -eq 0) { $app.Quit(0) } } catch { }; Release $app }
+    } finally { try { if ($own -or $app.Documents.Count -eq 0) { $app.Quit() } } catch { }; Release $app }
   }
   'excel' {
     $app = New-Object -ComObject Excel.Application
@@ -217,9 +217,9 @@ switch ($Kind) {
       $app.Visible = $false; $app.DisplayAlerts = $false
       $app.AutomationSecurity = 3
       $app.AskToUpdateLinks = $false; $app.EnableEvents = $false
-      # Filename, UpdateLinks (0 = never), ReadOnly, Format, Password, WriteResPassword, IgnoreReadOnlyRecommended,
+      # Filename, UpdateLinks (0 = never), ReadOnly, Format, Password, WriteResPassword (a dummy one fails every file), IgnoreReadOnlyRecommended,
       # Origin, Delimiter, Editable, Notify, Converter, AddToMru, Local, CorruptLoad (0 = normal, no repair)
-      $wb = Opened { $app.Workbooks.Open($In, 0, $true, $missing, $pw, $pw, $true, $missing, $missing, $false, $false, $missing, $false, $missing, 0) }
+      $wb = Opened { $app.Workbooks.Open($In, 0, $true, 5, $pw, '', $true, 2, ',', $false, $false, 0, $false, $false, 0) }
       # 0 = xlTypePDF; honours print areas, page breaks and gridline settings.
       # Excel refuses to export PDF when no printer is installed: fall back to
       # a web page (44 = xlHtml) that Adika then prints to PDF with Edge.
@@ -237,8 +237,8 @@ switch ($Kind) {
     $own = Started
     try {
       $app.AutomationSecurity = 3
-      # FileName, ReadOnly, Untitled, WithWindow
-      $pres = Opened { $app.Presentations.Open($In, -1, 0, 0) }
+      # FileName, ReadOnly, Untitled, WithWindow. "file::password::" is how PowerPoint takes an open password.
+      $pres = Opened { $app.Presentations.Open(($In + '::' + $pw + '::'), -1, 0, 0) }
       # 32 = ppSaveAsPDF
       $pres.SaveAs($Out, 32)
       $pres.Close(); Release $pres
