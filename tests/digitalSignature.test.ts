@@ -19,6 +19,7 @@ import {
   type SigningIdentity,
   type VerifyOptions,
 } from '../src/lib/crypto/digitalSignature';
+import { issue as issuePki, tsaServer } from './helpers/sigPki';
 
 // 1x1 red PNG.
 const PNG = new Uint8Array(
@@ -37,6 +38,7 @@ type V = Awaited<ReturnType<typeof verifyPdfSignatures>>[number] & {
   revocationDetails?: string;
   modifiedAfterSigning?: boolean;
   algorithm?: string;
+  timestampVerified?: boolean;
 };
 const verify = async (b: Uint8Array, o?: VerifyOptions) => (await verifyPdfSignatures(b, o)) as V[];
 
@@ -335,12 +337,18 @@ describe('RFC 3161 timestamps', () => {
     }) as unknown as typeof fetch;
 
   it('adds a granted token as unsigned attribute and still verifies', async () => {
-    const out = await signPdf(pdf, { identity, pageIndex: 0, rect: [0, 0, 0, 0], tsaUrl: 'https://tsa.example/', fetchImpl: fakeTsa() });
-    const [r] = await verify(out);
+    const tsaRoot = await issuePki({ cn: 'TSA Root', ca: true });
+    const tsa = await issuePki({ cn: 'Test TSA', issuer: tsaRoot, eku: ['1.3.6.1.5.5.7.3.8'] });
+    const stamp = new Date(Math.floor(Date.now() / 1000) * 1000 - 60_000);
+    const out = await signPdf(pdf, { identity, pageIndex: 0, rect: [0, 0, 0, 0], tsaUrl: 'https://tsa.example/', fetchImpl: tsaServer(tsa, { genTime: () => stamp }) });
+    const [r] = await verify(out, { trustedRoots: [tsaRoot.cert] });
     expect(r.integrity).toBe('valid');
     expect(r.hasTimestamp).toBe(true);
-    expect(r.signedAt).toBe(genTime.toISOString());
+    expect(r.timestampVerified).toBe(true);
+    expect(r.signedAt).toBe(stamp.toISOString());
     expect(r.message).not.toMatch(/does not match/);
+    // An unsigned (forged) token is never embedded.
+    await expect(signPdf(pdf, { identity, pageIndex: 0, rect: [0, 0, 0, 0], tsaUrl: 'https://tsa.example/', fetchImpl: fakeTsa() })).rejects.toThrow(/does not verify/);
   });
 
   it('insertTimestampToken keeps the signature value and appends [1]', async () => {

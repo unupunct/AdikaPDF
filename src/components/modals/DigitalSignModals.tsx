@@ -653,7 +653,9 @@ function SignatureCard({ sig }: { sig: SignatureValidation }) {
   const ok = sig.integrity === 'valid' && !sig.modifiedAfterSigning;
   const trusted = sig.chainStatus === 'trusted';
   const revoked = sig.revocationStatus === 'revoked';
-  const tone = !ok || revoked ? 'bad' : trusted ? 'good' : 'warn';
+  const warned = !!sig.warnings?.length;
+  const tsVerified = sig.timestampVerified ?? sig.hasTimestamp;
+  const tone = !ok || revoked ? 'bad' : trusted && !warned ? 'good' : 'warn';
   return (
     <div
       data-testid="signature-card"
@@ -677,7 +679,7 @@ function SignatureCard({ sig }: { sig: SignatureValidation }) {
             ) : null}
           </div>
           <div className="text-[11px] text-muted">
-            {sig.signedAt ? new Date(sig.signedAt).toLocaleString() : 'time unknown'} {sig.hasTimestamp ? '· trusted timestamp' : '· time from signer’s clock'}
+            {sig.signedAt ? new Date(sig.signedAt).toLocaleString() : 'time unknown'} {tsVerified ? '· trusted timestamp' : sig.hasTimestamp ? '· timestamp not verified' : '· time from signer’s clock'}
           </div>
         </div>
       </div>
@@ -689,8 +691,13 @@ function SignatureCard({ sig }: { sig: SignatureValidation }) {
           {sig.coversWholeFile
             ? 'Yes'
             : !sig.modifiedAfterSigning && sig.laterChanges
-              ? `Allowed changes after signing: ${[sig.laterChanges.ltv ? 'validation data' : '', sig.laterChanges.signatures ? 'more signatures' : '', sig.laterChanges.form ? 'form filling' : ''].filter(Boolean).join(', ')}`
+              ? `Allowed changes after signing: ${[sig.laterChanges.ltv ? 'validation data' : '', sig.laterChanges.signatures ? 'more signatures' : '', sig.laterChanges.form ? 'form filling' : '', sig.laterChanges.annotations ? 'comments' : ''].filter(Boolean).join(', ')}`
               : 'No — content was changed after this signature'}
+          {sig.modifiedAfterSigning && sig.laterChanges?.reasons?.length ? (
+            <span className="block text-[11px] text-muted" data-testid="signature-change-reasons">
+              {sig.laterChanges.reasons.join(' ')}
+            </span>
+          ) : null}
         </Row>
         {sig.certified ? <Row label="Certified">{['', 'Yes — no changes allowed', 'Yes — form filling and signing allowed', 'Yes — forms, signing and comments allowed'][sig.certified]}</Row> : null}
         {!sig.documentTimestamp ? <Row label="Long-term validation">{sig.ltv ? 'Yes — validation data saved in the file' : 'No'}</Row> : null}
@@ -706,6 +713,7 @@ function SignatureCard({ sig }: { sig: SignatureValidation }) {
                     : 'Issuer is a qualified trust service'
               : 'Declared by the certificate, not confirmed (download the EU Trusted Lists)'}
             {sig.euTrusted ? <span className="block text-[11px] text-muted">{sig.euTrusted}</span> : null}
+            {sig.euTrusted ? <span className="block text-[11px] text-muted">The list’s own signature is not verified (downloaded over HTTPS).</span> : null}
           </Row>
         ) : null}
         <Row label={sig.documentTimestamp ? 'Timestamp authority' : 'Signer identity'}>
@@ -714,7 +722,7 @@ function SignatureCard({ sig }: { sig: SignatureValidation }) {
               ? 'Trusted (EU Trusted List)'
               : 'Trusted (chain to a Windows root)'
             : sig.chainStatus === 'expired'
-              ? 'Certificate expired at signing time'
+              ? 'Certificate not valid at the validation time'
               : sig.chainStatus === 'incomplete'
                 ? 'Chain incomplete'
                 : sig.selfSigned
@@ -726,6 +734,15 @@ function SignatureCard({ sig }: { sig: SignatureValidation }) {
           {sig.revocationDetails ? <span className="block text-[11px] text-muted">{sig.revocationDetails}</span> : null}
         </Row>
         {sig.algorithm ? <Row label="Algorithm">{sig.algorithm}</Row> : null}
+        {warned ? (
+          <Row label="Warnings">
+            {sig.warnings!.map((w, i) => (
+              <span key={i} className="block text-amber-700 dark:text-amber-400" data-testid="signature-warning">
+                {w}
+              </span>
+            ))}
+          </Row>
+        ) : null}
         {sig.reason ? (
           <Row label="Reason">
             <span data-no-translate>{sig.reason}</span>

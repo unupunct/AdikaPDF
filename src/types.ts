@@ -471,7 +471,11 @@ export interface SignatureValidation {
   /** This signature certifies the document: 1 no changes, 2 form filling and signing, 3 also comments. */
   certified?: 1 | 2 | 3 | null;
   /** What later revisions changed (when the signature does not cover the whole file). */
-  laterChanges?: { ltv: boolean; signatures: boolean; form: boolean; other: boolean } | null;
+  laterChanges?: { ltv: boolean; signatures: boolean; form: boolean; annotations?: boolean; other: boolean; reasons?: string[] } | null;
+  /** The signature timestamp (or document timestamp) verified: signed by a trusted timestamping authority, over this signature. */
+  timestampVerified?: boolean;
+  /** Weak algorithms or keys, unsuitable certificates: valid, but not to be shown as fully good. */
+  warnings?: string[];
   /** e.g. "RSA-2048 / SHA-256". */
   algorithm?: string;
   /** A document timestamp (ETSI.RFC3161), not a person's signature. */

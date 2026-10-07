@@ -11,6 +11,7 @@ import {
   signPdf,
   addDocumentTimestamp,
   addValidationData,
+  certIssuedBy,
   signerFromIdentity,
   verifyPdfSignatures,
   type ExternalSigner,
@@ -319,16 +320,16 @@ async function issuerChain(leaf: forge.pki.Certificate): Promise<forge.pki.Certi
       /* skip */
     }
   }
-  const issued = (issuer: forge.pki.Certificate, cert: forge.pki.Certificate) => {
-    try {
-      return issuer.verify(cert);
-    } catch {
-      return false; // e.g. an ECDSA issuer, which forge cannot check
-    }
-  };
   const chain: forge.pki.Certificate[] = [];
   for (let cur = leaf; chain.length < 5; ) {
-    const next = pool.find((c) => !chain.includes(c) && c.subject.hash === cur.issuer.hash && issued(c, cur));
+    let next: forge.pki.Certificate | null = null;
+    // The same strict verifier as verification (RSA and ECDSA issuers).
+    for (const c of pool) {
+      if (!chain.includes(c) && (await certIssuedBy(cur, c))) {
+        next = c;
+        break;
+      }
+    }
     if (!next || next.subject.hash === next.issuer.hash) break;
     chain.push(next);
     cur = next;

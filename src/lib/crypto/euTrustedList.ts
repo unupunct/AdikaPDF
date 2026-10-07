@@ -5,15 +5,18 @@
  * (CA/QC) and qualified timestamp authorities (TSA/QTST). Their certificates
  * serve as trust anchors for EU signatures.
  *
- * The lists are downloaded over HTTPS from the official addresses; their XML
- * signatures are not checked.
+ * The lists are downloaded over HTTPS only, from the official addresses;
+ * their XML signatures are not checked (the reports say so). A service
+ * counts only while its status was granted: the status history is kept and
+ * applied at the validation time.
  */
 import type { EuTrustIndex } from './digitalSignature';
 
 export const LOTL_URL = 'https://ec.europa.eu/tools/lotl/eu-lotl.xml';
 
 const TYPE_URI = 'http://uri.etsi.org/TrstSvc/Svctype/';
-const GRANTED = 'http://uri.etsi.org/TrstSvc/TrustedList/Svcstatus/granted';
+/** Granted, and the statuses that meant the same before eIDAS (July 2016). */
+const GRANTED = /^http:\/\/uri\.etsi\.org\/TrstSvc\/TrustedList\/Svcstatus\/(granted|undersupervision|accredited|supervisionincessation)$/;
 
 export interface TrustService {
   /** Country code, e.g. "RO". */
@@ -24,6 +27,22 @@ export interface TrustService {
   kind: 'ca' | 'tsa';
   /** Base64 DER certificates of the service. */
   certs: string[];
+  /**
+   * Status history, oldest first: from when (ISO; '' = since always) the
+   * service was granted or not. Missing in lists cached by older versions.
+   */
+  periods?: Array<{ from: string; granted: boolean }>;
+}
+
+/** Whether a service was granted at `at`. */
+export function grantedAt(s: Pick<TrustService, 'periods'>, at: Date): boolean {
+  if (!s.periods) return true;
+  let granted = false;
+  for (const p of s.periods) {
+    if (p.from && new Date(p.from).getTime() > at.getTime()) break;
+    granted = p.granted;
+  }
+  return granted;
 }
 
 export interface TrustedListCache {
@@ -68,7 +87,8 @@ export function parseLotl(xml: string): Array<{ territory: string; url: string }
     const url = text(p, 'TSLLocation');
     const territory = text(p, 'SchemeTerritory') ?? '';
     const mime = text(p, 'MimeType') ?? '';
-    if (!url || !/xml/i.test(mime) || /eu-lotl\.xml$/i.test(url)) continue;
+    // HTTPS only: the lists' own signatures are not checked, so the transport must be authenticated.
+    if (!url || !/^https:\/\//i.test(url) || !/xml/i.test(mime) || /eu-lotl\.xml$/i.test(url)) continue;
     if (!out.some((o) => o.url === url)) out.push({ territory, url });
   }
   return out;
@@ -84,15 +104,27 @@ export function parseTrustedList(xml: string, territory: string): TrustService[]
       // The first ServiceInformation is the current one (history follows).
       const si = blocks(svc, 'ServiceInformation')[0];
       if (!si) continue;
-      const type = text(si, 'ServiceTypeIdentifier') ?? '';
-      const kind = type === `${TYPE_URI}CA/QC` ? 'ca' : type === `${TYPE_URI}TSA/QTST` ? 'tsa' : null;
-      if (!kind || text(si, 'ServiceStatus') !== GRANTED) continue;
+      const kindOf = (xml: string) => {
+        const type = text(xml, 'ServiceTypeIdentifier') ?? '';
+        return type === `${TYPE_URI}CA/QC` ? 'ca' : type === `${TYPE_URI}TSA/QTST` ? 'tsa' : null;
+      };
+      const history = blocks(svc, 'ServiceHistoryInstance');
+      const kind = [si, ...history].map(kindOf).find(Boolean);
+      if (!kind) continue;
+      // Each status holds from its starting time until the next one.
+      const periods = [
+        { from: text(si, 'StatusStartingTime') ?? '', xml: si },
+        ...history.map((h) => ({ from: text(h, 'StatusStartingTime') ?? '', xml: h })).filter((h) => h.from),
+      ]
+        .map((p) => ({ from: p.from, granted: kindOf(p.xml) === kind && GRANTED.test(text(p.xml, 'ServiceStatus') ?? '') }))
+        .sort((a, b) => (a.from ? new Date(a.from).getTime() : -Infinity) - (b.from ? new Date(b.from).getTime() : -Infinity));
+      if (!periods.some((p) => p.granted)) continue;
       const identity = blocks(si, 'ServiceDigitalIdentity')[0] ?? '';
       const certs = blocks(identity, 'X509Certificate')
         .map((c) => unescape(c.replace(/^<X509Certificate[^>]*>|<\/X509Certificate>$/g, '')).replace(/\s+/g, ''))
         .filter(Boolean);
       if (!certs.length) continue;
-      out.push({ territory, provider, name: englishName(blocks(si, 'ServiceName')[0] ?? null), kind, certs });
+      out.push({ territory, provider, name: englishName(blocks(si, 'ServiceName')[0] ?? null), kind, certs, periods });
     }
   }
   return out;
@@ -166,7 +198,7 @@ export function subjectKey(der: Uint8Array): string | null {
 
 /** Lookup of trusted-list certificates by subject, for chain building. */
 export function trustIndex(cache: TrustedListCache): EuTrustIndex & { size: number } {
-  const map = new Map<string, Array<{ der: Uint8Array; label: string; kind: 'ca' | 'tsa' }>>();
+  const map = new Map<string, Array<{ der: Uint8Array; label: string; kind: 'ca' | 'tsa'; service: TrustService }>>();
   let size = 0;
   for (const s of cache.services) {
     const label = `${s.territory}: ${s.provider}${s.name && s.name !== s.provider ? ` — ${s.name}` : ''}`;
@@ -180,13 +212,13 @@ export function trustIndex(cache: TrustedListCache): EuTrustIndex & { size: numb
       const key = subjectKey(der);
       if (!key) continue;
       const list = map.get(key) ?? [];
-      list.push({ der, label, kind: s.kind });
+      list.push({ der, label, kind: s.kind, service: s });
       map.set(key, list);
       size++;
     }
   }
   return {
     size,
-    find: (subjectHex, kind) => (map.get(subjectHex) ?? []).filter((x) => x.kind === kind),
+    find: (subjectHex, kind, at = new Date()) => (map.get(subjectHex) ?? []).filter((x) => x.kind === kind && grantedAt(x.service, at)),
   };
 }

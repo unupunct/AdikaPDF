@@ -44,6 +44,7 @@ import {
   decodePDFRawStream,
 } from 'pdf-lib';
 import type { SignatureValidation } from '../../types';
+import { isRevisionEnd, loadRevision, unreferencedObjects, type RevisionView } from './pdfRevisions';
 
 // ---------------------------------------------------------------------------
 // Public types & constants
@@ -116,6 +117,8 @@ interface SignOptionsBase {
    * 1 none, 2 filling in forms and signing, 3 also comments.
    */
   certify?: 1 | 2 | 3;
+  /** Lock form fields once signed (FieldMDP /Lock): all, only the listed ones, or all but the listed ones. */
+  lock?: { action: 'All' | 'Include' | 'Exclude'; fields?: string[] };
   /** PAdES baseline (EU eIDAS): ETSI.CAdES.detached without the signing-time attribute. */
   pades?: boolean;
 }
@@ -137,7 +140,8 @@ export interface VerifyOptions {
 
 /** Trusted-list certificates by subject Name (hex of its DER). */
 export interface EuTrustIndex {
-  find(subjectHex: string, kind: 'ca' | 'tsa'): Array<{ der: Uint8Array; label: string }>;
+  /** Services whose status was granted at t (default: now). */
+  find(subjectHex: string, kind: 'ca' | 'tsa', at?: Date): Array<{ der: Uint8Array; label: string }>;
 }
 
 /** Fields added to SignatureValidation for the verify tool (optional in types.ts). */
@@ -177,7 +181,29 @@ const OID = {
   adOcsp: '1.3.6.1.5.5.7.48.1',
   ocspBasic: '1.3.6.1.5.5.7.48.1.1',
   crlDp: '2.5.29.31',
+  md5: '1.2.840.113549.2.5',
+  md5WithRsa: '1.2.840.113549.1.1.4',
+  signingCertV1: '1.2.840.113549.1.9.16.2.12',
+  basicConstraints: '2.5.29.19',
+  keyUsage: '2.5.29.15',
+  extKeyUsage: '2.5.29.37',
+  ekuTimeStamping: '1.3.6.1.5.5.7.3.8',
+  ekuOcspSigning: '1.3.6.1.5.5.7.3.9',
 } as const;
+
+/** Extended key usages a document signing certificate may carry (any one of them). */
+const SIGNING_EKUS = new Set([
+  '2.5.29.37.0', // anyExtendedKeyUsage
+  '1.3.6.1.5.5.7.3.4', // emailProtection
+  '1.3.6.1.5.5.7.3.2', // clientAuth
+  '1.3.6.1.5.5.7.3.36', // documentSigning
+  '1.2.840.113583.1.1.5', // Adobe Authentic Documents Trust
+  '1.3.6.1.4.1.311.10.3.12', // Microsoft document signing
+  '1.3.6.1.4.1.311.80.1', // Microsoft document encryption (often paired)
+]);
+
+/** Clock skew accepted between this computer, signers and servers. */
+const CLOCK_TOLERANCE_MS = 15 * 60_000;
 
 /** Signature algorithm OID -> digest OID. */
 const SIG_HASH: Record<string, string> = {
@@ -631,6 +657,91 @@ function keyDescription(cert: forge.pki.Certificate): string {
   return 'unsupported key type';
 }
 
+/** Key size in bits (RSA modulus, EC field), or 0 when unknown. */
+function keyBits(cert: forge.pki.Certificate): number {
+  const m = metaOf(cert);
+  if (m.keyAlgorithm === 'rsa') return (cert.publicKey as forge.pki.rsa.PublicKey | null)?.n?.bitLength() ?? 0;
+  return m.curve ? m.curve.size * 8 - (m.curve.size === 66 ? 7 : 0) : 0;
+}
+
+/** "RSA-1024 is a weak key" style warning for keys below RSA-2048 / EC-256, or null. */
+function weakKeyWarning(cert: forge.pki.Certificate): string | null {
+  const m = metaOf(cert);
+  const bits = keyBits(cert);
+  if (!bits) return null;
+  if ((m.keyAlgorithm === 'rsa' && bits < 2048) || (m.keyAlgorithm === 'ecdsa' && bits < 256)) {
+    return `The key of “${certCommonName(cert)}” (${keyDescription(cert)}) is too short to be considered secure.`;
+  }
+  return null;
+}
+
+/** basicConstraints, or null when the extension is absent. */
+function basicConstraintsOf(cert: forge.pki.Certificate): { ca: boolean; pathLen: number | null } | null {
+  const v = metaOf(cert).extensions.get(OID.basicConstraints);
+  if (!v) return null;
+  try {
+    const out = { ca: false, pathLen: null as number | null };
+    for (const k of kids(v, readTlv(v, 0))) {
+      if (k.tag === 0x01) out.ca = content(v, k)[0] !== 0;
+      else if (k.tag === 0x02) out.pathLen = [...content(v, k)].reduce((n, x) => n * 256 + x, 0);
+    }
+    return out;
+  } catch {
+    return { ca: false, pathLen: 0 };
+  }
+}
+
+/** keyUsage bit test (0 digitalSignature, 1 nonRepudiation, 5 keyCertSign, 6 cRLSign), or null when absent. */
+function keyUsageOf(cert: forge.pki.Certificate): ((bit: number) => boolean) | null {
+  const v = metaOf(cert).extensions.get(OID.keyUsage);
+  if (!v) return null;
+  try {
+    const bits = content(v, readTlv(v, 0)).subarray(1);
+    return (bit) => (((bits[bit >> 3] ?? 0) >> (7 - (bit & 7))) & 1) === 1;
+  } catch {
+    return () => false;
+  }
+}
+
+/** extKeyUsage OIDs, or null when absent. */
+function extKeyUsageOf(cert: forge.pki.Certificate): string[] | null {
+  const v = metaOf(cert).extensions.get(OID.extKeyUsage);
+  if (!v) return null;
+  try {
+    return kids(v, readTlv(v, 0)).map((t) => oidOf(v, t));
+  } catch {
+    return [];
+  }
+}
+
+/** Why a certificate may not be used for `purpose`, or null when it may. */
+function usageProblem(cert: forge.pki.Certificate, purpose: 'sign' | 'tsa' | 'ocsp'): string | null {
+  const name = certCommonName(cert);
+  const ku = keyUsageOf(cert);
+  if (ku && !ku(0) && !ku(1)) return `The certificate of “${name}” may not be used for signatures (key usage).`;
+  const eku = extKeyUsageOf(cert);
+  if (purpose === 'sign') {
+    if (eku && !eku.some((o) => SIGNING_EKUS.has(o))) return `The certificate of “${name}” is not meant for signing documents (extended key usage).`;
+  } else if (purpose === 'tsa') {
+    if (!eku?.includes(OID.ekuTimeStamping)) return `The certificate of “${name}” is not a timestamping certificate.`;
+  } else if (!eku?.includes(OID.ekuOcspSigning)) return `The certificate of “${name}” is not an OCSP responder certificate.`;
+  return null;
+}
+
+/** Why `cert` may not issue certificates with `below` intermediates under it, or null. */
+function caProblem(cert: forge.pki.Certificate, below: number, anchor: boolean): string | null {
+  const name = certCommonName(cert);
+  const bc = basicConstraintsOf(cert);
+  // Trust anchors from old root stores may lack the extension; anything else must say it is a CA.
+  if (bc ? !bc.ca : !anchor) return `“${name}” is not a certificate authority, so it cannot issue certificates (basic constraints).`;
+  if (bc?.pathLen !== null && bc?.pathLen !== undefined && below > bc.pathLen) {
+    return `“${name}” allows at most ${bc.pathLen} intermediate certificate(s) below it (path length).`;
+  }
+  const ku = keyUsageOf(cert);
+  if (ku && !ku(5)) return `“${name}” may not sign certificates (key usage).`;
+  return null;
+}
+
 function identityFrom(
   certificate: forge.pki.Certificate,
   privateKey: forge.pki.rsa.PrivateKey,
@@ -848,12 +959,25 @@ function ecdsaDerToRaw(sig: Uint8Array, size: number): Uint8Array {
 }
 
 // ---------------------------------------------------------------------------
-// Generic signature verification (RSA via forge, ECDSA via Web Crypto)
+// Signature verification (one strict verifier: Web Crypto for RSA and ECDSA)
 // ---------------------------------------------------------------------------
 
+/** Key family a signature algorithm OID belongs to (null: unknown). */
+function sigFamily(sigOid: string): KeyAlgorithm | null {
+  if (sigOid.startsWith('1.2.840.113549.1.1.')) return 'rsa';
+  if (sigOid.startsWith('1.2.840.10045.')) return 'ecdsa';
+  return null;
+}
+
+/** MD5 is broken: signatures using it are never accepted. */
+const isMd5 = (oid: string | null | undefined) => oid === OID.md5 || oid === OID.md5WithRsa;
+
 /**
- * Verify `sig` over `data` with the key of `keyCert`.
- * Returns null when the algorithm is not supported.
+ * Verify `sig` over `data` with the key of `keyCert` (RSASSA-PKCS1-v1_5 or
+ * ECDSA through Web Crypto, which checks the padding strictly; forge's RSA
+ * verify is lenient, GHSA-86w9-cpqp-85rv). Every signature (CMS, chain
+ * links, OCSP, CRL, timestamps) goes through here. Returns null when the
+ * algorithm is not supported.
  */
 async function verifyWithCert(
   keyCert: forge.pki.Certificate,
@@ -863,27 +987,29 @@ async function verifyWithCert(
   digestOidHint?: string,
 ): Promise<boolean | null> {
   const m = metaOf(keyCert);
+  if (isMd5(sigOid) || isMd5(digestOidHint)) return false;
   const hashOid = SIG_HASH[sigOid] ?? digestOidHint;
-  if (!hashOid || !createMd(hashOid)) return null;
-  if (m.keyAlgorithm === 'rsa') {
-    const pub = keyCert.publicKey as forge.pki.rsa.PublicKey | null;
-    if (!pub) return null;
-    try {
-      return pub.verify(bytesToBinary(digest(hashOid, data)), bytesToBinary(sig));
-    } catch {
-      return false;
+  const hash = hashOid ? HASH_NAME[hashOid] : undefined;
+  if (!hash) return null;
+  const family = sigFamily(sigOid);
+  if (family && family !== m.keyAlgorithm) return false;
+  const subtle = globalThis.crypto?.subtle;
+  if (!subtle) return null;
+  try {
+    if (m.keyAlgorithm === 'rsa') {
+      const key = await subtle.importKey('spki', buf(m.spki), { name: 'RSASSA-PKCS1-v1_5', hash }, false, ['verify']);
+      // Some signers drop leading zero bytes of the signature value.
+      const k = Math.ceil(keyBits(keyCert) / 8);
+      const s = k > sig.length ? concatBytes([new Uint8Array(k - sig.length), sig]) : sig;
+      return await subtle.verify({ name: 'RSASSA-PKCS1-v1_5' }, key, buf(s), buf(data));
     }
-  }
-  if (m.keyAlgorithm === 'ecdsa' && m.curve) {
-    const subtle = globalThis.crypto?.subtle;
-    if (!subtle) return null;
-    try {
+    if (m.keyAlgorithm === 'ecdsa' && m.curve) {
       const key = await subtle.importKey('spki', buf(m.spki), { name: 'ECDSA', namedCurve: m.curve.name }, false, ['verify']);
       const rawSig = isDerEcdsaSig(sig) ? ecdsaDerToRaw(sig, m.curve.size) : sig;
-      return await subtle.verify({ name: 'ECDSA', hash: HASH_NAME[hashOid] }, key, buf(rawSig), buf(data));
-    } catch {
-      return false;
+      return await subtle.verify({ name: 'ECDSA', hash }, key, buf(rawSig), buf(data));
     }
+  } catch {
+    return false;
   }
   return null;
 }
@@ -892,6 +1018,12 @@ async function verifyWithCert(
 function verifyCertSignature(child: forge.pki.Certificate, issuer: forge.pki.Certificate): Promise<boolean | null> {
   const m = metaOf(child);
   return verifyWithCert(issuer, m.sigOid, m.tbs, m.sigValue);
+}
+
+/** True when `issuer` issued `cert` (name match and a verifying signature; RSA and ECDSA). */
+export async function certIssuedBy(cert: forge.pki.Certificate, issuer: forge.pki.Certificate): Promise<boolean> {
+  if (!bytesEqual(metaOf(cert).issuerDer, metaOf(issuer).subjectDer)) return false;
+  return (await verifyCertSignature(cert, issuer)) === true;
 }
 
 // ---------------------------------------------------------------------------
@@ -914,7 +1046,7 @@ export function buildTimeStampRequest(imprintSha256: Uint8Array, nonce: Uint8Arr
  * TSTInfo carries our imprint and nonce. Returns the TimeStampToken DER.
  * (Exported for tests.)
  */
-export function parseTimeStampResponse(resp: Uint8Array, imprintSha256: Uint8Array, nonce: Uint8Array): Uint8Array {
+export async function parseTimeStampResponse(resp: Uint8Array, imprintSha256: Uint8Array, nonce: Uint8Array): Promise<Uint8Array> {
   let k: Tlv[];
   let code = -1;
   try {
@@ -937,6 +1069,13 @@ export function parseTimeStampResponse(resp: Uint8Array, imprintSha256: Uint8Arr
   if (!nonceTlv || !bytesEqual(stripLeadingZeros(content(tst.b, nonceTlv)), stripLeadingZeros(nonce))) {
     throw new Error('Timestamp token nonce mismatch (possible replay).');
   }
+  // Never embed a token whose signature or authority does not hold up.
+  const info = await verifyCms(token, [tst.b]);
+  if (info.integrity !== 'valid' || !info.cert) {
+    throw new Error(`The timestamp server returned a token whose signature does not verify${info.problems.length ? ` (${info.problems.join(' ')})` : ''}.`);
+  }
+  const usage = usageProblem(info.cert, 'tsa');
+  if (usage) throw new Error(`The timestamp server's token cannot be used: ${usage}`);
   return token;
 }
 
@@ -972,7 +1111,7 @@ async function fetchTimestampForImprint(url: string, imprint: Uint8Array, fetchI
     );
   }
   if (!res.ok) throw new Error(`The timestamp server ${url} answered HTTP ${res.status}.`);
-  return parseTimeStampResponse(new Uint8Array(await res.arrayBuffer()), imprint, nonce);
+  return await parseTimeStampResponse(new Uint8Array(await res.arrayBuffer()), imprint, nonce);
 }
 
 /** Locate the first SignerInfo of a CMS ContentInfo. */
@@ -1082,18 +1221,20 @@ interface SigFieldRef {
   fullName: string;
   field: PDFDict;
   sig: PDFDict | null;
+  /** The indirect object holding the signature value dictionary (its /V reference, or the field itself). */
+  container: PDFRef | null;
 }
 
 /** Walk AcroForm /Fields (with /FT and name inheritance), returning signature fields. */
-function collectFields(doc: PDFDocument): { sigFields: SigFieldRef[]; topNames: Set<string> } {
+function collectFields(catalog: PDFDict): { sigFields: SigFieldRef[]; topNames: Set<string> } {
   const sigFields: SigFieldRef[] = [];
   const topNames = new Set<string>();
-  const acro = doc.catalog.lookupMaybe(PDFName.of('AcroForm'), PDFDict);
+  const acro = catalog.lookupMaybe(PDFName.of('AcroForm'), PDFDict);
   const fields = acro?.lookupMaybe(PDFName.of('Fields'), PDFArray);
   if (!fields) return { sigFields, topNames };
 
   const seen = new Set<PDFDict>();
-  const visit = (node: PDFDict, parentName: string, inheritedFt: string | null, top: boolean) => {
+  const visit = (node: PDFDict, ref: PDFRef | null, parentName: string, inheritedFt: string | null, top: boolean) => {
     if (seen.has(node)) return;
     seen.add(node);
     const t = node.lookupMaybe(PDFName.of('T'), PDFString, PDFHexString)?.decodeText() ?? null;
@@ -1101,25 +1242,28 @@ function collectFields(doc: PDFDocument): { sigFields: SigFieldRef[]; topNames: 
     if (top && t !== null) topNames.add(t);
     const ft = node.lookupMaybe(PDFName.of('FT'), PDFName)?.decodeText() ?? inheritedFt;
     const kidArr = node.lookupMaybe(PDFName.of('Kids'), PDFArray);
-    const fieldKids: PDFDict[] = [];
+    const fieldKids: Array<[PDFDict, PDFRef | null]> = [];
     if (kidArr) {
       for (let i = 0; i < kidArr.size(); i++) {
         const k = kidArr.lookup(i);
-        if (k instanceof PDFDict && k.has(PDFName.of('T'))) fieldKids.push(k);
+        const r = kidArr.get(i);
+        if (k instanceof PDFDict && k.has(PDFName.of('T'))) fieldKids.push([k, r instanceof PDFRef ? r : null]);
       }
     }
     if (fieldKids.length) {
-      for (const k of fieldKids) visit(k, fullName, ft, false);
+      for (const [k, r] of fieldKids) visit(k, r, fullName, ft, false);
       return;
     }
     if (ft === 'Sig') {
+      const vRaw = node.get(PDFName.of('V'));
       const v = node.lookup(PDFName.of('V'));
-      sigFields.push({ fullName: fullName || 'Signature', field: node, sig: v instanceof PDFDict ? v : null });
+      sigFields.push({ fullName: fullName || 'Signature', field: node, sig: v instanceof PDFDict ? v : null, container: vRaw instanceof PDFRef ? vRaw : ref });
     }
   };
   for (let i = 0; i < fields.size(); i++) {
     const f = fields.lookup(i);
-    if (f instanceof PDFDict) visit(f, '', null, true);
+    const r = fields.get(i);
+    if (f instanceof PDFDict) visit(f, r instanceof PDFRef ? r : null, '', null, true);
   }
   return { sigFields, topNames };
 }
@@ -1170,7 +1314,7 @@ async function signOnce(
     if (e instanceof EncryptedPDFError) throw new Error('Cannot sign an encrypted PDF. Remove its password first.');
     throw e;
   }
-  const signedCount = collectFields(probe).sigFields.filter((f) => f.sig).length;
+  const signedCount = collectFields(probe.catalog).sigFields.filter((f) => f.sig).length;
   if (opts.certify && signedCount > 0) throw new Error('Only the first signature can certify a document; this PDF is already signed.');
   // Already signed: append the new signature as an incremental update, so the
   // earlier signatures stay valid. Otherwise the whole file is written once.
@@ -1191,7 +1335,7 @@ async function signOnce(
 
 /** The signature field, widget, value dictionary (with placeholders) and AcroForm entries. */
 async function addSignatureObjects(doc: PDFDocument, opts: SignOptions, displayName: string, placeholderBytes: number): Promise<void> {
-  const { topNames } = collectFields(doc);
+  const { topNames } = collectFields(doc.catalog);
   const pages = doc.getPages();
   if (!Number.isInteger(opts.pageIndex) || opts.pageIndex < 0 || opts.pageIndex >= pages.length) {
     throw new Error(`Page index ${opts.pageIndex} is out of range (document has ${pages.length} pages).`);
@@ -1251,6 +1395,11 @@ async function addSignatureObjects(doc: PDFDocument, opts: SignOptions, displayN
   }) as PDFDict;
   widget.set(PDFName.of('T'), pdfText(uniqueFieldName(opts.fieldName ?? 'Signature1', topNames)));
   widget.set(PDFName.of('V'), sigRef);
+  if (opts.lock) {
+    const lock = ctx.obj({ Type: 'SigFieldLock', Action: opts.lock.action }) as PDFDict;
+    if (opts.lock.action !== 'All') lock.set(PDFName.of('Fields'), ctx.obj((opts.lock.fields ?? []).map((n) => pdfText(n))));
+    widget.set(PDFName.of('Lock'), lock);
+  }
   const widgetRef = ctx.register(widget);
   // Add to /Annots directly: page.node.addAnnot would also "normalise" the page
   // (empty resource dictionaries), which shows up as a change after signing.
@@ -1340,7 +1489,7 @@ export async function addDocumentTimestamp(pdfBytes: Uint8Array, opts: { tsaUrl:
     const { incrementalUpdate } = await import('@/lib/pdf/incremental');
     const res = await incrementalUpdate(pdfBytes, (doc) => {
       const ctx = doc.context;
-      const { topNames } = collectFields(doc);
+      const { topNames } = collectFields(doc.catalog);
       const ph = PDFName.of(BYTE_RANGE_PLACEHOLDER);
       const v = ctx.obj({ Type: 'DocTimeStamp', Filter: 'Adobe.PPKLite', SubFilter: 'ETSI.RFC3161' }) as PDFDict;
       v.set(PDFName.of('ByteRange'), ctx.obj([PDFNumber.of(0), ph, ph, ph]));
@@ -1377,28 +1526,10 @@ export async function addDocumentTimestamp(pdfBytes: Uint8Array, opts: { tsaUrl:
   throw new Error('The timestamp does not fit into the reserved space.');
 }
 
-/** Checks a document timestamp: the token's imprint must match the signed byte ranges. */
-async function verifyDocTimestamp(token: Uint8Array, ranges: Uint8Array[]): Promise<CmsInfo & { genTime: Date | null }> {
-  const tst = tstInfoOf(token);
-  const mi = kids(tst.b, tst.kids[2]);
-  const miAlg = oidOf(tst.b, kids(tst.b, mi[0])[0]);
-  // The TSA signs the TSTInfo; the TSTInfo holds the digest of the document.
-  const info = await verifyCms(token, [tst.b]);
-  const genTime = timeOf(tst.b, tst.kids[4]);
-  if (!createMd(miAlg)) {
-    info.integrity = 'unknown';
-    info.problems.push(`Unsupported digest algorithm ${miAlg}.`);
-  } else if (!bytesEqual(content(tst.b, mi[1]), digest(miAlg, ...ranges))) {
-    info.integrity = 'invalid';
-    info.problems.push('The document was modified after the timestamp (digest mismatch).');
-  }
-  return { ...info, genTime };
-}
-
-/** PAdES baseline level (ETSI EN 319 142-1) reached by a signature, or null. */
-function padesLevel(subFilter: string, info: CmsInfo, ltv: boolean, laterDocTimestamp: boolean): SignatureValidation['padesLevel'] {
+/** PAdES baseline level (ETSI EN 319 142-1) reached by a signature, or null. B-T needs a verified timestamp. */
+function padesLevel(subFilter: string, info: CmsInfo, timestampVerified: boolean, ltv: boolean, laterDocTimestamp: boolean): SignatureValidation['padesLevel'] {
   if (subFilter !== 'ETSI.CAdES.detached' || !info.signingCertV2 || info.signingTime) return null;
-  if (!info.hasTimestamp) return 'B-B';
+  if (!timestampVerified) return 'B-B';
   if (!ltv) return 'B-T';
   return laterDocTimestamp ? 'B-LTA' : 'B-LT';
 }
@@ -1411,6 +1542,8 @@ interface ChainResult {
   status: NonNullable<ExtendedValidation['chainStatus']>;
   details: string[];
   chain: forge.pki.Certificate[];
+  /** Weak algorithms or keys in the chain (SHA-1 signatures, short keys). */
+  weak: string[];
 }
 
 function describeCert(c: forge.pki.Certificate, trusted: boolean): string {
@@ -1435,6 +1568,7 @@ async function buildChain(
   const details: string[] = [];
   let broken: string | null = null;
   let complete = false;
+  const weak: string[] = [];
 
   for (let cur = leaf; chain.length < 10; ) {
     if (isTrusted(cur)) {
@@ -1448,22 +1582,40 @@ async function buildChain(
       complete = true;
       break;
     }
+    if (isMd5(cm.sigOid)) {
+      broken = `${certCommonName(cur)}: its issuer signed it with MD5, which is broken.`;
+      break;
+    }
+    if (SIG_HASH[cm.sigOid] === OID.sha1) weak.push(`“${certCommonName(cur)}” is signed with SHA-1, which is no longer considered secure.`);
     let next: forge.pki.Certificate | null = null;
     let sawCandidate = false;
+    let constraint: string | null = null;
     for (const cand of all) {
       if (chain.includes(cand) || !bytesEqual(metaOf(cand).subjectDer, cm.issuerDer)) continue;
       sawCandidate = true;
       if ((await verifyCertSignature(cur, cand)) === true) {
+        // Intermediates between this issuer and the leaf (path length).
+        const problem = caProblem(cand, chain.length - 1, isTrusted(cand));
+        if (problem) {
+          constraint = problem;
+          continue;
+        }
         next = cand;
         break;
       }
     }
     if (!next) {
-      if (sawCandidate) broken = `${certCommonName(cur)}: signature by its issuer does not verify.`;
+      if (constraint) broken = constraint;
+      else if (sawCandidate) broken = `${certCommonName(cur)}: signature by its issuer does not verify.`;
       break;
     }
     chain.push(next);
     cur = next;
+  }
+  for (const c of chain) {
+    if (isTrusted(c)) continue;
+    const w = weakKeyWarning(c);
+    if (w) weak.push(w);
   }
 
   for (const c of chain) details.push(describeCert(c, isTrusted(c)));
@@ -1479,7 +1631,7 @@ async function buildChain(
     details.push(broken);
   } else if (expired.length) {
     status = 'expired';
-    details.push(`Not valid at signing time (${at.toISOString()}): ${expired.map(certCommonName).join(', ')}.`);
+    details.push(`Not valid at the validation time (${at.toISOString()}): ${expired.map(certCommonName).join(', ')}.`);
   } else if (anchored) status = 'trusted';
   else if (!complete) {
     status = 'incomplete';
@@ -1488,7 +1640,7 @@ async function buildChain(
     status = 'untrusted';
     details.push('The chain ends at a root that is not in the trusted root store.');
   }
-  return { status, details, chain };
+  return { status, details, chain, weak };
 }
 
 // ---------------------------------------------------------------------------
@@ -1537,10 +1689,32 @@ interface RevocationResult {
   details: string;
 }
 
+/** The time a signature is validated at: a verified timestamp's time, or now. */
+interface ValidationTime {
+  at: Date;
+  fromTimestamp: boolean;
+}
+
+const validationNow = (): ValidationTime => ({ at: new Date(), fromTimestamp: false });
+
+/** Why revocation data issued `thisUpdate` (valid until `nextUpdate`) cannot answer for the validation time, or null. */
+function staleness(kind: 'OCSP' | 'CRL', when: ValidationTime, thisUpdate: Date | null, nextUpdate: Date | null): string | null {
+  if (!thisUpdate) return `${kind}: the answer has no issue date.`;
+  const issued = thisUpdate.getTime();
+  if (issued > Date.now() + CLOCK_TOLERANCE_MS) return `${kind}: the answer is dated in the future.`;
+  const at = when.at.getTime();
+  // Issued after the timestamped signing time: it vouches for the certificate at that time.
+  if (when.fromTimestamp && issued >= at - CLOCK_TOLERANCE_MS) return null;
+  const until = nextUpdate ? nextUpdate.getTime() : issued + 7 * 86400_000;
+  if (issued - CLOCK_TOLERANCE_MS <= at && at <= until + CLOCK_TOLERANCE_MS) return null;
+  return `${kind}: the answer (issued ${thisUpdate.toISOString()}${nextUpdate ? `, valid until ${nextUpdate.toISOString()}` : ''}) is not current for ${when.at.toISOString()}.`;
+}
+
 async function parseOcspResponse(
   resp: Uint8Array,
   cert: forge.pki.Certificate,
   issuer: forge.pki.Certificate,
+  when: ValidationTime = validationNow(),
 ): Promise<RevocationResult> {
   const top = kids(resp, readTlv(resp, 0));
   const code = content(resp, top[0])[0];
@@ -1555,65 +1729,102 @@ async function parseOcspResponse(
   const [tbsT, sigAlgT, sigT] = basic;
   const rd = kids(b, tbsT);
   const i = rd[0].tag === 0xa0 ? 1 : 0;
+  const producedAt = timeOf(b, rd[i + 1]);
   const responses = kids(b, rd[i + 2]);
-  const serial = stripLeadingZeros(metaOf(cert).serial);
 
-  let result: RevocationResult | null = null;
-  for (const sr of responses) {
-    const [certIdT, statusT] = kids(b, sr);
-    const idKids = kids(b, certIdT);
-    if (!bytesEqual(stripLeadingZeros(content(b, idKids[3])), serial)) continue;
-    if (statusT.tag === 0x80) result = { status: 'good', details: 'OCSP: certificate is good.' };
-    else if (statusT.tag === 0xa1) {
-      const when = timeOf(b, kids(b, statusT)[0]);
-      result = { status: 'revoked', details: `OCSP: certificate revoked${when ? ` on ${when.toISOString()}` : ''}.` };
-    } else result = { status: 'unknown', details: 'OCSP: responder does not know this certificate.' };
-    break;
-  }
-  if (!result) return { status: 'unknown', details: 'OCSP response does not cover this certificate.' };
-
-  // Responder signature: issuer itself, or an included responder cert issued by the issuer.
+  // The signature first: the issuer itself, or a responder certificate the issuer
+  // gave the OCSP signing purpose (never the certificate being checked).
   const sigOid = oidOf(b, kids(b, sigAlgT)[0]);
   const tbs = raw(b, tbsT);
   const sig = bitString(b, sigT);
-  const candidates: forge.pki.Certificate[] = [issuer];
+  const leafDer = metaOf(cert).der;
+  let signed = (await verifyWithCert(issuer, sigOid, tbs, sig)) === true;
+  const notes: string[] = [];
   const certsT = basic.find((t) => t.tag === 0xa0);
-  if (certsT) {
+  if (!signed && certsT) {
     for (const c of kids(b, kids(b, certsT)[0])) {
+      let rc: forge.pki.Certificate;
       try {
-        const rc = parseCertificate(raw(b, c));
-        if ((await verifyCertSignature(rc, issuer)) === true) candidates.push(rc);
+        rc = parseCertificate(raw(b, c));
       } catch {
-        /* skip */
+        continue;
+      }
+      const m = metaOf(rc);
+      if (bytesEqual(m.der, leafDer) || !(await certIssuedBy(rc, issuer))) continue;
+      const usage = usageProblem(rc, 'ocsp');
+      if (usage) {
+        notes.push(usage);
+        continue;
+      }
+      const t = (producedAt ?? new Date()).getTime();
+      if (t < m.notBefore.getTime() - CLOCK_TOLERANCE_MS || t > m.notAfter.getTime() + CLOCK_TOLERANCE_MS) {
+        notes.push(`The OCSP responder certificate “${certCommonName(rc)}” was not valid when the answer was produced.`);
+        continue;
+      }
+      if ((await verifyWithCert(rc, sigOid, tbs, sig)) === true) {
+        signed = true;
+        break;
       }
     }
   }
-  for (const c of candidates) {
-    if ((await verifyWithCert(c, sigOid, tbs, sig)) === true) return result;
+  if (!signed) return { status: 'unknown', details: ['The OCSP response signature could not be verified (it must come from the issuer or its OCSP responder).', ...notes].join(' ') };
+  if (producedAt && producedAt.getTime() > Date.now() + CLOCK_TOLERANCE_MS) return { status: 'unknown', details: 'OCSP: the answer is dated in the future.' };
+
+  // CertID: issuer name hash, issuer key hash and serial number.
+  const iss = metaOf(issuer);
+  const serial = stripLeadingZeros(metaOf(cert).serial);
+  for (const sr of responses) {
+    const srKids = kids(b, sr);
+    const [certIdT, statusT, thisUpdT] = srKids;
+    const idKids = kids(b, certIdT);
+    const alg = oidOf(b, kids(b, idKids[0])[0]);
+    if (!createMd(alg) || isMd5(alg)) continue;
+    if (
+      !bytesEqual(stripLeadingZeros(content(b, idKids[3])), serial) ||
+      !bytesEqual(content(b, idKids[1]), digest(alg, iss.subjectDer)) ||
+      !bytesEqual(content(b, idKids[2]), digest(alg, iss.publicKeyBits))
+    ) {
+      continue;
+    }
+    const nextT = srKids.slice(3).find((t) => t.tag === 0xa0);
+    const stale = staleness('OCSP', when, timeOf(b, thisUpdT), nextT ? timeOf(b, kids(b, nextT)[0]) : null);
+    if (stale) return { status: 'unknown', details: stale };
+    if (statusT.tag === 0x80) return { status: 'good', details: 'OCSP: certificate is good.' };
+    if (statusT.tag === 0xa1) {
+      const revokedAt = timeOf(b, kids(b, statusT)[0]);
+      return { status: 'revoked', details: `OCSP: certificate revoked${revokedAt ? ` on ${revokedAt.toISOString()}` : ''}.` };
+    }
+    return { status: 'unknown', details: 'OCSP: responder does not know this certificate.' };
   }
-  return { status: 'unknown', details: `${result.details} But the OCSP response signature could not be verified.` };
+  return { status: 'unknown', details: 'OCSP response does not cover this certificate.' };
 }
 
-async function checkCrl(crl: Uint8Array, cert: forge.pki.Certificate, issuer: forge.pki.Certificate): Promise<RevocationResult> {
+async function checkCrl(crl: Uint8Array, cert: forge.pki.Certificate, issuer: forge.pki.Certificate, when: ValidationTime = validationNow()): Promise<RevocationResult> {
   if (crl[0] === 0x2d /* '-' PEM */) {
     const b64 = bytesToBinary(crl).replace(/-----[^-]+-----/g, '').replace(/\s+/g, '');
     crl = binaryToBytes(forge.util.decode64(b64));
   }
   const [tbsT, sigAlgT, sigT] = kids(crl, readTlv(crl, 0));
-  const ok = await verifyWithCert(issuer, oidOf(crl, kids(crl, sigAlgT)[0]), raw(crl, tbsT), bitString(crl, sigT));
-  if (ok !== true) return { status: 'unknown', details: 'CRL signature could not be verified against the issuer.' };
   const tk = kids(crl, tbsT);
   let i = tk[0].tag === 0x02 ? 1 : 0; // optional version
-  i += 2; // signature, issuer
+  i++; // signature algorithm
+  if (!bytesEqual(raw(crl, tk[i++]), metaOf(issuer).subjectDer)) return { status: 'unknown', details: 'The CRL was published by another issuer.' };
+  const ok = await verifyWithCert(issuer, oidOf(crl, kids(crl, sigAlgT)[0]), raw(crl, tbsT), bitString(crl, sigT));
+  if (ok !== true) return { status: 'unknown', details: 'CRL signature could not be verified against the issuer.' };
+  const ku = keyUsageOf(issuer);
+  if (ku && !ku(6)) return { status: 'unknown', details: 'The issuer may not sign CRLs (key usage).' };
   const thisUpdate = timeOf(crl, tk[i++]);
-  if (tk[i] && (tk[i].tag === 0x17 || tk[i].tag === 0x18)) i++; // nextUpdate
+  let nextUpdate: Date | null = null;
+  if (tk[i] && (tk[i].tag === 0x17 || tk[i].tag === 0x18)) nextUpdate = timeOf(crl, tk[i++]);
+  const stale = staleness('CRL', when, thisUpdate, nextUpdate);
+  if (stale) return { status: 'unknown', details: stale };
   const serial = stripLeadingZeros(metaOf(cert).serial);
   if (tk[i]?.tag === 0x30) {
     for (const entry of kids(crl, tk[i])) {
       const [s, dateT] = kids(crl, entry);
       if (bytesEqual(stripLeadingZeros(content(crl, s)), serial)) {
-        const when = timeOf(crl, dateT);
-        return { status: 'revoked', details: `CRL: certificate revoked${when ? ` on ${when.toISOString()}` : ''}.` };
+        const revokedAt = timeOf(crl, dateT);
+        return { status: 'revoked', details: `CRL: certificate revoked${revokedAt ? ` on ${revokedAt.toISOString()}` : ''}.` };
       }
     }
   }
@@ -1627,6 +1838,7 @@ async function checkRevocation(
   cert: forge.pki.Certificate,
   issuer: forge.pki.Certificate | null,
   opts: VerifyOptions,
+  when: ValidationTime = validationNow(),
 ): Promise<RevocationResult> {
   if (!opts.httpPost && !opts.httpGet) return { status: 'not-checked', details: 'No HTTP transport supplied.' };
   if (!issuer) return { status: 'unknown', details: 'The issuer certificate is not available, so revocation cannot be checked.' };
@@ -1635,7 +1847,7 @@ async function checkRevocation(
   if (opts.httpPost) {
     for (const url of ocspUrls) {
       try {
-        const r = await parseOcspResponse(await opts.httpPost(url, 'application/ocsp-request', buildOcspRequest(cert, issuer)), cert, issuer);
+        const r = await parseOcspResponse(await opts.httpPost(url, 'application/ocsp-request', buildOcspRequest(cert, issuer)), cert, issuer, when);
         if (r.status === 'good' || r.status === 'revoked') return r;
         notes.push(r.details);
       } catch (e) {
@@ -1647,7 +1859,7 @@ async function checkRevocation(
   if (opts.httpGet) {
     for (const url of crlUrls) {
       try {
-        const r = await checkCrl(await opts.httpGet(url), cert, issuer);
+        const r = await checkCrl(await opts.httpGet(url), cert, issuer, when);
         if (r.status === 'good' || r.status === 'revoked') return r;
         notes.push(r.details);
       } catch (e) {
@@ -1668,14 +1880,45 @@ interface CmsInfo {
   certs: forge.pki.Certificate[];
   integrity: 'valid' | 'invalid' | 'unknown';
   problems: string[];
+  /** Signer-claimed signing time (informational: only a verified timestamp proves a time). */
   signingTime: Date | null;
-  timestampTime: Date | null;
   hasTimestamp: boolean;
   digestOid: string | null;
   /** Signature timestamp tokens (unsigned attributes). */
   tokens: Uint8Array[];
   /** ESS signing-certificate-v2 is signed (required by PAdES / CAdES). */
   signingCertV2: boolean;
+  /** The signer's signature value (what a signature timestamp covers). */
+  sigValue: Uint8Array | null;
+  /** Weak algorithms used (SHA-1). */
+  weak: string[];
+}
+
+/** Why the signed ESS signing-certificate(-v2) attribute does not name `cert`, or null. */
+function essProblem(d: Uint8Array, value: Tlv, v2: boolean, cert: forge.pki.Certificate): string | null {
+  const mismatch = 'The signed signing-certificate attribute names a different certificate than the one that signed (certificate substitution).';
+  try {
+    const ids = kids(d, kids(d, value)[0]);
+    if (!ids.length) return mismatch;
+    const id = kids(d, ids[0]);
+    let k = 0;
+    let alg: string = v2 ? OID.sha256 : OID.sha1;
+    if (v2 && id[0].tag === 0x30) {
+      alg = oidOf(d, kids(d, id[0])[0]);
+      k = 1;
+    }
+    const m = metaOf(cert);
+    if (!createMd(alg) || isMd5(alg)) return null; // cannot be checked
+    if (!bytesEqual(content(d, id[k]), digest(alg, m.der))) return mismatch;
+    const issuerSerial = id[k + 1];
+    if (issuerSerial) {
+      const serial = kids(d, issuerSerial)[1];
+      if (serial && !bytesEqual(stripLeadingZeros(content(d, serial)), stripLeadingZeros(m.serial))) return mismatch;
+    }
+    return null;
+  } catch {
+    return 'The signing-certificate attribute is malformed.';
+  }
 }
 
 /** Verify a detached CMS/PKCS#7 blob against the signed data. */
@@ -1686,11 +1929,12 @@ async function verifyCms(d: Uint8Array, signedData: Uint8Array[]): Promise<CmsIn
     integrity: 'unknown',
     problems: [],
     signingTime: null,
-    timestampTime: null,
     hasTimestamp: false,
     digestOid: null,
     tokens: [],
     signingCertV2: false,
+    sigValue: null,
+    weak: [],
   };
   const ci = kids(d, readTlv(d, 0));
   if (oidOf(d, ci[0]) !== OID.signedData) {
@@ -1743,6 +1987,7 @@ async function verifyCms(d: Uint8Array, signedData: Uint8Array[]): Promise<CmsIn
   const signedAttrs = si[idx]?.tag === 0xa0 ? si[idx++] : null;
   const sigAlgOid = oidOf(d, kids(d, si[idx++])[0]);
   const sigValue = si[idx]?.tag === 0x04 ? content(d, si[idx]) : null;
+  info.sigValue = sigValue ? sigValue.slice() : null;
   const unsigned = si.find((t) => t.tag === 0xa1);
 
   if (unsigned) {
@@ -1752,26 +1997,26 @@ async function verifyCms(d: Uint8Array, signedData: Uint8Array[]): Promise<CmsIn
       info.hasTimestamp = true;
       try {
         info.tokens.push(raw(d, kids(d, values)[0]).slice());
-        const tst = tstInfoOf(raw(d, kids(d, values)[0]).slice());
-        info.timestampTime = timeOf(tst.b, tst.kids[4]);
-        const mi = kids(tst.b, tst.kids[2]);
-        const miAlg = oidOf(tst.b, kids(tst.b, mi[0])[0]);
-        if (sigValue && createMd(miAlg) && !bytesEqual(content(tst.b, mi[1]), digest(miAlg, sigValue))) {
-          info.problems.push('Timestamp does not match this signature.');
-        }
       } catch {
         info.problems.push('Timestamp token could not be parsed.');
       }
     }
   }
 
+  if (isMd5(digestOid) || isMd5(sigAlgOid)) {
+    info.integrity = 'invalid';
+    info.problems.push('The signature uses MD5, which is broken, so it cannot be relied on.');
+    return info;
+  }
   if (!createMd(digestOid)) {
     info.problems.push(`Unsupported digest algorithm ${digestOid}.`);
     return info;
   }
+  if (digestOid === OID.sha1 || SIG_HASH[sigAlgOid] === OID.sha1) info.weak.push('The signature uses SHA-1, which is no longer considered secure.');
   const contentDigest = digest(digestOid, ...signedData);
 
   let toVerify: Uint8Array = concatBytes(signedData);
+  let ess: { t: Tlv; v2: boolean } | null = null;
   if (signedAttrs) {
     let messageDigest: Uint8Array | null = null;
     for (const attr of kids(d, signedAttrs)) {
@@ -1780,7 +2025,10 @@ async function verifyCms(d: Uint8Array, signedData: Uint8Array[]): Promise<CmsIn
       const first = kids(d, values)[0];
       if (type === OID.messageDigest) messageDigest = octets(d, first);
       else if (type === OID.signingTime) info.signingTime = timeOf(d, first);
-      else if (type === OID.signingCertV2) info.signingCertV2 = true;
+      else if (type === OID.signingCertV2) {
+        info.signingCertV2 = true;
+        ess = { t: first, v2: true };
+      } else if (type === OID.signingCertV1 && !ess) ess = { t: first, v2: false };
     }
     if (!messageDigest || !bytesEqual(messageDigest, contentDigest)) {
       info.integrity = 'invalid';
@@ -1800,6 +2048,14 @@ async function verifyCms(d: Uint8Array, signedData: Uint8Array[]): Promise<CmsIn
     info.problems.push('Signature value missing.');
     return info;
   }
+  if (ess) {
+    const problem = essProblem(d, ess.t, ess.v2, info.cert);
+    if (problem) {
+      info.integrity = 'invalid';
+      info.problems.push(problem);
+      return info;
+    }
+  }
   const ok = await verifyWithCert(info.cert, sigAlgOid, toVerify, sigValue, digestOid);
   if (ok === null) {
     info.problems.push(`Unsupported signature algorithm (${keyDescription(info.cert)}, ${sigAlgOid}).`);
@@ -1810,13 +2066,122 @@ async function verifyCms(d: Uint8Array, signedData: Uint8Array[]): Promise<CmsIn
   return info;
 }
 
+interface TrustContext {
+  trustedRoots: forge.pki.Certificate[];
+  euTrust?: EuTrustIndex;
+  /** Extra certificates for chain building (validation data in the file). */
+  pool: forge.pki.Certificate[];
+}
+
+interface TimestampCheck {
+  /** Signature, imprint, timestamping certificate and trust all hold. */
+  verified: boolean;
+  /** Token signature and imprint (whether the stamped data is unchanged). */
+  integrity: 'valid' | 'invalid' | 'unknown';
+  genTime: Date | null;
+  problems: string[];
+  info: CmsInfo | null;
+}
+
+/**
+ * Checks an RFC 3161 timestamp token over `imprinted` (the signature value,
+ * or the document's byte ranges): the TSA's CMS signature over the TSTInfo,
+ * the message imprint, a timestamping certificate, and a chain to a trusted
+ * root or the EU Trusted List at the time of the timestamp.
+ */
+async function verifyTimestampToken(token: Uint8Array, imprinted: Uint8Array[], trust: TrustContext, imprintMismatch: string): Promise<TimestampCheck> {
+  const out: TimestampCheck = { verified: false, integrity: 'unknown', genTime: null, problems: [], info: null };
+  let tst: { b: Uint8Array; kids: Tlv[] };
+  try {
+    tst = tstInfoOf(token);
+  } catch {
+    out.problems.push('The timestamp token could not be read.');
+    return out;
+  }
+  out.genTime = timeOf(tst.b, tst.kids[4]);
+  const mi = kids(tst.b, tst.kids[2]);
+  const miAlg = oidOf(tst.b, kids(tst.b, mi[0])[0]);
+  const info = await verifyCms(token, [tst.b]);
+  out.info = info;
+  out.integrity = info.integrity;
+  out.problems.push(...info.problems);
+  if (!createMd(miAlg) || isMd5(miAlg)) {
+    out.integrity = 'unknown';
+    out.problems.push(`Unsupported digest algorithm ${miAlg}.`);
+  } else if (!bytesEqual(content(tst.b, mi[1]), digest(miAlg, ...imprinted))) {
+    out.integrity = 'invalid';
+    out.problems.push(imprintMismatch);
+  }
+  if (out.integrity !== 'valid' || !info.cert) {
+    if (out.integrity === 'valid') out.integrity = 'unknown';
+    return out;
+  }
+  if (!out.genTime || out.genTime.getTime() > Date.now() + CLOCK_TOLERANCE_MS) {
+    out.problems.push('The timestamp has no valid time.');
+    return out;
+  }
+  const usage = usageProblem(info.cert, 'tsa');
+  if (usage) {
+    out.problems.push(usage);
+    return out;
+  }
+  const pool = [...info.certs, ...trust.pool];
+  const chain = await buildChain(info.cert, pool, trust.trustedRoots, out.genTime);
+  const eu = chain.status !== 'trusted' && trust.euTrust ? await euTrustOf(info.cert, pool, 'tsa', out.genTime, trust.euTrust) : null;
+  if (chain.status !== 'trusted' && !eu) {
+    out.problems.push(`The timestamp authority “${certCommonName(info.cert)}” is not trusted.`);
+    return out;
+  }
+  out.verified = true;
+  return out;
+}
+
+/** Why the /ByteRange does not describe a proper signature of this dictionary, or null. */
+function byteRangeProblem(
+  bytes: Uint8Array,
+  [a, b, c, d]: number[],
+  contents: PDFHexString | PDFString,
+  container: PDFRef | null,
+  signedRevision: RevisionView | null,
+): string | null {
+  if (a !== 0) return 'The signature byte range does not start at the beginning of the file.';
+  if (!(b > 0 && c > b + 1 && c + d <= bytes.length)) return 'Signature byte range is malformed or points outside the file.';
+  // The gap holds exactly "<hex digits>" and nothing else.
+  if (bytes[b] !== 0x3c || bytes[c - 1] !== 0x3e || !(contents instanceof PDFHexString)) return 'The unsigned gap of the byte range contains more than the signature value.';
+  const hexDigit = (x: number) => (x >= 0x30 && x <= 0x39) || (x >= 0x41 && x <= 0x46) || (x >= 0x61 && x <= 0x66);
+  for (let i = b + 1; i < c - 1; i++) if (!hexDigit(bytes[i])) return 'The unsigned gap of the byte range contains more than the signature value.';
+  const gap = bytes.subarray(b + 1, c - 1);
+  const gapBytes = new Uint8Array(Math.ceil(gap.length / 2));
+  for (let i = 0; i < gap.length; i++) {
+    const x = gap[i];
+    const v = x <= 0x39 ? x - 0x30 : (x | 0x20) - 0x57;
+    gapBytes[i >> 1] |= i & 1 ? v : v << 4;
+  }
+  if (!bytesEqual(gapBytes, contents.asBytes())) return 'The unsigned gap of the byte range is not the /Contents of this signature.';
+  if (!isRevisionEnd(bytes, c + d)) return 'The signed byte range does not end at the end of a revision.';
+  if (signedRevision && container) {
+    const span = signedRevision.spans.get(container.objectNumber);
+    if (!span || !(span[0] < b && c <= span[1])) return 'The unsigned gap of the byte range lies outside this signature dictionary.';
+  }
+  return null;
+}
+
 /** Validate every signed signature field. Never throws for a single bad signature. */
 export async function verifyPdfSignatures(pdfBytes: Uint8Array, opts: VerifyOptions = {}): Promise<SignatureValidation[]> {
-  const doc = await PDFDocument.load(pdfBytes, { ignoreEncryption: true, updateMetadata: false });
-  const { sigFields } = collectFields(doc);
+  // Read the file the way viewers do (through the cross-reference chain);
+  // pdf-lib, which reconstructs broken files, is the fallback.
+  let finalView: RevisionView | null = null;
+  try {
+    finalView = loadRevision(pdfBytes);
+  } catch {
+    /* damaged cross-reference data */
+  }
+  const catalog = finalView?.catalog ?? (await PDFDocument.load(pdfBytes, { ignoreEncryption: true, updateMetadata: false })).catalog;
+  const { sigFields } = collectFields(catalog);
   const results: ExtendedValidation[] = [];
-  const dss = readDss(doc);
+  const dss = readDss(catalog);
   const signedEnds: Array<{ r: ExtendedValidation; end: number; doc: boolean; subFilter?: string; info?: CmsInfo }> = [];
+  const trust: TrustContext = { trustedRoots: opts.trustedRoots ?? [], euTrust: opts.euTrust, pool: dss?.certs ?? [] };
 
   for (const f of sigFields) {
     if (!f.sig) continue;
@@ -1834,12 +2199,14 @@ export async function verifyPdfSignatures(pdfBytes: Uint8Array, opts: VerifyOpti
       certValidFrom: '',
       certValidTo: '',
       hasTimestamp: false,
+      timestampVerified: false,
       message: '',
       chainStatus: 'unknown',
       chainDetails: [],
       revocationStatus: 'not-checked',
       revocationDetails: 'Revocation was not checked.',
       modifiedAfterSigning: true,
+      warnings: [],
     };
     const mDate = textOf(sig, 'M');
     if (mDate) r.signedAt = parsePdfDate(mDate)?.toISOString() ?? null;
@@ -1863,7 +2230,21 @@ export async function verifyPdfSignatures(pdfBytes: Uint8Array, opts: VerifyOpti
         r.message = 'Signature byte range is malformed or points outside the file.';
         continue;
       }
-      r.coversWholeFile = a === 0 && c + d === pdfBytes.length;
+      let signedView: RevisionView | null = c + d === pdfBytes.length ? finalView : null;
+      if (!signedView) {
+        try {
+          signedView = loadRevision(pdfBytes, c + d);
+        } catch {
+          /* checked below */
+        }
+      }
+      const rangeProblem = byteRangeProblem(pdfBytes, range, contents, f.container, signedView);
+      if (rangeProblem) {
+        r.integrity = 'invalid';
+        r.message = `INVALID signature. ${rangeProblem}`;
+        continue;
+      }
+      r.coversWholeFile = c + d === pdfBytes.length;
       r.modifiedAfterSigning = !r.coversWholeFile;
 
       if (subFilter && !/^(adbe\.pkcs7\.detached|ETSI\.CAdES\.detached|adbe\.pkcs7\.sha1|ETSI\.RFC3161)$/.test(subFilter)) {
@@ -1873,19 +2254,48 @@ export async function verifyPdfSignatures(pdfBytes: Uint8Array, opts: VerifyOpti
       let blob = contents.asBytes();
       blob = blob.subarray(0, readTlv(blob, 0).end); // strip zero padding after the DER
       const ranges = [pdfBytes.subarray(a, a + b), pdfBytes.subarray(c, c + d)];
-      const docTs = subFilter === 'ETSI.RFC3161' ? await verifyDocTimestamp(blob, ranges) : null;
-      const info = docTs ?? (await verifyCms(blob, ranges));
-      if (docTs) {
+      const notes: string[] = [];
+      const warnings: string[] = [];
+      let info: CmsInfo;
+      // A verified timestamp proves when the signature existed; otherwise it is validated now.
+      let tsTime: Date | null = null;
+      const isDocTs = subFilter === 'ETSI.RFC3161';
+      if (isDocTs) {
+        const ts = await verifyTimestampToken(blob, ranges, trust, 'The document was modified after the timestamp (digest mismatch).');
+        info = ts.info ?? (await verifyCms(blob, ranges));
+        info.integrity = ts.integrity;
+        info.problems = ts.problems;
         r.documentTimestamp = true;
         r.hasTimestamp = true;
-        r.signedAt = docTs.genTime?.toISOString() ?? r.signedAt;
+        if (ts.genTime) r.signedAt = ts.genTime.toISOString();
+        if (ts.verified) tsTime = ts.genTime;
         signedEnds.push({ r, end: c + d, doc: true });
-      } else signedEnds.push({ r, end: c + d, doc: false, subFilter, info });
+      } else {
+        info = await verifyCms(blob, ranges);
+        r.hasTimestamp = info.hasTimestamp;
+        if (info.signingTime) r.signedAt = info.signingTime.toISOString();
+        if (info.sigValue) {
+          const tsProblems: string[] = [];
+          for (const t of info.tokens) {
+            const ts = await verifyTimestampToken(t, [info.sigValue], { ...trust, pool: [...info.certs, ...trust.pool] }, 'The timestamp does not belong to this signature (message imprint mismatch).');
+            if (ts.verified) {
+              tsTime = ts.genTime;
+              break;
+            }
+            tsProblems.push(...ts.problems);
+          }
+          if (info.tokens.length && !tsTime) {
+            notes.push(`The timestamp could not be verified, so the signing time is only the signer’s claim: ${[...new Set(tsProblems)].join(' ')}`);
+          }
+        }
+        if (tsTime) r.signedAt = tsTime.toISOString();
+        signedEnds.push({ r, end: c + d, doc: false, subFilter, info });
+      }
+      r.timestampVerified = !!tsTime;
+      const when: ValidationTime = tsTime ? { at: tsTime, fromTimestamp: true } : validationNow();
       r.integrity = info.integrity;
-      r.hasTimestamp = r.hasTimestamp || info.hasTimestamp;
-      const when = docTs?.genTime ?? info.timestampTime ?? info.signingTime;
-      if (when) r.signedAt = when.toISOString();
-      const notes = [...info.problems];
+      notes.unshift(...info.problems);
+      warnings.push(...info.weak);
 
       if (info.cert) {
         const m = metaOf(info.cert);
@@ -1897,79 +2307,103 @@ export async function verifyPdfSignatures(pdfBytes: Uint8Array, opts: VerifyOpti
         r.certValidTo = m.notAfter.toISOString();
         r.algorithm = `${keyDescription(info.cert)} / ${HASH_NAME[info.digestOid ?? ''] ?? info.digestOid}`;
 
-        const chain = await buildChain(info.cert, [...info.certs, ...(dss?.certs ?? [])], opts.trustedRoots ?? [], when ?? new Date());
+        const pool = [...info.certs, ...trust.pool];
+        const chain = await buildChain(info.cert, pool, trust.trustedRoots, when.at);
         r.chainStatus = chain.status;
         r.chainDetails = chain.details;
+        warnings.push(...chain.weak);
+        const keyWarning = weakKeyWarning(info.cert);
+        if (keyWarning) warnings.push(keyWarning);
         const qc = qcStatementsOf(info.cert);
         r.qualified = qc.compliance ? (qc.qscd ? 'qscd' : 'qc') : null;
         if (opts.euTrust) {
-          const pool = [...info.certs, ...(dss?.certs ?? [])];
-          const eu = await euTrustOf(info.cert, pool, docTs ? 'tsa' : 'ca', when ?? new Date(), opts.euTrust);
+          const eu = await euTrustOf(info.cert, pool, isDocTs ? 'tsa' : 'ca', when.at, opts.euTrust);
           r.euTrusted = eu;
           if (eu && r.chainStatus !== 'trusted' && r.chainStatus !== 'expired') {
             r.chainStatus = 'trusted';
             r.chainDetails = [...(r.chainDetails ?? []), `Trusted through the EU Trusted List (${eu}).`];
           }
         }
-        // Validation data saved in the file answers first (works offline, years later).
-        const issuer = chain.chain[1] ?? (r.selfSigned ? info.cert : null);
-        const saved = dss && !r.selfSigned ? await revocationFromDss(info.cert, issuer, dss) : null;
-        if (dss) {
-          const need = chain.chain.filter((c) => !isSelfIssued(c));
-          const answers = await Promise.all(need.map((c, i) => revocationFromDss(c, chain.chain[chain.chain.indexOf(c) + 1] ?? null, dss).then((x) => (x ? i : -1))));
-          r.ltv = need.length > 0 && answers.every((x) => x >= 0);
+        const usage = usageProblem(info.cert, isDocTs ? 'tsa' : 'sign');
+        if (usage) {
+          r.chainStatus = 'untrusted';
+          r.chainDetails = [...(r.chainDetails ?? []), usage];
+          warnings.push(usage);
         }
-        if (saved) {
-          r.revocationStatus = saved.status;
-          r.revocationDetails = saved.details;
-        } else if (opts.checkRevocation) {
-          const rev = r.selfSigned
-            ? { status: 'unknown' as const, details: 'Self-signed certificates cannot be revoked.' }
-            : await checkRevocation(info.cert, issuer, opts);
+
+        // Validation data saved in the file answers offline, years later; an online
+        // check the user asked for takes priority.
+        const issuer = chain.chain[1] ?? (r.selfSigned ? info.cert : null);
+        let rev: RevocationResult | null = null;
+        let online: RevocationResult | null = null;
+        if (opts.checkRevocation) {
+          online = r.selfSigned ? { status: 'unknown', details: 'Self-signed certificates cannot be revoked.' } : await checkRevocation(info.cert, issuer, opts, when);
+          if (online.status === 'good' || online.status === 'revoked') rev = online;
+        }
+        if (!rev && dss && !r.selfSigned) rev = await revocationFromDss(info.cert, issuer, dss, when);
+        rev ??= online;
+        if (rev) {
           r.revocationStatus = rev.status;
           r.revocationDetails = rev.details;
         }
+        if (dss) {
+          const need = chain.chain.filter((x) => !isSelfIssued(x));
+          const answers = await Promise.all(need.map((x) => revocationFromDss(x, chain.chain[chain.chain.indexOf(x) + 1] ?? null, dss, when)));
+          r.ltv = need.length > 0 && answers.every(Boolean);
+        }
       }
-      r.certified = certificationOf(doc, sig);
+      r.certified = certificationOf(catalog, sig);
       if (!r.coversWholeFile) {
         // Adding validation data, signatures and field values after signing is allowed (as in Acrobat).
-        const later = await classifyLaterChanges(pdfBytes.subarray(0, c + d), pdfBytes);
+        const docMdp = signedView ? docMdpLevel(signedView.catalog) : r.certified ?? null;
+        const later = await classifyLaterChanges(pdfBytes.subarray(0, c + d), pdfBytes, { locked: fieldLock(f.field) ?? undefined, views: { signed: signedView, final: finalView } });
         r.laterChanges = later;
-        r.modifiedAfterSigning = later.other || (r.certified === 1 && (later.form || later.signatures));
+        r.modifiedAfterSigning =
+          later.other ||
+          (docMdp === 1 && (later.form || later.signatures || !!later.annotations)) ||
+          (docMdp !== 3 && !!later.annotations);
         const tail = pdfBytes.subarray(c + d);
         const revisions = (bytesToBinary(tail).match(/%%EOF/g) ?? []).length;
-        const allowed = [later.ltv ? 'validation data was added' : '', later.signatures ? 'more signatures were added' : '', later.form ? 'form fields were filled in' : ''].filter(Boolean);
+        const allowed = [
+          later.ltv ? 'validation data was added' : '',
+          later.signatures ? 'more signatures were added' : '',
+          later.form ? 'form fields were filled in' : '',
+          later.annotations ? 'comments were added or changed' : '',
+        ].filter(Boolean);
         if (!r.modifiedAfterSigning && allowed.length) notes.push(`After signing, ${allowed.join(', ')} (allowed changes).`);
-        else
+        else {
           notes.push(
             revisions
               ? `${tail.length} bytes (${revisions} incremental update${revisions > 1 ? 's' : ''}) were appended after this signature; ` +
                   'the signed revision is intact but later changes are not covered by it.'
               : `${tail.length} bytes were appended after this signature and are not covered by it.`,
           );
+          if (later.reasons?.length) notes.push(later.reasons.join(' '));
+        }
       }
+      r.warnings = [...new Set(warnings)];
       r.message = summarise(r, notes);
     } catch (e) {
       r.integrity = 'unknown';
       r.message = `Signature could not be parsed: ${e instanceof Error ? e.message : String(e)}`;
     }
   }
-  // PAdES level: B-LTA needs a valid document timestamp after the signature.
+  // PAdES level: B-LTA needs a valid, verified document timestamp after the signature.
   for (const s of signedEnds) {
     if (s.doc || !s.info || s.r.integrity !== 'valid') continue;
-    const later = signedEnds.some((o) => o.doc && o.end > s.end && o.r.integrity === 'valid');
-    s.r.padesLevel = padesLevel(s.subFilter ?? '', s.info, !!s.r.ltv, later);
+    const later = signedEnds.some((o) => o.doc && o.end > s.end && o.r.integrity === 'valid' && o.r.timestampVerified);
+    s.r.padesLevel = padesLevel(s.subFilter ?? '', s.info, !!s.r.timestampVerified, !!s.r.ltv, later);
     if (s.r.padesLevel) s.r.message += ` PAdES baseline ${s.r.padesLevel}.`;
   }
   return results;
 }
 
-/** The EU Trusted List service the certificate chains to, or null. */
+/** The EU Trusted List service the certificate chains to at `at`, or null. */
 async function euTrustOf(cert: forge.pki.Certificate, pool: forge.pki.Certificate[], kind: 'ca' | 'tsa', at: Date, index: EuTrustIndex): Promise<string | null> {
   const hex = (b: Uint8Array) => bytesToHex(b).toLowerCase();
   const m = metaOf(cert);
   // A timestamp authority is often listed with its own certificate.
-  const own = index.find(hex(m.subjectDer), kind).find((s) => bytesEqual(s.der, m.der));
+  const own = index.find(hex(m.subjectDer), kind, at).find((s) => bytesEqual(s.der, m.der));
   if (own) return own.label;
   const anchors: forge.pki.Certificate[] = [];
   const labels = new Map<string, string>();
@@ -1978,7 +2412,7 @@ async function euTrustOf(cert: forge.pki.Certificate, pool: forge.pki.Certificat
     const issuer = hex(metaOf(c).issuerDer);
     if (seen.has(issuer)) continue;
     seen.add(issuer);
-    for (const s of index.find(issuer, kind)) {
+    for (const s of index.find(issuer, kind, at)) {
       try {
         const a = parseCertificate(s.der);
         anchors.push(a);
@@ -2029,51 +2463,226 @@ function pdfObjBytes(obj: unknown): string {
 }
 
 export interface LaterChanges {
-  /** Validation data (DSS) was added or extended. */
+  /** Validation data (DSS) or document timestamps were added or extended. */
   ltv: boolean;
   /** More signatures were added. */
   signatures: boolean;
   /** Form fields were filled in. */
   form: boolean;
+  /** Comments (annotations) were added, changed or removed. */
+  annotations?: boolean;
   /** Anything else (pages, content, fields added or removed…). */
   other: boolean;
+  /** What the "other" changes were. */
+  reasons?: string[];
+}
+
+export interface LaterChangeRules {
+  /** Fields the signature locked (FieldMDP): changing them is not allowed. */
+  locked?: (fullName: string) => boolean;
+  /** Already loaded views of the signed revision and of the final file (saves parsing them again). */
+  views?: { signed?: RevisionView | null; final?: RevisionView | null };
+}
+
+/** LTV structures reachable from /DSS: the dictionaries and arrays ('container') and the data streams in them. */
+function ltvRoles(v: RevisionView): Map<string, 'container' | 'data'> {
+  const out = new Map<string, 'container' | 'data'>();
+  const ctx = v.context;
+  const mark = (x: unknown, role: 'container' | 'data'): unknown => {
+    if (!(x instanceof PDFRef)) return x;
+    const o = ctx.lookup(x);
+    if (role === 'data' && !(o instanceof PDFStream)) return o;
+    if (!out.has(x.toString())) out.set(x.toString(), role);
+    return o;
+  };
+  const dataArray = (x: unknown) => {
+    const arr = mark(x, 'container');
+    if (arr instanceof PDFArray) for (const item of arr.asArray()) mark(item, 'data');
+  };
+  const dss = mark(v.catalog.get(PDFName.of('DSS')), 'container');
+  if (!(dss instanceof PDFDict)) return out;
+  for (const k of ['Certs', 'OCSPs', 'CRLs']) dataArray(dss.get(PDFName.of(k)));
+  const vri = mark(dss.get(PDFName.of('VRI')), 'container');
+  if (vri instanceof PDFDict) {
+    for (const [, e] of vri.entries()) {
+      const entry = mark(e, 'container');
+      if (!(entry instanceof PDFDict)) continue;
+      for (const k of ['Cert', 'OCSP', 'CRL']) dataArray(entry.get(PDFName.of(k)));
+      mark(entry.get(PDFName.of('TS')), 'data');
+    }
+  }
+  return out;
 }
 
 /**
- * What the revisions after a signature changed: compares the objects of the
- * signed revision with the final file. Adding validation data, signatures
- * and field values are the changes Acrobat allows after signing.
+ * What the revisions after a signature changed: compares the objects in
+ * effect in the signed revision with those of the final file (both found
+ * through the cross-reference chain, as viewers do). Adding validation data,
+ * signatures and field values are the changes Acrobat allows after signing;
+ * comments are reported separately (allowed only by certification level 3).
  */
-export async function classifyLaterChanges(signedRevision: Uint8Array, full: Uint8Array): Promise<LaterChanges> {
+export async function classifyLaterChanges(signedRevision: Uint8Array, full: Uint8Array, rules: LaterChangeRules = {}): Promise<LaterChanges> {
   const res: LaterChanges = { ltv: false, signatures: false, form: false, other: false };
-  let a: PDFDocument;
-  let b: PDFDocument;
-  try {
-    a = await PDFDocument.load(signedRevision, { ignoreEncryption: true, updateMetadata: false });
-    b = await PDFDocument.load(full, { ignoreEncryption: true, updateMetadata: false });
-  } catch {
-    return { ...res, other: true };
-  }
-  const oldObjs = new Map<string, unknown>();
-  for (const [ref, obj] of a.context.enumerateIndirectObjects()) oldObjs.set(ref.toString(), obj);
-  const catalogRef = String(b.context.trailerInfo.Root);
-  const acroRef = (() => {
-    const v = b.catalog.get(PDFName.of('AcroForm'));
-    return v instanceof PDFRef ? v.toString() : null;
-  })();
-  // Everything reachable from the DSS (validation data) in the final file.
-  const dssObjects = new Set<string>();
-  const walk = (v: unknown) => {
-    if (v instanceof PDFRef) {
-      if (dssObjects.has(v.toString())) return;
-      dssObjects.add(v.toString());
-      walk(b.context.lookup(v));
-    } else if (v instanceof PDFDict) for (const [, x] of v.entries()) walk(x);
-    else if (v instanceof PDFArray) for (let i = 0; i < v.size(); i++) walk(v.get(i));
-    else if (v instanceof PDFStream) walk(v.dict);
+  const reasons: string[] = [];
+  const other = (why: string) => {
+    res.other = true;
+    if (!reasons.includes(why) && reasons.length < 8) reasons.push(why);
   };
-  walk(b.catalog.get(PDFName.of('DSS')));
+  let a: RevisionView;
+  let b: RevisionView;
+  try {
+    a = rules.views?.signed ?? loadRevision(full, signedRevision.length);
+    b = rules.views?.final ?? loadRevision(full);
+  } catch {
+    return { ...res, other: true, reasons: ['The cross-reference data of the later revisions cannot be read.'] };
+  }
+  for (const p of b.problems) if (!a.problems.includes(p)) other(p);
+  const unref = unreferencedObjects(full, signedRevision.length, b);
+  if (unref.length) other('Objects were added after signing without being listed in the cross-reference table (hidden duplicates).');
 
+  const ser = pdfObjBytes;
+  const resolve = (v: RevisionView, x: unknown) => (x instanceof PDFRef ? v.context.lookup(x) : x);
+  const keyOf = (x: unknown) => (x instanceof PDFRef ? x.toString() : null);
+  const ltvA = ltvRoles(a);
+  const ltvB = ltvRoles(b);
+
+  // Field tree of the final file: names and parents.
+  const fieldNames = new Map<PDFDict, string>();
+  const nameOf = (d: PDFDict): string => {
+    const parts: string[] = [];
+    for (let n: unknown = d, i = 0; n instanceof PDFDict && i < 32; n = n.lookup(PDFName.of('Parent')), i++) {
+      const t = n.lookup(PDFName.of('T'));
+      if (t instanceof PDFString || t instanceof PDFHexString) parts.unshift(t.decodeText());
+    }
+    return parts.join('.');
+  };
+  const inherited = (d: PDFDict, key: string): unknown => {
+    for (let n: unknown = d, i = 0; n instanceof PDFDict && i < 32; n = n.lookup(PDFName.of('Parent')), i++) {
+      const v = n.get(PDFName.of(key));
+      if (v !== undefined) return v;
+    }
+    return undefined;
+  };
+  const isSigField = (d: PDFDict) => inherited(d, 'FT') === PDFName.of('Sig');
+  const isLocked = (d: PDFDict) => !!rules.locked?.(fieldNames.get(d) ?? nameOf(d));
+  /** The field (with /T) a widget belongs to: itself when merged, else its parent. */
+  const fieldRefOf = (d: PDFDict, ref: PDFRef | null): PDFRef | null => {
+    if (d.has(PDFName.of('T')) || !(d.get(PDFName.of('Parent')) instanceof PDFRef)) return ref;
+    return d.get(PDFName.of('Parent')) as PDFRef;
+  };
+  const valueChanged = (fieldRef: PDFRef | null): boolean => {
+    if (!fieldRef) return false;
+    const fa = a.context.lookup(fieldRef);
+    const fb = b.context.lookup(fieldRef);
+    if (!(fa instanceof PDFDict) || !(fb instanceof PDFDict)) return false;
+    return ser(fa.get(PDFName.of('V'))) !== ser(fb.get(PDFName.of('V')));
+  };
+  const visible = (d: PDFDict): boolean => {
+    const flags = (d.lookup(PDFName.of('F')) as PDFNumber | undefined)?.asNumber?.() ?? 0;
+    if (flags & (2 | 32)) return false; // Hidden, NoView
+    const rect = d.lookup(PDFName.of('Rect'));
+    if (rect instanceof PDFArray && rect.size() === 4) {
+      const [x1, y1, x2, y2] = rect.asArray().map((n) => (n instanceof PDFNumber ? n.asNumber() : 0));
+      if (Math.abs(x2 - x1) < 0.5 || Math.abs(y2 - y1) < 0.5) return false;
+    }
+    const ap = d.lookup(PDFName.of('AP'));
+    const n = ap instanceof PDFDict ? ap.lookup(PDFName.of('N')) : undefined;
+    const streams = n instanceof PDFDict && !(n instanceof PDFStream) ? n.asMap().values() : [n];
+    for (const s of streams) {
+      const st = resolve(b, s);
+      if (!(st instanceof PDFRawStream)) continue;
+      try {
+        if (bytesToBinary(decodePDFRawStream(st).decode()).trim()) return true;
+      } catch {
+        return true;
+      }
+    }
+    return false;
+  };
+  const hasScript = (d: PDFDict) => d.has(PDFName.of('AA')) || /\/JavaScript\b/.test(ser(d.lookup(PDFName.of('A'))));
+
+  /** A signature widget or field that is new after signing. */
+  const newSigWidget = (d: PDFDict) => {
+    const v = resolve(b, inherited(d, 'V'));
+    if (v instanceof PDFDict && v.lookup(PDFName.of('Type')) === PDFName.of('DocTimeStamp')) res.ltv = true;
+    else if (v instanceof PDFDict) res.signatures = true;
+    else if (visible(d)) other('An unsigned signature field with a visible appearance was added.');
+    else res.signatures = true;
+  };
+  const newAnnot = (x: unknown) => {
+    const d = resolve(b, x);
+    if (!(d instanceof PDFDict)) return other('A page annotation was changed.');
+    if (d.lookup(PDFName.of('Subtype')) === PDFName.of('Widget')) {
+      if (isSigField(d)) newSigWidget(d);
+      else other('A form field was added.');
+    } else if (hasScript(d)) other('An annotation with a script was added.');
+    else res.annotations = true;
+  };
+  const newField = (x: unknown) => {
+    const d = resolve(b, x);
+    if (!(d instanceof PDFDict) || !isSigField(d)) return other('A form field was added.');
+    const k = d.lookup(PDFName.of('Kids'));
+    if (k instanceof PDFArray && k.size()) for (const w of k.asArray()) newAnnot(w);
+    else newSigWidget(d);
+  };
+  const itemKeys = (arr: unknown) => (arr instanceof PDFArray ? arr.asArray().map((x) => keyOf(x) ?? ser(x)) : []);
+  const annotsDiff = (oldArr: unknown, newArr: unknown) => {
+    const o = itemKeys(resolve(a, oldArr));
+    const n = resolve(b, newArr);
+    const nk = itemKeys(n);
+    if (!(n instanceof PDFArray) && newArr !== undefined) return other('A page annotation list was replaced.');
+    nk.forEach((k, i) => {
+      if (!o.includes(k)) newAnnot((n as PDFArray).get(i));
+    });
+    const oldArray = resolve(a, oldArr);
+    o.forEach((k, i) => {
+      if (nk.includes(k)) return;
+      const d = resolve(a, (oldArray as PDFArray).get(i));
+      if (d instanceof PDFDict && d.lookup(PDFName.of('Subtype')) === PDFName.of('Widget')) other('A form field or signature was removed from a page.');
+      else res.annotations = true;
+    });
+  };
+
+  // Indirect /Annots arrays and appearance streams of the final file, by owner.
+  const annotArrays = new Set<string>();
+  const apOwners = new Map<string, { widget: PDFDict; ref: PDFRef | null }>();
+  const noteWidget = (x: unknown) => {
+    const w = resolve(b, x);
+    if (!(w instanceof PDFDict)) return;
+    const ap = w.lookup(PDFName.of('AP'));
+    if (!(ap instanceof PDFDict)) return;
+    for (const [, v] of ap.entries()) {
+      const s = resolve(b, v);
+      const refs = s instanceof PDFDict && !(s instanceof PDFStream) ? [...s.asMap().values()] : [v];
+      for (const r of refs) if (r instanceof PDFRef) apOwners.set(r.toString(), { widget: w, ref: x instanceof PDFRef ? x : null });
+    }
+  };
+  for (const [ref, obj] of b.context.enumerateIndirectObjects()) {
+    if (!(obj instanceof PDFDict) || obj.lookup(PDFName.of('Type')) !== PDFName.of('Page')) continue;
+    void ref;
+    const annots = obj.get(PDFName.of('Annots'));
+    if (annots instanceof PDFRef) annotArrays.add(annots.toString());
+    const arr = resolve(b, annots);
+    if (arr instanceof PDFArray) for (const x of arr.asArray()) noteWidget(x);
+  }
+  const acroB = resolve(b, b.catalog.get(PDFName.of('AcroForm')));
+  const acroA = resolve(a, a.catalog.get(PDFName.of('AcroForm')));
+  const walkFields = (x: unknown, depth = 0) => {
+    const d = resolve(b, x);
+    if (!(d instanceof PDFDict) || depth > 32) return;
+    if (x instanceof PDFRef) fieldNames.set(d, nameOf(d));
+    noteWidget(x);
+    const k = d.lookup(PDFName.of('Kids'));
+    if (k instanceof PDFArray) for (const c of k.asArray()) walkFields(c, depth + 1);
+  };
+  if (acroB instanceof PDFDict) {
+    const fields = acroB.lookup(PDFName.of('Fields'));
+    if (fields instanceof PDFArray) for (const x of fields.asArray()) walkFields(x);
+  }
+
+  // Catalog and AcroForm: compared directly (a later update may point at new copies).
+  const skip = new Set<string>([a.rootRef, b.rootRef].filter(Boolean).map(String));
+  for (const x of [a.catalog.get(PDFName.of('AcroForm')), b.catalog.get(PDFName.of('AcroForm'))]) if (x instanceof PDFRef) skip.add(x.toString());
   const changedKeys = (oldD: PDFDict, newD: PDFDict) => {
     const keys = new Set<string>([...oldD.keys(), ...newD.keys()].map((k) => k.decodeText()));
     return [...keys].filter((k) => {
@@ -2081,83 +2690,89 @@ export async function classifyLaterChanges(signedRevision: Uint8Array, full: Uin
       const n = newD.get(PDFName.of(k));
       // Flags written out with the same meaning (missing = 0) are not a change.
       if ((k === 'Ff' || k === 'F') && (o instanceof PDFNumber ? o.asNumber() : 0) === (n instanceof PDFNumber ? n.asNumber() : 0)) return false;
-      return pdfObjBytes(o) !== pdfObjBytes(n);
+      return ser(o) !== ser(n);
     });
   };
-  const arrayGrew = (oldV: unknown, newV: unknown, ctxA: PDFDocument, ctxB: PDFDocument) => {
-    const o = oldV instanceof PDFRef ? ctxA.context.lookup(oldV) : oldV;
-    const n = newV instanceof PDFRef ? ctxB.context.lookup(newV) : newV;
-    if (!(n instanceof PDFArray)) return false;
-    const oldItems = o instanceof PDFArray ? o.asArray().map(pdfObjBytes) : [];
-    const newItems = n.asArray().map(pdfObjBytes);
-    return oldItems.every((x, i) => newItems[i] === x) ? newItems.slice(oldItems.length) : false;
-  };
-  const isSigWidget = (v: unknown) => {
-    const d = v instanceof PDFRef ? b.context.lookup(v) : v;
-    return d instanceof PDFDict && d.lookup(PDFName.of('FT')) === PDFName.of('Sig');
-  };
-  // A document timestamp (PAdES B-LTA) is allowed even on "no changes" certified documents.
-  const isDocTimestamp = (v: unknown) => {
-    const d = v instanceof PDFRef ? b.context.lookup(v) : v;
-    const val = d instanceof PDFDict ? d.lookup(PDFName.of('V')) : null;
-    return isSigWidget(d) && val instanceof PDFDict && val.lookup(PDFName.of('Type')) === PDFName.of('DocTimeStamp');
-  };
+  for (const k of changedKeys(a.catalog, b.catalog)) {
+    if (k === 'DSS') res.ltv = true;
+    else if (k !== 'AcroForm') other(`The document catalog was changed (/${k}).`);
+  }
+  if (acroB instanceof PDFDict || acroA instanceof PDFDict) {
+    const oldAcro = acroA instanceof PDFDict ? acroA : (PDFDict.withContext(a.context) as PDFDict);
+    const newAcro = acroB instanceof PDFDict ? acroB : (PDFDict.withContext(b.context) as PDFDict);
+    for (const x of [oldAcro.get(PDFName.of('Fields')), newAcro.get(PDFName.of('Fields'))]) if (x instanceof PDFRef) skip.add(x.toString());
+    const o = itemKeys(resolve(a, oldAcro.get(PDFName.of('Fields'))));
+    const nArr = resolve(b, newAcro.get(PDFName.of('Fields')));
+    const n = itemKeys(nArr);
+    if (o.some((k) => !n.includes(k))) other('A form field was removed.');
+    n.forEach((k, i) => {
+      if (!o.includes(k)) newField((nArr as PDFArray).get(i));
+    });
+    for (const k of changedKeys(oldAcro, newAcro)) {
+      if (!['Fields', 'SigFlags', 'NeedAppearances', 'DR', 'DA'].includes(k)) other(`The form settings were changed (/${k}).`);
+    }
+  }
 
   for (const [ref, obj] of b.context.enumerateIndirectObjects()) {
     const key = ref.toString();
-    const old = oldObjs.get(key);
-    if (!old) continue; // new objects matter only through the changed ones
-    if (pdfObjBytes(old) === pdfObjBytes(obj)) continue;
-    if (dssObjects.has(key)) {
+    if (skip.has(key)) continue;
+    const old = a.context.lookup(ref);
+    if (old === undefined) continue; // new objects matter only through the changed ones
+    if (ser(old) === ser(obj)) continue;
+    // LTV structures may grow; the data in them must not change.
+    if (ltvB.get(key) === 'container' && ltvA.get(key) === 'container') {
       res.ltv = true;
       continue;
     }
+    if (annotArrays.has(key)) {
+      annotsDiff(old, obj);
+      continue;
+    }
+    if (obj instanceof PDFStream || old instanceof PDFStream) {
+      // An appearance of a field whose value changed is part of filling it in.
+      const owner = apOwners.get(key);
+      if (owner && valueChanged(fieldRefOf(owner.widget, owner.ref)) && !isLocked(owner.widget)) {
+        if (isSigField(owner.widget)) res.signatures = true;
+        else res.form = true;
+      } else other(owner ? 'The appearance of a form field changed while its value did not.' : 'Page content or another stream was changed.');
+      continue;
+    }
     if (!(obj instanceof PDFDict) || !(old instanceof PDFDict)) {
-      // A changed stream: a field appearance is part of filling in; anything else is content.
-      res.other = true;
+      other('Document objects were changed.');
       continue;
     }
     const keys = changedKeys(old, obj);
-    if (key === catalogRef) {
+    if (obj.lookup(PDFName.of('Type')) === PDFName.of('Page')) {
       for (const k of keys) {
-        if (k === 'DSS') res.ltv = true;
-        else if (k === 'AcroForm' && !acroRef) res.signatures = true;
-        else res.other = true;
+        if (k === 'Annots') annotsDiff(old.get(PDFName.of('Annots')), obj.get(PDFName.of('Annots')));
+        else other(`A page was changed (/${k}).`);
       }
-    } else if (key === acroRef) {
+    } else if (obj.has(PDFName.of('FT')) || obj.has(PDFName.of('Parent')) || obj.has(PDFName.of('T')) || obj.lookup(PDFName.of('Subtype')) === PDFName.of('Widget')) {
+      const sigField = isSigField(obj);
+      const locked = isLocked(obj);
+      const name = fieldNames.get(obj) ?? nameOf(obj);
       for (const k of keys) {
-        if (k === 'Fields') {
-          const added = arrayGrew(old.get(PDFName.of('Fields')), obj.get(PDFName.of('Fields')), a, b);
-          const refs = added && added.length ? (obj.lookup(PDFName.of('Fields')) as PDFArray).asArray().slice(-added.length) : [];
-          if (refs.length && refs.every(isDocTimestamp)) res.ltv = true;
-          else if (added && added.length) res.signatures = true;
-          else if (!added) res.other = true;
-        } else if (!['SigFlags', 'NeedAppearances', 'DR', 'DA'].includes(k)) res.other = true;
-      }
-    } else if (obj.lookup(PDFName.of('Type')) === PDFName.of('Page')) {
-      for (const k of keys) {
-        if (k !== 'Annots') {
-          res.other = true;
-          continue;
-        }
-        const added = arrayGrew(old.get(PDFName.of('Annots')), obj.get(PDFName.of('Annots')), a, b);
-        if (!added) res.other = true;
-        else if (added.length) {
-          const refs = (obj.lookup(PDFName.of('Annots')) as PDFArray).asArray().slice(-added.length);
-          if (refs.every(isDocTimestamp)) res.ltv = true;
-          else if (refs.every(isSigWidget)) res.signatures = true;
-          else res.other = true;
-        }
-      }
-    } else if (obj.has(PDFName.of('FT')) || obj.has(PDFName.of('Parent')) || obj.lookup(PDFName.of('Subtype')) === PDFName.of('Widget')) {
-      for (const k of keys) {
-        if (['V', 'AP', 'AS'].includes(k)) {
-          if (k === 'V' && obj.lookup(PDFName.of('FT')) === PDFName.of('Sig')) res.signatures = true;
+        if (k === 'V') {
+          if (locked) other(`The locked field “${name}” was changed.`);
+          else if (!sigField) res.form = true;
+          else if (old.get(PDFName.of('V')) !== undefined) other(`The signature in “${name}” was replaced.`);
+          else {
+            const v = obj.lookup(PDFName.of('V'));
+            if (v instanceof PDFDict && v.lookup(PDFName.of('Type')) === PDFName.of('DocTimeStamp')) res.ltv = true;
+            else res.signatures = true;
+          }
+        } else if (k === 'AP' || k === 'AS') {
+          if (!valueChanged(fieldRefOf(obj, ref))) other(`The appearance of “${name}” changed while its value did not.`);
+          else if (locked) other(`The locked field “${name}” was changed.`);
+          else if (sigField) res.signatures = true;
           else res.form = true;
-        } else res.other = true;
+        } else other(`A form field property was changed (/${k}).`);
       }
-    } else res.other = true;
+    } else if (obj.has(PDFName.of('Subtype')) && old.has(PDFName.of('Subtype')) && !hasScript(obj)) {
+      res.annotations = true; // an existing comment was edited
+    } else other('Document objects were changed.');
   }
+  if (reasons.length) res.reasons = reasons;
   return res;
 }
 
@@ -2167,17 +2782,23 @@ interface Dss {
   crls: Uint8Array[];
 }
 
-function readDss(doc: PDFDocument): Dss | null {
-  const dss = doc.catalog.lookup(PDFName.of('DSS'));
+function readDss(catalog: PDFDict): Dss | null {
+  const dss = catalog.lookup(PDFName.of('DSS'));
   if (!(dss instanceof PDFDict)) return null;
   const list = (k: string): Uint8Array[] => {
     const arr = dss.lookup(PDFName.of(k));
     if (!(arr instanceof PDFArray)) return [];
-    return arr
-      .asArray()
-      .map((r) => (r instanceof PDFRef ? doc.context.lookup(r) : r))
-      .filter((s): s is PDFRawStream => s instanceof PDFRawStream)
-      .map((s) => decodePDFRawStream(s).decode());
+    const out: Uint8Array[] = [];
+    for (let i = 0; i < arr.size(); i++) {
+      const s = arr.lookup(i);
+      if (!(s instanceof PDFRawStream)) continue;
+      try {
+        out.push(decodePDFRawStream(s).decode());
+      } catch {
+        /* undecodable */
+      }
+    }
+    return out;
   };
   const certs: forge.pki.Certificate[] = [];
   for (const d of list('Certs')) {
@@ -2191,11 +2812,16 @@ function readDss(doc: PDFDocument): Dss | null {
 }
 
 /** Revocation from the validation data stored in the file (no network). */
-async function revocationFromDss(cert: forge.pki.Certificate, issuer: forge.pki.Certificate | null, dss: Dss): Promise<RevocationResult | null> {
+async function revocationFromDss(
+  cert: forge.pki.Certificate,
+  issuer: forge.pki.Certificate | null,
+  dss: Dss,
+  when: ValidationTime = validationNow(),
+): Promise<RevocationResult | null> {
   if (!issuer) return null;
   for (const o of dss.ocsps) {
     try {
-      const r = await parseOcspResponse(o, cert, issuer);
+      const r = await parseOcspResponse(o, cert, issuer, when);
       if (r.status === 'good' || r.status === 'revoked') return { ...r, details: `${r.details} (saved in the file)` };
     } catch {
       /* not for this certificate */
@@ -2203,7 +2829,7 @@ async function revocationFromDss(cert: forge.pki.Certificate, issuer: forge.pki.
   }
   for (const c of dss.crls) {
     try {
-      const r = await checkCrl(c, cert, issuer);
+      const r = await checkCrl(c, cert, issuer, when);
       if (r.status === 'good' || r.status === 'revoked') return { ...r, details: `${r.details} (saved in the file)` };
     } catch {
       /* not from this issuer */
@@ -2212,17 +2838,54 @@ async function revocationFromDss(cert: forge.pki.Certificate, issuer: forge.pki.
   return null;
 }
 
-/** Certification level when this signature certifies the document (DocMDP). */
-function certificationOf(doc: PDFDocument, sig: PDFDict): 1 | 2 | 3 | null {
-  const perms = doc.catalog.lookup(PDFName.of('Perms'));
-  const mdp = perms instanceof PDFDict ? perms.lookup(PDFName.of('DocMDP')) : null;
-  if (mdp !== sig) return null;
+/** DocMDP permission level of a certification signature dictionary. */
+function mdpLevel(sig: PDFDict): 1 | 2 | 3 {
   const refs = sig.lookup(PDFName.of('Reference'));
-  const first = refs instanceof PDFArray ? refs.lookup(0) : null;
-  const params = first instanceof PDFDict ? first.lookup(PDFName.of('TransformParams')) : null;
-  const p = params instanceof PDFDict ? params.lookup(PDFName.of('P')) : null;
-  const n = p instanceof PDFNumber ? p.asNumber() : 2;
+  let n = 2;
+  if (refs instanceof PDFArray) {
+    for (let i = 0; i < refs.size(); i++) {
+      const ref = refs.lookup(i);
+      if (!(ref instanceof PDFDict) || ref.lookup(PDFName.of('TransformMethod')) !== PDFName.of('DocMDP')) continue;
+      const params = ref.lookup(PDFName.of('TransformParams'));
+      const p = params instanceof PDFDict ? params.lookup(PDFName.of('P')) : null;
+      if (p instanceof PDFNumber) n = p.asNumber();
+    }
+  }
   return (n === 1 || n === 3 ? n : 2) as 1 | 2 | 3;
+}
+
+/** Certification level when this signature certifies the document (DocMDP). */
+function certificationOf(catalog: PDFDict, sig: PDFDict): 1 | 2 | 3 | null {
+  const perms = catalog.lookup(PDFName.of('Perms'));
+  const mdp = perms instanceof PDFDict ? perms.lookup(PDFName.of('DocMDP')) : null;
+  return mdp === sig ? mdpLevel(sig) : null;
+}
+
+/** Certification level of the document (as signed), or null when it is not certified. */
+function docMdpLevel(catalog: PDFDict): 1 | 2 | 3 | null {
+  const perms = catalog.lookup(PDFName.of('Perms'));
+  const mdp = perms instanceof PDFDict ? perms.lookup(PDFName.of('DocMDP')) : null;
+  return mdp instanceof PDFDict ? mdpLevel(mdp) : null;
+}
+
+/** Fields a signature field locks (its /Lock, FieldMDP), or null. */
+function fieldLock(field: PDFDict): ((fullName: string) => boolean) | null {
+  const lock = field.lookup(PDFName.of('Lock'));
+  if (!(lock instanceof PDFDict)) return null;
+  const action = lock.lookup(PDFName.of('Action'));
+  const list = lock.lookup(PDFName.of('Fields'));
+  const names =
+    list instanceof PDFArray
+      ? list.asArray().map((x) => {
+          const s = field.context.lookup(x);
+          return s instanceof PDFString || s instanceof PDFHexString ? s.decodeText() : '';
+        })
+      : [];
+  const listed = (n: string) => names.some((x) => x && (n === x || n.startsWith(`${x}.`)));
+  if (action === PDFName.of('All')) return () => true;
+  if (action === PDFName.of('Include')) return listed;
+  if (action === PDFName.of('Exclude')) return (n) => !listed(n);
+  return null;
 }
 
 export interface LtvOptions {
@@ -2239,8 +2902,8 @@ export interface LtvOptions {
  */
 export async function addValidationData(pdfBytes: Uint8Array, opts: LtvOptions): Promise<{ bytes: Uint8Array; notes: string[]; complete: boolean }> {
   const doc = await PDFDocument.load(pdfBytes, { ignoreEncryption: true, updateMetadata: false });
-  const { sigFields } = collectFields(doc);
-  const existing = readDss(doc);
+  const { sigFields } = collectFields(doc.catalog);
+  const existing = readDss(doc.catalog);
   const notes: string[] = [];
   let complete = true;
   const certs = new Map<string, Uint8Array>();
@@ -2375,7 +3038,7 @@ function summarise(r: ExtendedValidation, notes: string[]): string {
       parts.push('The certificate chains to a trusted root.');
       break;
     case 'expired':
-      parts.push('A certificate in the chain was not valid at signing time.');
+      parts.push(r.timestampVerified ? 'A certificate in the chain was not valid at the time of the trusted timestamp.' : 'A certificate in the chain is not valid now (there is no verified timestamp proving an earlier signing time).');
       break;
     case 'incomplete':
       parts.push('The certificate chain is incomplete.');
@@ -2390,12 +3053,16 @@ function summarise(r: ExtendedValidation, notes: string[]): string {
   }
   if (r.revocationStatus === 'revoked') parts.push('The signer certificate has been REVOKED.');
   else if (r.revocationStatus === 'good') parts.push('The signer certificate is not revoked.');
-  if (r.hasTimestamp && !r.documentTimestamp) parts.push('Includes an RFC 3161 timestamp.');
+  if (r.timestampVerified && !r.documentTimestamp) parts.push('Includes a verified RFC 3161 timestamp.');
+  else if (r.hasTimestamp && !r.documentTimestamp) parts.push('Includes an RFC 3161 timestamp that could not be verified.');
+  else if (!r.documentTimestamp) parts.push('No verified timestamp: the certificates were checked at the current time.');
+  for (const w of r.warnings ?? []) parts.push(`Warning: ${w}`);
   if (r.euTrusted && r.documentTimestamp) parts.push(`Qualified timestamp authority on the EU Trusted List (${r.euTrusted}).`);
   else if (r.euTrusted && r.qualified === 'qscd') parts.push(`Qualified electronic signature: EU qualified certificate, key on a qualified device, issuer on the EU Trusted List (${r.euTrusted}).`);
   else if (r.euTrusted && r.qualified === 'qc') parts.push(`Advanced electronic signature with an EU qualified certificate; issuer on the EU Trusted List (${r.euTrusted}).`);
   else if (r.euTrusted) parts.push(`The issuer is a qualified trust service on the EU Trusted List (${r.euTrusted}).`);
   else if (r.qualified) parts.push('The certificate declares itself EU qualified, but its issuer was not confirmed on the EU Trusted List.');
+  if (r.euTrusted) parts.push('The EU Trusted Lists were downloaded over HTTPS; their own XML signatures are not verified.');
   if (r.certified) parts.push(['', 'Certified: no changes are allowed.', 'Certified: filling in forms and signing are allowed.', 'Certified: filling in forms, signing and comments are allowed.'][r.certified]);
   if (r.ltv) parts.push('Long-term validation: the validation data of the whole chain is saved in the file.');
   return parts.join(' ');

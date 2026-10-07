@@ -41,6 +41,25 @@ describe('signature validation report', () => {
     expect(reportRows({ ...sig, integrity: 'invalid' }).find((r) => r[0] === 'Integrity')?.[2]).toBe('bad');
   });
 
+  it('shows warnings, unverified timestamps and the reasons for later changes', () => {
+    const rows = reportRows({
+      ...sig,
+      timestampVerified: false,
+      warnings: ['The signature uses SHA-1, which is no longer considered secure.'],
+      modifiedAfterSigning: true,
+      laterChanges: { ltv: false, signatures: false, form: false, annotations: true, other: true, reasons: ['Page content or another stream was changed.'] },
+      euTrusted: 'RO: Test',
+    });
+    const get = (l: string) => rows.find((r) => r[0] === l);
+    expect(get('Signing time')).toEqual(['Signing time', '2026-09-30 14:05 (timestamp not verified; signer’s claim)', 'warn']);
+    expect(get('Warning')).toEqual(['Warning', 'The signature uses SHA-1, which is no longer considered secure.', 'warn']);
+    expect(get('Later changes')).toEqual(['Later changes', 'comments, other changes', 'bad']);
+    expect(rows.some((r) => r[1] === 'Page content or another stream was changed.' && r[2] === 'bad')).toBe(true);
+    expect(get('EU Trusted List')?.[1]).toMatch(/own signature is not verified/);
+    expect(get('Result')?.[2]).toBe('warn');
+    expect(reportRows({ ...sig, timestampVerified: true }).find((r) => r[0] === 'Signing time')?.[2]).toBe('ok');
+  });
+
   it('writes a readable PDF', async () => {
     const bytes = await validationReportPdf([sig], { fileName: 'contract.pdf', loadFont, checkedAt: new Date(Date.UTC(2026, 9, 1, 10, 0)) });
     const doc = await pdfjs.getDocument({ data: bytes.slice(), verbosity: 0 }).promise;
