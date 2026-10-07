@@ -380,9 +380,9 @@ describe('algorithms and signed attributes', () => {
     return [file.subarray(a, a + b), file.subarray(c, c + d)];
   };
 
-  it('RSA padding is checked strictly (DigestInfo without NULL is rejected)', async () => {
-    const lenient = replaceContents(signed, cmsSign(data(signed), { signer: leaf, chain: [inter.cert], sigFn: (attrs) => rsaSignWithoutNull(leaf.key, attrs) }));
-    expect((await first(lenient)).integrity).toBe('invalid');
+  it('a DigestInfo without the NULL parameters is accepted (RFC 8017 allows it; compared byte for byte)', async () => {
+    const noNull = replaceContents(signed, cmsSign(data(signed), { signer: leaf, chain: [inter.cert], sigFn: (attrs) => rsaSignWithoutNull(leaf.key, attrs) }));
+    expect((await first(noNull)).integrity).toBe('valid');
   });
 
   it('SHA-1 and short keys give a warning, MD5 is invalid', async () => {
@@ -409,6 +409,37 @@ describe('algorithms and signed attributes', () => {
 });
 
 describe('issuer lookup when signing', () => {
+  it('accepts RSA signatures whose DigestInfo leaves out the NULL parameters, and nothing looser', async () => {
+    const kp = forge.pki.rsa.generateKeyPair({ bits: 2048, e: 0x10001 });
+    const spki = new Uint8Array(Buffer.from(forge.asn1.toDer(forge.pki.publicKeyToAsn1(kp.publicKey)).getBytes(), 'binary'));
+    const alg = der(0x30, oid('1.2.840.113549.1.1.11'), NULL);
+    const name = der(0x30, der(0x31, der(0x30, oid('2.5.4.3'), der(0x0c, new Uint8Array(Buffer.from('RSA CA'))))));
+    const tbs = der(0x30, der(0xa0, der(0x02, new Uint8Array([2]))), der(0x02, new Uint8Array([7])), alg, name, der(0x30, utc(new Date(Date.now() - 86400_000)), utc(new Date(Date.now() + 86400_000))), name, spki);
+    const h = new Uint8Array(await crypto.subtle.digest('SHA-256', tbs as BufferSource));
+    const sign = (info: Uint8Array) => {
+      const k = 256;
+      const em = new Uint8Array(k);
+      em[1] = 1;
+      em.fill(0xff, 2, k - info.length - 1);
+      em.set(info, k - info.length);
+      const n = BigInt('0x' + kp.privateKey.n.toString(16));
+      const d = BigInt('0x' + kp.privateKey.d.toString(16));
+      let m = BigInt('0x' + Buffer.from(em).toString('hex'));
+      let r = 1n;
+      for (let e = d; e > 0n; e >>= 1n) {
+        if (e & 1n) r = (r * m) % n;
+        m = (m * m) % n;
+      }
+      return new Uint8Array(Buffer.from(r.toString(16).padStart(k * 2, '0'), 'hex'));
+    };
+    const cert = (sig: Uint8Array) => identityFromCertificateDer(der(0x30, tbs, alg, der(0x03, new Uint8Array([0]), sig))).certificate;
+    const noNull = der(0x30, der(0x30, oid('2.16.840.1.101.3.4.2.1')), der(0x04, h));
+    expect(await certIssuedBy(cert(sign(noNull)), cert(sign(noNull)))).toBe(true);
+    // Anything else in the block (here a trailing byte inside the DigestInfo) is still refused.
+    const loose = der(0x30, der(0x30, oid('2.16.840.1.101.3.4.2.1')), der(0x04, h), der(0x05, new Uint8Array(0)));
+    expect(await certIssuedBy(cert(sign(loose)), cert(sign(loose)))).toBe(false);
+  });
+
   it('certIssuedBy checks RSA and ECDSA issuers with the strict verifier', async () => {
     expect(await certIssuedBy(leaf.cert, inter.cert)).toBe(true);
     expect(await certIssuedBy(leaf.cert, root.cert)).toBe(false);

@@ -258,6 +258,12 @@ function bytesToHex(bytes: Uint8Array): string {
   return s;
 }
 
+function hexToBytes(hex: string): Uint8Array {
+  const out = new Uint8Array(hex.length >> 1);
+  for (let i = 0; i < out.length; i++) out[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
+  return out;
+}
+
 function bytesEqual(a: Uint8Array, b: Uint8Array): boolean {
   if (a.length !== b.length) return false;
   for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
@@ -1001,7 +1007,8 @@ async function verifyWithCert(
       // Some signers drop leading zero bytes of the signature value.
       const k = Math.ceil(keyBits(keyCert) / 8);
       const s = k > sig.length ? concatBytes([new Uint8Array(k - sig.length), sig]) : sig;
-      return await subtle.verify({ name: 'RSASSA-PKCS1-v1_5' }, key, buf(s), buf(data));
+      if (await subtle.verify({ name: 'RSASSA-PKCS1-v1_5' }, key, buf(s), buf(data))) return true;
+      return rsaVerifyAbsentNull(keyCert, hashOid!, data, s);
     }
     if (m.keyAlgorithm === 'ecdsa' && m.curve) {
       const key = await subtle.importKey('spki', buf(m.spki), { name: 'ECDSA', namedCurve: m.curve.name }, false, ['verify']);
@@ -1012,6 +1019,41 @@ async function verifyWithCert(
     return false;
   }
   return null;
+}
+
+/**
+ * RFC 8017 also allows the DigestInfo without the NULL parameters, which
+ * Web Crypto rejects. The whole encoded block is rebuilt in that form and
+ * compared byte for byte (no parsing, so no room for forged padding).
+ */
+function rsaVerifyAbsentNull(keyCert: forge.pki.Certificate, hashOid: string, data: Uint8Array, sig: Uint8Array): boolean {
+  const pub = keyCert.publicKey as forge.pki.rsa.PublicKey | null;
+  if (!pub?.n || !pub.e) return false;
+  const n = BigInt('0x' + pub.n.toString(16));
+  const e = BigInt('0x' + pub.e.toString(16));
+  const k = Math.ceil(keyBits(keyCert) / 8);
+  let x = BigInt('0x' + (bytesToHex(sig) || '0'));
+  if (x >= n) return false;
+  // s^e mod n
+  let m = 1n;
+  let b = x % n;
+  for (let ex = e; ex > 0n; ex >>= 1n) {
+    if (ex & 1n) m = (m * b) % n;
+    b = (b * b) % n;
+  }
+  x = m;
+  const em = hexToBytes(x.toString(16).padStart(k * 2, '0'));
+  const oid = binaryToBytes(forge.asn1.oidToDer(hashOid).getBytes());
+  const h = digest(hashOid, data);
+  const algId = [0x30, oid.length + 2, 0x06, oid.length, ...oid];
+  const info = new Uint8Array([0x30, algId.length + h.length + 2, ...algId, 0x04, h.length, ...h]);
+  const ps = k - info.length - 3;
+  if (ps < 8) return false;
+  const expected = new Uint8Array(k);
+  expected[1] = 0x01;
+  expected.fill(0xff, 2, 2 + ps);
+  expected.set(info, 3 + ps);
+  return bytesEqual(em, expected);
 }
 
 /** Does `issuer` sign `child`? */
