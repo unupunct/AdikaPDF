@@ -14,7 +14,7 @@ import { errorText, log } from '@/lib/log';
 import { verifyPdfSignatures } from '@/lib/crypto/digitalSignature';
 import { isPdfEncrypted } from '@/lib/crypto/encrypt';
 import type { PageRef } from '@/types';
-import type { Rect } from '@/lib/geometry';
+import { totalRotation, type Rect } from '@/lib/geometry';
 import { formattedDisplay } from '@/store/formView';
 
 export const PDF_FILTER: FileFilter[] = [{ name: 'PDF documents', extensions: ['pdf'] }];
@@ -233,10 +233,13 @@ export async function rasterizeWithRedactions(page: PageRef, rects: Array<Rect &
   const canvas = await rasterizePage(page, dpi);
   const ctx = canvas.getContext('2d');
   if (!ctx) throw new Error('Canvas unavailable');
-  const k = dpi / 72;
+  // The scale from the bitmap itself: pdf.js also applies /UserUnit, so dpi / 72 alone would miss the boxes.
+  const turned = totalRotation(page) % 180 !== 0;
+  const kx = canvas.width / (turned ? page.height : page.width);
+  const ky = canvas.height / (turned ? page.width : page.height);
   for (const r of rects) {
     ctx.fillStyle = r.fill;
-    ctx.fillRect(Math.floor(r.x * k), Math.floor(r.y * k), Math.ceil(r.width * k) + 1, Math.ceil(r.height * k) + 1);
+    ctx.fillRect(Math.floor(r.x * kx), Math.floor(r.y * ky), Math.ceil(r.width * kx) + 1, Math.ceil(r.height * ky) + 1);
   }
   const bytes = await canvasToBytes(canvas, 'image/jpeg', 0.9);
   canvas.width = canvas.height = 0;
