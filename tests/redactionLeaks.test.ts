@@ -121,7 +121,7 @@ describe('nothing keeps a redacted, rasterised or deleted page alive', () => {
     const packets = readXfaPackets(doc);
     expect(packets).not.toBeNull();
     {
-      const data = xfaDataXml(packets)!;
+      const data = xfaDataXml(packets!)!;
       expect(data).not.toContain('Ana Pop');
       expect(data).toContain('<Country>Germany</Country>');
     }

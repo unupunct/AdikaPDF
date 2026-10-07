@@ -261,6 +261,8 @@ export interface FontInfo {
   /** Measurable: widths known and horizontal writing. */
   ok: boolean;
   baseName: string;
+  /** Type3: the glyph's box in text space per unit font size [x0, y0, x1, y1] (others use a fixed em band). */
+  glyphBox?: (code: number) => [number, number, number, number] | null;
 }
 
 let stdMaps: { codeToName: Map<number, string>; codeToUni: Map<number, string>; nameToUni: Map<string, string> } | null = null;
@@ -420,10 +422,13 @@ function loadFont(doc: PDFDocument, fontObj: unknown): FontInfo {
   // Simple fonts: Type1, MMType1, TrueType, Type3.
   const isType3 = subtype === PDFName.of('Type3');
   let scale = 0.001;
+  let glyphBox: FontInfo['glyphBox'];
   if (isType3) {
-    const fm = d.lookup(PDFName.of('FontMatrix'));
-    if (!(fm instanceof PDFArray)) return { ...bad, baseName };
-    scale = num(fm.lookup(0));
+    const fmArr = d.lookup(PDFName.of('FontMatrix'));
+    if (!(fmArr instanceof PDFArray) || fmArr.size() < 6) return { ...bad, baseName };
+    const fm = Array.from({ length: 6 }, (_, k) => num(fmArr.lookup(k))) as M;
+    scale = fm[0];
+    glyphBox = type3GlyphBoxes(doc, d, fm);
   }
   const first = num(d.lookup(PDFName.of('FirstChar')));
   const widthsArr = d.lookup(PDFName.of('Widths'));
@@ -456,7 +461,7 @@ function loadFont(doc: PDFDocument, fontObj: unknown): FontInfo {
   if (widthsArr instanceof PDFArray) {
     const ws: number[] = [];
     for (let k = 0; k < widthsArr.size(); k++) ws.push(num(widthsArr.lookup(k), missing));
-    return { twoByte: false, width: (c) => (ws[c - first] ?? missing) * scale, unicode, ok: true, baseName };
+    return { twoByte: false, width: (c) => (ws[c - first] ?? missing) * scale, unicode, ok: true, baseName, glyphBox };
   }
   const std = STD_ALIASES[baseName.toLowerCase().replace(/\s+/g, '')];
   if (std && !isType3) {
@@ -474,6 +479,54 @@ function loadFont(doc: PDFDocument, fontObj: unknown): FontInfo {
     };
   }
   return { ...bad, unicode, baseName };
+}
+
+/**
+ * Glyph boxes of a Type3 font in text space: the FontBBox through the full
+ * FontMatrix, or each glyph's own d1 box when the FontBBox is all zeros.
+ */
+function type3GlyphBoxes(doc: PDFDocument, d: PDFDict, fm: M): FontInfo['glyphBox'] {
+  const box = (x0: number, y0: number, x1: number, y1: number): [number, number, number, number] => {
+    const b = boxOf(fm, x0, y0, x1, y1);
+    return [b.x0, b.y0, b.x1, b.y1];
+  };
+  const bb = d.lookup(PDFName.of('FontBBox'));
+  const fb = bb instanceof PDFArray && bb.size() === 4 ? Array.from({ length: 4 }, (_, k) => num(bb.lookup(k))) : null;
+  if (fb && fb[2] - fb[0] > 0 && fb[3] - fb[1] > 0) {
+    const whole = box(fb[0], fb[1], fb[2], fb[3]);
+    return () => whole;
+  }
+  // Code -> glyph name (Differences) -> CharProcs stream -> "wx wy llx lly urx ury d1".
+  const names = new Map<number, string>();
+  const enc = d.lookup(PDFName.of('Encoding'));
+  const diffs = enc instanceof PDFDict ? enc.lookup(PDFName.of('Differences')) : undefined;
+  if (diffs instanceof PDFArray) {
+    let c = 0;
+    for (let k = 0; k < diffs.size(); k++) {
+      const v = diffs.lookup(k);
+      if (v instanceof PDFNumber) c = v.asNumber();
+      else if (v instanceof PDFName) names.set(c++, v.decodeText());
+    }
+  }
+  const procs = d.lookup(PDFName.of('CharProcs'));
+  const cache = new Map<number, [number, number, number, number] | null>();
+  return (code) => {
+    if (cache.has(code)) return cache.get(code)!;
+    let out: [number, number, number, number] | null = null;
+    const name = names.get(code);
+    const bytes = name && procs instanceof PDFDict ? streamBytes(doc, procs.get(PDFName.of(name))) : null;
+    if (bytes) {
+      try {
+        const d1 = parseContent(bytes).find((i) => i.op === 'd1' || i.op === 'd0');
+        const v = d1?.args.map((a) => (a.k === 'n' ? a.v : 0)) ?? [];
+        if (d1?.op === 'd1' && v.length === 6 && v[4] > v[2] && v[5] > v[3]) out = box(v[2], v[3], v[4], v[5]);
+      } catch {
+        /* unreadable glyph procedure: fixed band */
+      }
+    }
+    cache.set(code, out);
+    return out;
+  };
 }
 
 // ------------------------------------------------------------------ interpreter
@@ -669,7 +722,8 @@ function interpret(doc: PDFDocument, page: PDFPage): Interpretation {
         const w0 = f.width(code);
         const isSpace = !f.twoByte && code === 32;
         const trm = mul(mul([gs.fs * gs.Th, 0, 0, gs.fs, 0, gs.Ts], Tm), gs.ctm);
-        const [cx, cy] = apply(trm, w0 / 2, 0.3);
+        const gb = f.glyphBox?.(code) ?? null;
+        const [cx, cy] = gb ? apply(trm, (gb[0] + gb[2]) / 2, (gb[1] + gb[3]) / 2) : apply(trm, w0 / 2, 0.3);
         const o = apply(trm, 0, 0);
         const e = apply(trm, 1, 0);
         const len = Math.hypot(e[0] - o[0], e[1] - o[1]) || 1;
@@ -677,7 +731,8 @@ function interpret(doc: PDFDocument, page: PDFPage): Interpretation {
         const advance = (w0 * gs.fs + gs.Tc + (isSpace ? gs.Tw : 0)) * gs.Th;
         glyphs.push({
           text: f.unicode(code),
-          box: boxOf(trm, 0, -0.2, Math.max(w0, 0.001), 0.8),
+          box: gb ? boxOf(trm, gb[0], gb[1], gb[2], gb[3]) : boxOf(trm, 0, -0.2, Math.max(w0, 0.001), 0.8),
+
           cx,
           cy,
           origin: o,
