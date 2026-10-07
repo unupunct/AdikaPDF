@@ -95,7 +95,14 @@ function PasswordPrompt() {
       testId="password-prompt"
       footer={
         <>
-          <Button onClick={() => prompt.resolve(null)}>Cancel</Button>
+          <Button
+            onClick={() => {
+              setValue('');
+              prompt.resolve(null);
+            }}
+          >
+            Cancel
+          </Button>
           <Button variant="primary" onClick={submit} data-testid="password-submit">
             Open
           </Button>

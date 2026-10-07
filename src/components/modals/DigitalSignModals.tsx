@@ -669,7 +669,7 @@ function SignatureCard({ sig }: { sig: SignatureValidation }) {
         <div>
           <div className="text-[13px] font-semibold">
             {sig.documentTimestamp ? <span className="mr-1 font-normal text-muted">Document timestamp ·</span> : null}
-            {sig.signerName || sig.fieldName}
+            <span data-no-translate>{sig.signerName || sig.fieldName}</span>
             {sig.padesLevel ? (
               <span className="ml-2 rounded bg-brand-50 px-1 text-[10px] font-medium text-brand-700 dark:bg-brand-900/40 dark:text-brand-200" data-testid="pades-badge">
                 PAdES {sig.padesLevel}
@@ -726,9 +726,15 @@ function SignatureCard({ sig }: { sig: SignatureValidation }) {
           {sig.revocationDetails ? <span className="block text-[11px] text-muted">{sig.revocationDetails}</span> : null}
         </Row>
         {sig.algorithm ? <Row label="Algorithm">{sig.algorithm}</Row> : null}
-        {sig.reason ? <Row label="Reason">{sig.reason}</Row> : null}
+        {sig.reason ? (
+          <Row label="Reason">
+            <span data-no-translate>{sig.reason}</span>
+          </Row>
+        ) : null}
         <Row label="Certificate">
-          <span className="break-all">{sig.certSubject}</span>
+          <span className="break-all" data-no-translate>
+            {sig.certSubject}
+          </span>
           <span className="block text-[11px] text-muted">
             {sig.certValidFrom ? new Date(sig.certValidFrom).toLocaleDateString() : ''} – {sig.certValidTo ? new Date(sig.certValidTo).toLocaleDateString() : ''}
           </span>

@@ -6,6 +6,7 @@
 import { usePDFStore } from '@/store/usePDFStore';
 import { saveBytes, type FileFilter } from '@/lib/platform';
 import { errorText, log } from '@/lib/log';
+import { translate } from '@/lib/i18n';
 
 /** A readable reason for a failed write (Windows error codes in the Rust message). */
 export function saveErrorReason(e: unknown): string {
@@ -47,7 +48,7 @@ export async function saveFile(bytes: Uint8Array | Blob, suggestedName: string, 
   } catch (e) {
     log('error', `Saving ${suggestedName} failed: ${errorText(e)}`);
     const retry = opts.retry ?? (() => saveFile(bytes, suggestedName, filters, { successMessage: opts.successMessage }));
-    usePDFStore.getState().toast(`Could not save ${suggestedName}: ${saveErrorReason(e)}`, 'error', { label: 'Save as…', run: () => void retry() });
+    usePDFStore.getState().toast(`Could not save ${suggestedName}: ${translate(saveErrorReason(e))}`, 'error', { label: 'Save as…', run: () => void retry() });
     return null;
   }
   if (path && opts.successMessage !== false) usePDFStore.getState().toast(opts.successMessage ?? (path === 'downloaded' ? 'Downloaded.' : `Saved to ${path}`), 'success');
