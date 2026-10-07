@@ -27,10 +27,35 @@ export function installSandboxEnv(): void {
 
 export const sandboxWasmUrl = pathToFileURL(join(process.cwd(), 'node_modules', 'pdfjs-dist', 'wasm') + '/').href;
 
-export async function loadTestSandbox() {
+export async function loadQuickSandbox() {
   installSandboxEnv();
   // @ts-expect-error pdf.js ships no types for its sandbox bundle
   const mod: unknown = await import('pdfjs-dist/legacy/build/pdf.sandbox.mjs');
   const { QuickJSSandbox } = mod as { QuickJSSandbox: (url: string) => Promise<{ create(d: unknown): void; dispatchEvent(e: unknown): void; nukeSandbox(): void }> };
   return QuickJSSandbox(sandboxWasmUrl);
+}
+
+/** The sandbox in this thread (no watchdog can interrupt it). */
+export async function loadTestSandbox() {
+  // Imported here: sandboxWorker.mjs loads this file in plain Node, without the @ alias.
+  const { inThreadRunner } = await import('@/lib/pdf/formSandbox');
+  return inThreadRunner(await loadQuickSandbox(), (globalThis as unknown as { window: Parameters<typeof inThreadRunner>[1] }).window);
+}
+
+/** The sandbox in a Node worker thread, like the app's Web Worker: it can be terminated mid-script. */
+export async function loadWorkerSandbox() {
+  const { workerRunner } = await import('@/lib/pdf/formSandbox');
+  const { Worker } = await import('node:worker_threads');
+  const w = new Worker(new URL('./sandboxWorker.mjs', import.meta.url));
+  const like = {
+    postMessage: (m: unknown) => w.postMessage(m),
+    onmessage: null as ((e: { data: unknown }) => void) | null,
+    onerror: null as ((e: unknown) => void) | null,
+    terminate: () => void w.terminate(),
+    terminated: false,
+  };
+  w.on('message', (data) => like.onmessage?.({ data }));
+  w.on('error', (e) => like.onerror?.(e));
+  w.on('exit', () => (like.terminated = true));
+  return { runner: await workerRunner(like, sandboxWasmUrl), worker: like };
 }

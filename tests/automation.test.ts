@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { absolutePath, parseCli, wildcard } from '@/lib/cli';
+import { absolutePath, combineSteps, parseCli, wildcard } from '@/lib/cli';
 import { emptyIndex, fold, indexPlan, parseQuery, searchIndex, type SearchIndex } from '@/lib/searchIndex';
 
 describe('command line', () => {
@@ -25,6 +25,36 @@ describe('command line', () => {
     expect(parseCli(['--batch', '--compress', 'huge', 'a.pdf']).errors[0]).toMatch(/Unknown compression level/);
     expect(parseCli(['--batch', '--protect']).errors[0]).toMatch(/needs a password/);
     expect(parseCli(['--batch', '--help']).help).toBe(true);
+  });
+
+  it('never takes a file for an optional value', () => {
+    const j = parseCli(['--batch', '--ocr', 'scan.pdf', '--compress', 'b.pdf', '--page-numbers', 'C:\\docs\\c.pdf']);
+    expect(j.errors).toEqual([]);
+    expect(j.steps).toEqual([
+      { kind: 'ocr', lang: 'ron+eng' },
+      { kind: 'compress', level: 'balanced' },
+      { kind: 'pageNumbers', format: '{page} / {pages}' },
+    ]);
+    expect(j.files).toEqual(['scan.pdf', 'b.pdf', 'C:\\docs\\c.pdf']);
+    const k = parseCli(['--batch', '--ocr=deu+chi_sim', '--compress=Strong', '--page-numbers=Page {page}', '--watermark=DRAFT', '--out=D:\\out', 'a.pdf']);
+    expect(k.errors).toEqual([]);
+    expect(k.steps).toEqual([
+      { kind: 'ocr', lang: 'deu+chi_sim' },
+      { kind: 'compress', level: 'strong' },
+      { kind: 'pageNumbers', format: 'Page {page}' },
+      { kind: 'watermark', text: 'DRAFT' },
+    ]);
+    expect(k.out).toBe('D:\\out');
+    expect(parseCli(['--batch', '--page-numbers', '{page}', 'a.pdf']).steps).toEqual([{ kind: 'pageNumbers', format: '{page}' }]);
+    expect(parseCli(['--batch', '--compress=huge', 'a.pdf']).errors[0]).toMatch(/Unknown compression level/);
+  });
+
+  it('refuses a saved sequence that cannot take more steps after it', () => {
+    const seq = [{ kind: 'flatten' as const }, { kind: 'protect' as const, userPassword: 'secret' }];
+    expect(combineSteps(seq, [{ kind: 'compress', level: 'strong' }]).error).toMatch(/must be the last step/);
+    // Saved sequences keep no password: that step is dropped.
+    expect(combineSteps([{ kind: 'flatten' }, { kind: 'protect', userPassword: '' }], [{ kind: 'grayscale' }])).toEqual({ steps: [{ kind: 'flatten' }, { kind: 'grayscale' }], error: null });
+    expect(combineSteps([{ kind: 'pdfa' }], [{ kind: 'protect', userPassword: 'x' }]).error).toMatch(/forbids encryption/);
   });
 
   it('matches wildcards and resolves relative paths', () => {

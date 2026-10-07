@@ -432,7 +432,7 @@ export async function exportAs(req: ExportRequest): Promise<void> {
 
 // ================================================================ OCR / compress / PDF-A / flatten
 
-export async function runOcr(opts: { pageNumbers: number[]; dpi: number; lang: string; editable?: { family: 'sans' | 'serif' } }): Promise<void> {
+export async function runOcr(opts: { pageNumbers: number[]; dpi: number; lang: string; straighten?: boolean; editable?: { family: 'sans' | 'serif' } }): Promise<void> {
   const editable = opts.editable;
   const out = await withBusy('Recognising text (OCR)…', (progress, signal) =>
     withEditedDoc(async (pdf, bytes) => {
@@ -493,7 +493,8 @@ export async function runPdfA(meta: PdfAMeta): Promise<string[] | undefined> {
   const out = await withBusy(`Converting to PDF/A-${level}…`, async (progress, signal) => {
     const bytes = await exportCurrentPdf({}, progress);
     signal.throwIfAborted();
-    const r = await convertToPdfADetailed(bytes, meta);
+    const fieldFont = await loadFontBytes({ family: 'sans', bold: false, italic: false }).catch(() => undefined);
+    const r = await convertToPdfADetailed(bytes, { fieldFont, ...meta });
     signal.throwIfAborted();
     return { pdfa: r.bytes, warnings: [...r.notes, ...(await pdfaWarnings(r.bytes, level))] };
   });

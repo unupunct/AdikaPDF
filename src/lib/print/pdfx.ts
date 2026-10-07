@@ -6,7 +6,7 @@
  * transparency and PDF 1.4: pages that still have transparency (or missing
  * fonts) are rasterised to CMYK by the caller's renderer.
  */
-import { PDFArray, PDFDict, PDFDocument, PDFName, PDFNumber, PDFRawStream, PDFRef, PDFStream, PDFString, decodePDFRawStream, type PDFPage } from 'pdf-lib';
+import { PDFArray, PDFDict, PDFDocument, PDFHexString, PDFName, PDFNumber, PDFRawStream, PDFRef, PDFStream, PDFString, decodePDFRawStream, type PDFPage } from 'pdf-lib';
 import { genericCmykProfile, rgbToCmyk } from './color';
 import { convertDocumentColors, type ConvertHooks } from './convertColors';
 
@@ -246,16 +246,18 @@ export interface PdfXOptions {
   hooks?: ConvertHooks;
 }
 
-function setXmp(doc: PDFDocument, level: PdfXLevel, title: string): void {
+const xmpDate = (d: Date) => d.toISOString().replace(/\.\d{3}Z$/, 'Z');
+
+function setXmp(doc: PDFDocument, level: PdfXLevel, title: string, created: Date, modified: Date): void {
   const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-  const now = new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
+  const now = xmpDate(modified);
   const xmp = [
     '<?xpacket begin="﻿" id="W5M0MpCehiHzreSzNTczkc9d"?>',
     '<x:xmpmeta xmlns:x="adobe:ns:meta/"><rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">',
     '<rdf:Description rdf:about="" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:xmp="http://ns.adobe.com/xap/1.0/" xmlns:pdf="http://ns.adobe.com/pdf/1.3/" xmlns:pdfxid="http://www.npes.org/pdfx/ns/id/" xmlns:pdfx="http://ns.adobe.com/pdfx/1.3/" xmlns:xmpMM="http://ns.adobe.com/xap/1.0/mm/">',
     `<dc:title><rdf:Alt><rdf:li xml:lang="x-default">${esc(title)}</rdf:li></rdf:Alt></dc:title>`,
     '<dc:format>application/pdf</dc:format>',
-    `<xmp:CreateDate>${now}</xmp:CreateDate><xmp:ModifyDate>${now}</xmp:ModifyDate><xmp:MetadataDate>${now}</xmp:MetadataDate>`,
+    `<xmp:CreateDate>${xmpDate(created)}</xmp:CreateDate><xmp:ModifyDate>${now}</xmp:ModifyDate><xmp:MetadataDate>${now}</xmp:MetadataDate>`,
     '<xmp:CreatorTool>Adika PDF Editor</xmp:CreatorTool><pdf:Producer>Adika PDF Editor</pdf:Producer><pdf:Trapped>False</pdf:Trapped>',
     level === 'x4' ? '<pdfxid:GTS_PDFXVersion>PDF/X-4</pdfxid:GTS_PDFXVersion>' : '<pdfx:GTS_PDFXVersion>PDF/X-1a:2003</pdfx:GTS_PDFXVersion><pdfx:GTS_PDFXConformance>PDF/X-1a:2003</pdfx:GTS_PDFXConformance>',
     `<xmpMM:DocumentID>uuid:${crypto.randomUUID()}</xmpMM:DocumentID><xmpMM:InstanceID>uuid:${crypto.randomUUID()}</xmpMM:InstanceID><xmpMM:VersionID>1</xmpMM:VersionID><xmpMM:RenditionClass>default</xmpMM:RenditionClass>`,
@@ -327,8 +329,25 @@ export async function convertToPdfX(bytes: Uint8Array, opts: PdfXOptions): Promi
   doc.setTitle(opts.title);
   doc.setProducer('Adika PDF Editor');
   doc.setCreator('Adika PDF Editor');
-  doc.setModificationDate(new Date());
-  setXmp(doc, opts.level, opts.title);
+  // One timestamp for Info and XMP (whole seconds: PDF dates have no milliseconds); the creation date stays.
+  const now = new Date(Math.floor(Date.now() / 1000) * 1000);
+  let created: Date | undefined;
+  try {
+    created = doc.getCreationDate();
+  } catch {
+    created = undefined;
+  }
+  created = created && !Number.isNaN(created.getTime()) ? new Date(Math.floor(created.getTime() / 1000) * 1000) : now;
+  doc.setCreationDate(created);
+  doc.setModificationDate(now);
+  setXmp(doc, opts.level, opts.title, created, now);
+  // File identifier (required by PDF/X): the permanent part kept, a new one for this version.
+  const id = new Uint8Array(16);
+  crypto.getRandomValues(id);
+  const hex = [...id].map((b) => b.toString(16).padStart(2, '0')).join('');
+  const oldId = ctx.trailerInfo.ID;
+  const first = oldId instanceof PDFArray && oldId.size() === 2 && oldId.get(0) instanceof PDFHexString ? (oldId.get(0) as PDFHexString) : PDFHexString.of(hex);
+  ctx.trailerInfo.ID = ctx.obj([first, PDFHexString.of(hex)]);
   // PDF 1.4 (X-1a) has no object streams. pdf-lib always writes a 1.7 header: set the version.
   const out = await doc.save({ useObjectStreams: opts.level === 'x4' });
   out.set(new TextEncoder().encode(opts.level === 'x1a' ? '1.4' : '1.6'), 5);

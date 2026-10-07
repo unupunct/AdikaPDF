@@ -3,8 +3,8 @@
  * arrive in a folder are processed with a saved action sequence while
  * Adika runs; results go to an output folder, originals to "Processed").
  */
-import { runBatchOp, runSequence, sequenceSuffix, BATCH_OPS, BatchSkip, outputPath, type ActionSequence, type BatchOp } from '@/lib/batch';
-import { CLI_HELP, absolutePath, hasWildcard, parseCli, wildcard } from '@/lib/cli';
+import { runBatchOp, runSequence, sequenceProblem, sequenceSuffix, BATCH_OPS, BatchSkip, outputPath, type ActionSequence, type BatchOp } from '@/lib/batch';
+import { CLI_HELP, absolutePath, combineSteps, hasWildcard, parseCli, wildcard } from '@/lib/cli';
 import { loadFontBytes } from '@/lib/fonts';
 import { cliArgs, cliCwd, cliExit, cliPrint, fileStamp, isDesktop, listDir, makeDir, moveFile, readFile, writeFile } from '@/lib/platform';
 import { loadSequences, ocrBytes } from './batch';
@@ -48,8 +48,21 @@ export async function runCommandLine(): Promise<boolean> {
       await cliExit(2);
       return true;
     }
-    steps = [...seq.steps.filter((s) => s.kind !== 'protect' || s.userPassword), ...steps];
+    const combined = combineSteps(seq.steps, steps);
+    if (combined.error) {
+      await print(`error: ${combined.error}`, true);
+      await cliExit(2);
+      return true;
+    }
+    steps = combined.steps;
     suffix = sequenceSuffix(seq.name);
+  } else {
+    const problem = steps.length > 1 ? sequenceProblem(steps) : null;
+    if (problem) {
+      await print(`error: ${problem}`, true);
+      await cliExit(2);
+      return true;
+    }
   }
   const cwd = await cliCwd();
   const files: string[] = [];

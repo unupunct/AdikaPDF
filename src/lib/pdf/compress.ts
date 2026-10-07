@@ -19,6 +19,7 @@ import {
   decodePDFRawStream,
   type PDFObject,
 } from 'pdf-lib';
+import { decodeStreamWithPredictors } from './predictor';
 import { dropUnreachableObjects } from './prune';
 
 export interface CompressOptions {
@@ -474,11 +475,12 @@ async function recompressImage(
   if (filters.length === 1 && filters[0] === 'DCTDecode') {
     const bpc = num(d, 'BitsPerComponent');
     if (!Number.isNaN(bpc) && bpc !== 8) return false;
-    bitmap = await createImageBitmap(new Blob([stream.contents as BlobPart], { type: 'image/jpeg' }));
+    // PDF viewers ignore EXIF orientation, so the browser must too.
+    bitmap = await createImageBitmap(new Blob([stream.contents as BlobPart], { type: 'image/jpeg' }), { imageOrientation: 'none' });
   } else if (filters.length === 1 && filters[0] === 'FlateDecode') {
     if (num(d, 'BitsPerComponent') !== 8) return false;
     if (w * h < 250_000 && orig < 100_000) return false; // only large images
-    const raw = decodePDFRawStream(stream).decode();
+    const raw = decodeStreamWithPredictors(stream);
     if (raw.length < w * h * cs.n) return false;
     bitmap = await createImageBitmap(rawToImageData(raw, w, h, cs.n));
   } else {

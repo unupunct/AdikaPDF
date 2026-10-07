@@ -37,6 +37,9 @@ export interface InvoiceLine {
   vatCategory: string;
   vatPercent: number | null;
   net: number;
+  /** Line allowances and charges (BG-27, BG-28). */
+  allowances: number;
+  charges: number;
 }
 
 export interface VatBreakdown {
@@ -150,6 +153,7 @@ function parseUbl(root: XEl, credit: boolean): EInvoice {
       vatCategory: t(kid(cat, 'ID')),
       vatPercent: pct ? num(pct) : null,
       net: num(t(kid(l, 'LineExtensionAmount'))),
+      ...lineAllowances(kids(l, 'AllowanceCharge'), (a) => t(kid(a, 'ChargeIndicator')) === 'true', (a) => num(t(kid(a, 'Amount')))),
     };
   });
   const taxTotals = kids(root, 'TaxTotal');
@@ -227,6 +231,19 @@ function ciiParty(p: XEl | undefined): Party {
   return party;
 }
 
+/** Credit note type codes (UNTDID 1001): credit note, self-billed, factored, ... */
+const CII_CREDIT_TYPES = new Set(['381', '261', '262', '296', '308', '396', '420', '458', '532']);
+
+function lineAllowances(list: XEl[], isCharge: (a: XEl) => boolean, amount: (a: XEl) => number): { allowances: number; charges: number } {
+  let allowances = 0;
+  let charges = 0;
+  for (const a of list) {
+    if (isCharge(a)) charges += amount(a);
+    else allowances += amount(a);
+  }
+  return { allowances, charges };
+}
+
 function parseCii(root: XEl): EInvoice {
   const doc = kid(root, 'ExchangedDocument');
   const tx = kid(root, 'SupplyChainTradeTransaction');
@@ -252,6 +269,7 @@ function parseCii(root: XEl): EInvoice {
       vatCategory: t(kid(tax, 'CategoryCode')),
       vatPercent: pct ? num(pct) : null,
       net: num(t(path(ls, 'SpecifiedTradeSettlementLineMonetarySummation', 'LineTotalAmount'))),
+      ...lineAllowances(kids(ls, 'SpecifiedTradeAllowanceCharge'), (a) => t(path(a, 'ChargeIndicator', 'Indicator')) === 'true', (a) => num(t(kid(a, 'ActualAmount')))),
     };
   });
   const taxTotal = kids(sum, 'TaxTotalAmount');
@@ -259,7 +277,7 @@ function parseCii(root: XEl): EInvoice {
   const tax = taxTotal.find((x) => attr(x, 'currencyID') === currency) ?? taxTotal[0];
   return {
     syntax: 'CII',
-    kind: typeCode === '381' ? 'credit' : 'invoice',
+    kind: CII_CREDIT_TYPES.has(typeCode) ? 'credit' : 'invoice',
     customization: t(path(root, 'ExchangedDocumentContext', 'GuidelineSpecifiedDocumentContextParameter', 'ID')),
     number: t(kid(doc, 'ID')),
     issueDate: isoDate(t(path(doc, 'IssueDateTime', 'DateTimeString'))),
@@ -285,7 +303,7 @@ function parseCii(root: XEl): EInvoice {
     allowances: kids(set, 'SpecifiedTradeAllowanceCharge').map((a) => ({ charge: t(path(a, 'ChargeIndicator', 'Indicator')) === 'true', reason: t(kid(a, 'Reason')), amount: num(t(kid(a, 'ActualAmount'))) })),
     vat: kids(set, 'ApplicableTradeTax').map((x) => {
       const pct = t(kid(x, 'RateApplicablePercent'));
-      return { category: t(kid(x, 'CategoryCode')), percent: pct ? num(pct) : null, taxable: num(t(kid(x, 'BasisAmount'))), amount: num(t(kid(x, 'CalculatedAmount'))), exemption: t(kid(x, 'ExemptionReason')) };
+      return { category: t(kid(x, 'CategoryCode')), percent: pct ? num(pct) : null, taxable: num(t(kid(x, 'BasisAmount'))), amount: num(t(kid(x, 'CalculatedAmount'))), exemption: t(kid(x, 'ExemptionReason')) || t(kid(x, 'ExemptionReasonCode')) };
     }),
     totals: {
       lineNet: num(t(kid(sum, 'LineTotalAmount'))),
@@ -304,6 +322,9 @@ function parseCii(root: XEl): EInvoice {
 // ------------------------------------------------------------------ checks
 
 const near = (a: number, b: number) => Math.abs(a - b) < 0.011;
+const fmtNum = (n: number) => String(Number(n.toPrecision(12)));
+/** Exempt, reverse charge, intra-community, export, not subject to VAT. */
+const EXEMPT_CATEGORIES = new Set(['E', 'AE', 'K', 'G', 'O']);
 
 /** Problems a reader can see: missing essentials and sums that do not add up. */
 export function checkEInvoice(inv: EInvoice): string[] {
@@ -314,6 +335,11 @@ export function checkEInvoice(inv: EInvoice): string[] {
   if (!inv.buyer.name) out.push('The buyer has no name.');
   if (!inv.currency) out.push('The invoice has no currency.');
   if (!inv.lines.length) out.push('The invoice has no lines.');
+  // BT-131: line net = quantity x (price / base quantity) - line allowances + line charges.
+  for (const l of inv.lines) {
+    const expect = l.quantity * l.unitPrice - l.allowances + l.charges;
+    if (Math.abs(expect - l.net) > 0.011 + Math.abs(expect) * 0.000001) out.push(`Line ${l.id || inv.lines.indexOf(l) + 1}: ${fmtNum(l.quantity)} × ${fmtNum(l.unitPrice)} makes ${expect.toFixed(2)}, the line says ${l.net.toFixed(2)}.`);
+  }
   const lineSum = inv.lines.reduce((s, l) => s + l.net, 0);
   if (inv.lines.length && !near(lineSum, inv.totals.lineNet)) out.push(`The lines add up to ${lineSum.toFixed(2)}, the invoice says ${inv.totals.lineNet.toFixed(2)}.`);
   const exclusive = inv.totals.lineNet - inv.totals.allowances + inv.totals.charges;
@@ -321,6 +347,8 @@ export function checkEInvoice(inv: EInvoice): string[] {
   const vatSum = inv.vat.reduce((s, v) => s + v.amount, 0);
   if (inv.vat.length && !near(vatSum, inv.totals.tax)) out.push(`The VAT lines add up to ${vatSum.toFixed(2)}, the invoice says ${inv.totals.tax.toFixed(2)}.`);
   for (const v of inv.vat) {
+    // BR-E-10, BR-AE-10, BR-IC-10, BR-G-10, BR-O-10: exempt categories need a reason (text or code).
+    if (EXEMPT_CATEGORIES.has(v.category) && !v.exemption) out.push(`VAT category ${v.category} needs an exemption reason.`);
     if (v.percent === null) continue;
     const expect = Math.round(v.taxable * v.percent) / 100;
     if (Math.abs(expect - v.amount) > 0.011 + v.taxable * 0.00001) out.push(`VAT ${v.percent}% of ${v.taxable.toFixed(2)} is ${expect.toFixed(2)}, the invoice says ${v.amount.toFixed(2)}.`);

@@ -8,6 +8,7 @@
  */
 import { PDFArray, PDFDict, PDFDocument, PDFHexString, PDFName, PDFNumber, PDFRawStream, PDFRef, PDFStream, PDFString, decodePDFRawStream, type PDFObject } from 'pdf-lib';
 import { parseContent } from '@/lib/pdf/textRemoval';
+import { decodeStreamWithPredictors } from '@/lib/pdf/predictor';
 import { cmykToGray, rgbToCmyk, rgbToGray, type CMYK, type RGB } from './color';
 
 export type ColorTarget = 'gray' | 'cmyk';
@@ -365,12 +366,10 @@ class Converter {
         // Adobe CMYK JPEGs are usually stored inverted.
       } else if (filters.every((f) => f === 'FlateDecode' || f === 'Fl' || f === 'LZWDecode' || f === 'ASCIIHexDecode' || f === 'ASCII85Decode' || f === 'RunLengthDecode') && bpc === 8) {
         try {
-          px = decodePDFRawStream(img).decode();
+          px = decodeStreamWithPredictors(img);
         } catch {
           px = null;
         }
-        const predictor = d.lookup(PDFName.of('DecodeParms'));
-        if (predictor instanceof PDFDict && predictor.has(PDFName.of('Predictor')) && (predictor.lookup(PDFName.of('Predictor')) as PDFNumber).asNumber() > 1) px = null;
         if (!px || px.length < w * h * inN) {
           this.keep('some compressed images are kept in colour');
           continue;

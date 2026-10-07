@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { PDFDocument } from 'pdf-lib';
 import fontkit from '@pdf-lib/fontkit';
 import * as pdfjs from 'pdfjs-dist/legacy/build/pdf.mjs';
-import { OCR_LANGUAGES, makeSearchable, parseOcrLangs, type OcrPageResult } from '../src/lib/pdf/ocr';
+import { OCR_LANGUAGES, bestOrientation, blocksToWords, displayToPage, makeSearchable, orientationScore, pageToDisplay, parseOcrLangs, type OcrPageResult } from '../src/lib/pdf/ocr';
 
 const root = fileURLToPath(new URL('..', import.meta.url)).replace(/\\/g, '/');
 const FONT = `${root}node_modules/@expo-google-fonts/noto-sans/400Regular/NotoSans_400Regular.ttf`;
@@ -134,7 +134,7 @@ function svgToPolygons(d: string): Pt[][] {
 }
 
 /** Renders one line of text to an 8-bit grayscale PNG (black on white). */
-function renderTextPng(text: string, fontBytes: Uint8Array, px: number): Uint8Array {
+function renderTextPng(text: string, fontBytes: Uint8Array, px: number, turnsCw = 0): Uint8Array {
   const font = fontkit.create(fontBytes);
   const run = font.layout(text);
   const scale = px / font.unitsPerEm;
@@ -149,9 +149,9 @@ function renderTextPng(text: string, fontBytes: Uint8Array, px: number): Uint8Ar
     }
     penX += pos.xAdvance;
   });
-  const w = Math.ceil(penX * scale + 2 * pad);
-  const h = Math.ceil((font.ascent - font.descent) * scale + 2 * pad);
-  const img = new Uint8Array(w * h).fill(255);
+  let w = Math.ceil(penX * scale + 2 * pad);
+  let h = Math.ceil((font.ascent - font.descent) * scale + 2 * pad);
+  let img = new Uint8Array(w * h).fill(255);
   // Nonzero-winding scanline fill sampled at pixel centres.
   for (let y = 0; y < h; y++) {
     const sy = y + 0.5;
@@ -171,6 +171,13 @@ function renderTextPng(text: string, fontBytes: Uint8Array, px: number): Uint8Ar
       if (!wind) continue;
       for (let x = Math.max(0, Math.round(xs[j].x)); x < Math.min(w, Math.round(xs[j + 1].x)); x++) img[y * w + x] = 0;
     }
+  }
+  // Turned clockwise by quarter turns (a page scanned sideways).
+  for (let t = 0; t < ((turnsCw % 4) + 4) % 4; t++) {
+    const out = new Uint8Array(w * h);
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) out[x * h + (h - 1 - y)] = img[y * w + x];
+    img = out;
+    [w, h] = [h, w];
   }
   // PNG: grayscale, 8 bit, filter 0 per row.
   const raw = new Uint8Array((w + 1) * h);
@@ -218,5 +225,59 @@ describe.skipIf(!existsSync(`${LANG_DIR}/ron.traineddata.gz`))('tesseract.js in 
     } finally {
       await worker.terminate();
     }
+  });
+
+  it('finds the orientation of a page scanned sideways', async () => {
+    const { createWorker, OEM } = await import('tesseract.js');
+    const font = await loadFont();
+    const worker = await createWorker(parseOcrLangs('ron+eng'), OEM.LSTM_ONLY, { langPath: LANG_DIR, gzip: true, cacheMethod: 'none' });
+    try {
+      // The text runs bottom-to-top: the page must be shown turned 90° clockwise.
+      const read = async (rotation: number) => {
+        const png = renderTextPng('Contract de închiriere pentru locuința din strada Mare', font, 40, 3 + rotation / 90);
+        const { data } = await worker.recognize(Buffer.from(png), {}, { blocks: true, text: false });
+        return blocksToWords(data.blocks as never, 1);
+      };
+      const atZero = await read(0);
+      expect(await bestOrientation(0, orientationScore(atZero), read)).toBe(90);
+      // An upright page stays as it is, without trying the other turns.
+      let tries = 0;
+      const upright = async (rotation: number) => {
+        tries++;
+        return read((rotation + 90) % 360);
+      };
+      expect(await bestOrientation(0, orientationScore(await upright(0)), upright)).toBe(0);
+      expect(tries).toBe(1);
+    } finally {
+      await worker.terminate();
+    }
+  });
+});
+
+describe('OCR on rotated pages', () => {
+  it('maps boxes between the shown page and unrotated page space', () => {
+    const b = { x: 10, y: 20, width: 100, height: 12 };
+    for (const r of [0, 90, 180, 270]) expect(pageToDisplay(displayToPage(b, r, 400, 600), r, 400, 600)).toEqual(b);
+    // Shown turned 90° clockwise (600 wide): the top-left corner of the shown page is the bottom-left of the page.
+    expect(displayToPage({ x: 0, y: 0, width: 50, height: 10 }, 90, 400, 600)).toEqual({ x: 0, y: 550, width: 10, height: 50 });
+  });
+
+  it('writes the text along the page as read and straightens it', async () => {
+    const doc = await PDFDocument.create();
+    doc.addPage([400, 600]);
+    const bytes = await doc.save();
+    const word = displayToPage({ x: 100, y: 100, width: 120, height: 20 }, 90, 400, 600);
+    const out = await makeSearchable(bytes, [{ pageNumber: 1, widthPt: 400, heightPt: 600, rotation: 90, straighten: 90, words: [{ text: 'Sideways', ...word, confidence: 90 }] }], { loadFont });
+    const page = (await PDFDocument.load(out)).getPage(0);
+    expect(page.getRotation().angle).toBe(90);
+    const items = await textItems(out);
+    const it = items.find((i) => i.str.includes('Sideways'))!;
+    expect(it).toBeTruthy();
+    // Upwards on the unrotated page: left to right once the page is shown turned 90° clockwise.
+    expect(Math.abs(it.transform[0])).toBeLessThan(1e-6);
+    expect(it.transform[1]).toBeGreaterThan(0);
+    // Baseline start: 80% down the word as read, at its left end.
+    expect(it.transform[4]).toBeCloseTo(116, 1);
+    expect(it.transform[5]).toBeCloseTo(100, 1);
   });
 });
