@@ -475,6 +475,7 @@ export async function stampPicturePdf(doc: PDFDocument, id: string): Promise<{ b
   const h = Math.abs(r[3] - r[1]) || 1;
   const out = await PDFDocument.create();
   const page = out.addPage([w, h]);
+  if (!n) return null;
   const normal = PDFObjectCopier.for(doc.context, out.context).copy(n);
   const annot = out.context.register(out.context.obj({ Type: 'Annot', Subtype: 'Stamp', Rect: [0, 0, w, h], F: 4, AP: { N: normal } }));
   page.node.set(PDFName.of('Annots'), out.context.obj([annot]));
@@ -589,7 +590,10 @@ function writeInk(doc: PDFDocument, page: PDFPage, pm: Matrix, o: VectorObject):
       inkList.push([]);
       ops.push(moveTo(...end));
     } else if (cmd.c === 'L') ops.push(lineTo(...end));
-    else ops.push(appendBezierCurve(...P(cmd.p[0], cmd.p[1]), ...P(cmd.p[2], cmd.p[3]), ...end));
+    else {
+      const [c1x, c1y, c2x, c2y] = cmd.p as number[];
+      ops.push(appendBezierCurve(...P(c1x, c1y), ...P(c2x, c2y), ...end));
+    }
     if (!inkList.length) inkList.push([]);
     inkList[inkList.length - 1].push(...end);
     all.push(end);
