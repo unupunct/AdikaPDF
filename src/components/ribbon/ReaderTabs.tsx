@@ -74,6 +74,7 @@ import { useAutoScroll } from '@/components/viewer/AutoScroll';
 import { toggleSplit, useSplit } from '@/components/viewer/SplitView';
 import { getAuthor, setAuthor } from '@/lib/author';
 import { usePDFStore } from '@/store/usePDFStore';
+import { useStorePick } from '@/hooks/useStorePick';
 import { closeDocumentAction, openDialog, openPdfPath, saveDocument } from '@/actions/document';
 import { DropdownContent, DropdownItem, DropdownMenu, DropdownSeparator, DropdownTrigger, Tooltip } from '@/components/ui/primitives';
 import { clearRecent, getRecent, removeRecent, type RecentFile } from '@/lib/recent';
@@ -266,7 +267,9 @@ export function PageNavigator() {
 // ------------------------------------------------------------------ Home
 
 export function HomeTab() {
-  const s = usePDFStore();
+  const s = useStorePick('fitMode', 'goBack', 'goForward', 'navBack', 'navForward', 'openModal', 'pages', 'readOnlyReason', 'redo', 'setSearch', 'setZoom', 'undo', 'zoom');
+  const canUndo = usePDFStore((st) => st.past.length > 0);
+  const canRedo = usePDFStore((st) => st.future.length > 0);
   const hasDoc = s.pages.length > 0;
   const editable = hasDoc && !s.readOnlyReason;
   const zoomPct = Math.round(s.zoom * 100);
@@ -289,8 +292,8 @@ export function HomeTab() {
       </Group>
       <Group label="History">
         <Stack>
-          <Small icon={<Undo2 size={i} />} label="Undo" disabled={s.past.length === 0} onClick={s.undo} tip="Undo (Ctrl+Z)" testId="btn-undo" />
-          <Small icon={<Redo2 size={i} />} label="Redo" disabled={s.future.length === 0} onClick={s.redo} tip="Redo (Ctrl+Y)" testId="btn-redo" />
+          <Small icon={<Undo2 size={i} />} label="Undo" disabled={!canUndo} onClick={s.undo} tip="Undo (Ctrl+Z)" testId="btn-undo" />
+          <Small icon={<Redo2 size={i} />} label="Redo" disabled={!canRedo} onClick={s.redo} tip="Redo (Ctrl+Y)" testId="btn-redo" />
         </Stack>
       </Group>
       <Group label="Tools">
@@ -374,7 +377,7 @@ function AutoScrollButton({ disabled }: { disabled: boolean }) {
 }
 
 export function ViewTab() {
-  const s = usePDFStore();
+  const s = useStorePick('fullscreen', 'nightMode', 'openModal', 'pages', 'setView', 'sidebarTab', 'viewRotation', 'viewScroll', 'viewSpread');
   const hasDoc = s.pages.length > 0;
   const openPanel = (sidebarTab: typeof s.sidebarTab) => usePDFStore.setState({ sidebarOpen: true, sidebarTab });
   return (
@@ -420,7 +423,7 @@ export function ViewTab() {
 // ------------------------------------------------------------------ Comment
 
 export function CommentTab() {
-  const s = usePDFStore();
+  const s = useStorePick('openModal', 'pages', 'readOnlyReason');
   const hasDoc = s.pages.length > 0;
   const [author, setAuthorState] = useState(getAuthor);
   useEffect(() => {
@@ -428,7 +431,9 @@ export function CommentTab() {
     window.addEventListener('adika:author', update);
     return () => window.removeEventListener('adika:author', update);
   }, []);
-  const count = s.objects.filter((o) => o.type === 'note' || o.type === 'markup' || o.type === 'stamp' || o.type === 'poly' || o.type === 'attachment' || o.type === 'measure' || (o.type === 'text' && o.annotation)).length;
+  const count = usePDFStore(
+    (st) => st.objects.filter((o) => o.type === 'note' || o.type === 'markup' || o.type === 'stamp' || o.type === 'poly' || o.type === 'attachment' || o.type === 'measure' || (o.type === 'text' && o.annotation)).length,
+  );
   return (
     <>
       <Group label="Tools">

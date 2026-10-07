@@ -81,6 +81,7 @@ import {
 } from 'lucide-react';
 import { useXfa } from '@/actions/xfaForms';
 import { usePDFStore } from '@/store/usePDFStore';
+import { useStorePick, type StoreState } from '@/hooks/useStorePick';
 import type { RibbonTab, ToolId } from '@/types';
 import { Tooltip, DropdownMenu, DropdownTrigger, DropdownContent, DropdownItem } from '@/components/ui/primitives';
 import { cn } from '@/lib/cn';
@@ -244,9 +245,11 @@ function ToolBtn({ tool, icon, label, tip, big = true }: { tool: ToolId; icon: R
   return <B icon={icon} label={label} tip={tip} active={active} disabled={!hasDoc} onClick={() => setTool(active ? 'select' : tool)} testId={`tool-${tool}`} />;
 }
 
-function useDoc() {
-  const s = usePDFStore();
-  return { hasDoc: s.pages.length > 0, editable: s.pages.length > 0 && !s.readOnlyReason, s };
+/** Document state for a ribbon tab; `s` holds only the named store fields, so the tab re-renders only when they change. */
+function useDoc<K extends keyof StoreState>(...keys: K[]) {
+  const hasDoc = usePDFStore((st) => st.pages.length > 0);
+  const editable = usePDFStore((st) => st.pages.length > 0 && !st.readOnlyReason);
+  return { hasDoc, editable, s: useStorePick(...keys) };
 }
 
 const I = 22;
@@ -280,7 +283,7 @@ function StyleQuick() {
 }
 
 function EditTab() {
-  const { editable, s } = useDoc();
+  const { editable, s } = useDoc('deleteObjects', 'duplicateObjects', 'reorderObject', 'selectedIds', 'setPendingImage', 'toast', 'tool');
   const sel = s.selectedIds;
   const pickImage = async () => {
     const imgs = await pickImagesAsDataUrls();
@@ -339,7 +342,7 @@ function EditTab() {
 }
 
 function SignTab() {
-  const { hasDoc, editable, s } = useDoc();
+  const { hasDoc, editable, s } = useDoc('openModal');
   return (
     <>
       <Group label="Electronic signature">
@@ -393,7 +396,7 @@ function SavedSignaturesMenu() {
 }
 
 function OrganizeTab() {
-  const { editable, s } = useDoc();
+  const { editable, s } = useDoc('currentPageId', 'deletePages', 'duplicatePages', 'insertBlankPage', 'openModal', 'pages', 'rotatePages');
   const current = s.currentPageId;
   const idx = s.pages.findIndex((p) => p.id === current);
   return (
@@ -445,7 +448,7 @@ function OrganizeTab() {
 }
 
 function FormsTab() {
-  const { hasDoc, s } = useDoc();
+  const { hasDoc, s } = useDoc('openModal', 'pages');
   const xfa = useXfa((x) => s.pages.some((p) => p.sourceId && x.kinds[p.sourceId]));
   return (
     <>
@@ -478,7 +481,8 @@ function FormsTab() {
 }
 
 function SecurityTab() {
-  const { hasDoc, s } = useDoc();
+  const { hasDoc, s } = useDoc('openModal');
+  const hasRedactions = usePDFStore((st) => st.objects.some((o) => o.type === 'redact'));
   return (
     <>
       <Group label="Redaction">
@@ -487,7 +491,7 @@ function SecurityTab() {
         <Big
           icon={<ScanLine size={I} />}
           label="Apply & save"
-          disabled={!hasDoc || !s.objects.some((o) => o.type === 'redact')}
+          disabled={!hasDoc || !hasRedactions}
           onClick={() => void saveDocument(true)}
           tip="Save a copy with marked content destroyed (pixels and text)"
           testId="btn-apply-redactions"
@@ -509,7 +513,7 @@ function SecurityTab() {
 }
 
 function ConvertTab() {
-  const { hasDoc, s } = useDoc();
+  const { hasDoc, s } = useDoc('openModal');
   const openExport = (exportFormat: ExportFormat) => {
     useModalArgs.setState({ exportFormat });
     s.openModal('export');
