@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { CaseSensitive, ChevronDown, ChevronUp, List, Loader2, Replace, WholeWord, X } from 'lucide-react';
 import { usePDFStore } from '@/store/usePDFStore';
 import { searchDocument } from '@/lib/search';
+import { useTabs } from '@/store/tabs';
 import { Button, Input } from '@/components/ui/primitives';
 
 function Toggle({ label, active, onClick, children, testId }: { label: string; active: boolean; onClick: () => void; children: React.ReactNode; testId: string }) {
@@ -49,6 +50,14 @@ export function SearchBar() {
     if (search.open) inputRef.current?.select();
   }, [search.open]);
 
+  // Another tab: a search still running belongs to the previous document.
+  const activeTab = useTabs((t) => t.activeId);
+  useEffect(() => {
+    token.current.cancelled = true;
+    window.clearTimeout(timer.current);
+    if (usePDFStore.getState().search.running) setSearch({ running: false });
+  }, [activeTab, setSearch]);
+
   const run = async (query: string) => {
     token.current.cancelled = true;
     const mine = { cancelled: false };
@@ -57,9 +66,20 @@ export function SearchBar() {
       setSearch({ hits: [], active: 0, running: false });
       return;
     }
+    const tab = useTabs.getState().activeId;
     setSearch({ running: true });
-    const hits = await searchDocument(usePDFStore.getState().pages, query, mine, usePDFStore.getState().searchOptions);
-    if (mine.cancelled) return;
+    let hits: Awaited<ReturnType<typeof searchDocument>>;
+    try {
+      hits = await searchDocument(usePDFStore.getState().pages, query, mine, usePDFStore.getState().searchOptions);
+    } catch (e) {
+      if (!mine.cancelled && useTabs.getState().activeId === tab) {
+        setSearch({ hits: [], active: 0, running: false });
+        usePDFStore.getState().toast(e instanceof Error ? e.message : String(e), 'error');
+      }
+      return;
+    }
+    // Never write one document's hits into another tab's search.
+    if (mine.cancelled || useTabs.getState().activeId !== tab) return;
     setSearch({ hits, active: 0, running: false });
     if (hits[0]) reveal(0, hits);
   };
