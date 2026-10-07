@@ -179,7 +179,12 @@ function ObjectProperties({ obj }: { obj: EditorObject }) {
         </div>
       </Section>
       <TypeSpecific obj={obj} update={update} />
-      {LAYER_TYPES.has(obj.type) && !(obj.type === 'text' && obj.annotation) ? <LayerField value={obj.layer ?? ''} onChange={(layer) => update({ layer: layer || undefined })} /> : null}
+      {obj.fileAnnot ? (
+        <p className="mb-3 text-[11px] text-muted" data-testid="inspector-file-comment">
+          A comment from the file: your changes are saved into it, and its author, replies and popup stay attached.
+        </p>
+      ) : null}
+      {LAYER_TYPES.has(obj.type) && !(obj.type === 'text' && obj.annotation) && !obj.fileAnnot ?<LayerField value={obj.layer ?? ''} onChange={(layer) => update({ layer: layer || undefined })} /> : null}
       <div className="flex flex-wrap gap-1.5">
         <Button size="sm" onClick={() => update({ locked: !obj.locked })}>
           {obj.locked ? <Unlock size={13} /> : <Lock size={13} />}

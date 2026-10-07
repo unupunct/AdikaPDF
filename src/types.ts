@@ -82,6 +82,12 @@ export interface PageRef {
   /** Unrotated page size in points (CropBox). */
   width: number;
   height: number;
+  /**
+   * Annotations of the source page (pdf.js ids, "12R") that Adika has taken
+   * over: edited through an object whose `fileAnnot` points at it, or deleted
+   * when no object does. pdf.js no longer draws them.
+   */
+  takenAnnots?: string[];
 }
 
 interface BaseObject {
@@ -95,6 +101,18 @@ interface BaseObject {
   locked?: boolean;
   /** Layer (optional content group) the object is drawn in when saved; page content objects only. */
   layer?: string;
+  /** A comment that was already in the file: saved back into that annotation. */
+  fileAnnot?: FileAnnotLink;
+}
+
+/** Link from an editor object to the annotation of the file it was made from. */
+export interface FileAnnotLink {
+  /** pdf.js id of the annotation ("12R"). */
+  ref: string;
+  /** Its /Subtype. */
+  subtype: string;
+  /** The object as it was taken over (JSON, without id, page and this link): unchanged objects leave the file alone. */
+  base: string;
 }
 
 export interface TextObject extends BaseObject {

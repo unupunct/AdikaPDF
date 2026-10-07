@@ -86,6 +86,7 @@ export async function releaseSource(sourceId: string): Promise<void> {
   for (const key of [...textContents.keys()]) if (key.startsWith(`${sourceId}:`)) textContents.delete(key);
   for (const key of [...annotations.keys()]) if (key.startsWith(`${sourceId}:`)) annotations.delete(key);
   layerConfigs.delete(sourceId);
+  for (const key of [...hiddenSets.keys()]) if (key.startsWith(`${sourceId}:`)) hiddenSets.delete(key);
   if (d) await (await d).loadingTask.destroy().catch(() => undefined);
 }
 
@@ -124,6 +125,8 @@ export function getTextContent(sourceId: string, index: number): Promise<TextCon
 
 /** Subset of pdf.js annotation data the reader uses (links, attachments). */
 export interface PageAnnotation {
+  /** pdf.js id ("12R"). */
+  id?: string;
   subtype: string;
   rect: [number, number, number, number];
   url?: string;
@@ -225,6 +228,24 @@ export async function pageViewport(page: PageRef, scale: number) {
   return p.getViewport({ scale, rotation: totalRotation(page) });
 }
 
+type HiddenAnnots = (page: PageRef) => Promise<string[]>;
+let hiddenAnnots: HiddenAnnots | null = null;
+const hiddenSets = new Map<string, Set<string>>();
+
+/** Annotations of a page that pdf.js must not draw (comments taken over by the editor). */
+export function setHiddenAnnotations(fn: HiddenAnnots): void {
+  hiddenAnnots = fn;
+}
+
+/** Marks the page's hidden annotations in pdf.js' storage (noView); called right before rendering. */
+function applyHidden(doc: PDFDocumentProxy, key: string, ids: string[]): void {
+  const before = hiddenSets.get(key);
+  if (!before?.size && !ids.length) return;
+  for (const id of before ?? []) if (!ids.includes(id)) doc.annotationStorage.remove(id);
+  for (const id of ids) doc.annotationStorage.setValue(id, { noView: true });
+  hiddenSets.set(key, new Set(ids));
+}
+
 export interface RenderHandle {
   promise: Promise<void>;
   cancel: () => void;
@@ -252,6 +273,8 @@ export function renderPageToCanvas(
       return;
     }
     const p = await getPdfPage(page.sourceId, page.sourceIndex);
+    const doc = await getSourceDoc(page.sourceId);
+    const hidden = hiddenAnnots ? await hiddenAnnots(page).catch(() => []) : [];
     if (cancelled) return;
     const viewport = p.getViewport({ scale: scale * pixelRatio, rotation: totalRotation(page) });
     // Render off-screen first so the visible canvas never flashes blank.
@@ -262,6 +285,7 @@ export function renderPageToCanvas(
     if (!offCtx) throw new Error('Canvas unavailable');
     offCtx.fillStyle = '#ffffff';
     offCtx.fillRect(0, 0, off.width, off.height);
+    applyHidden(doc, `${page.sourceId}:${page.sourceIndex}`, hidden);
     task = p.render({
       canvas: off,
       canvasContext: offCtx,

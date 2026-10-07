@@ -88,6 +88,7 @@ import { embedFontForText } from './fontEmbed';
 import { writeFreeText, writeMarkup, writeNote } from './annotations';
 import { addReviewReply, type ReviewState } from './review';
 import { writeAttachment, writeLink, writeMeasure, writePoly, writeStamp } from './commentAnnots';
+import { prepareFileAnnotEdits } from './fileAnnots';
 import { writeOutline } from './outline';
 import { dropUnreachableObjects } from './prune';
 import { removeGlyphs, type Box, type LineEdit } from './textRemoval';
@@ -898,6 +899,16 @@ export async function buildPdf(input: ExportInput, options: ExportOptions = {}):
   }
   pruneOrphanFields(doc);
 
+  // 3b. Comments of the file that were edited or deleted (fileAnnots.ts).
+  const fileEdits = prepareFileAnnotEdits(
+    planned.map((p) => ({
+      ref: p.ref,
+      page: p.page,
+      origin: p.rasterized || !p.ref.sourceId ? null : p.ref.sourceId === baseSourceId ? baseOriginal[p.ref.sourceIndex] : (foreignDocs.get(p.ref.sourceId)?.getPage(p.ref.sourceIndex) ?? null),
+    })),
+    objects,
+  );
+
   // 4. Existing form values.
   let formTouched = false;
   if (baseSourceId) formTouched = applyFieldValues(doc, input.fieldValues, baseSourceId) || formTouched;
@@ -925,14 +936,17 @@ export async function buildPdf(input: ExportInput, options: ExportOptions = {}):
     const rotation: Rotation = rasterized ? 0 : totalRotation(ref);
     const pm = displayToPdfMatrix(rotation, visibleBox(page));
     for (const o of list) {
+      if (fileEdits.skip(o)) continue;
       const review = (o as { reviewStatus?: ReviewState }).reviewStatus;
-      const annotsBefore = review ? (page.node.Annots()?.size() ?? 0) : 0;
+      const annotsBefore = page.node.Annots()?.size() ?? 0;
       // An object in a layer: its page content is marked as that layer's.
       const layer = o.layer && LAYERED.has(o.type) && !(o.type === 'text' && o.annotation) ? layerForContent(ctx.doc, page, o.layer) : null;
       if (layer) page.pushOperators(PDFOperator.of('BDC' as never, [PDFName.of('OC'), PDFName.of(layer)]));
-      await writeObject(o);
+      if (!fileEdits.write(ctx.doc, page, pm, o)) await writeObject(o);
       if (layer) page.pushOperators(PDFOperator.of('EMC' as never));
-      if (review && review !== 'None') {
+      const original = fileEdits.adopt(ctx.doc, page, o, annotsBefore);
+      if (review && review !== 'None' && original) addReviewReply(ctx.doc, page, original, review, (o as { author?: string }).author ?? '');
+      else if (review && review !== 'None') {
         // The comment's annotation: the first one added for it that is not its popup.
         const annots = page.node.Annots();
         for (let k = annotsBefore; annots && k < annots.size(); k++) {

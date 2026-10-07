@@ -114,6 +114,42 @@ export function registerCommentTests(test, ctx) {
     assert(yellow > 300, `highlight is visible after reopening (${yellow} yellow px)`);
   });
 
+  // Not run yet (added in 1.11.0 without a release build).
+  test('comments: edit and delete comments already in the file, with undo', async () => {
+    const before = await annotsOf(await savedFile(/comments\.pdf$/));
+    const foreign = before.find((a) => a.contentsObj?.str === 'Reviewed by legal');
+    const rowWith = (re) => page.evaluateHandle((src) => [...document.querySelectorAll('[data-testid="comment-row"]')].find((e) => new RegExp(src).test(e.textContent)), re.source);
+    // Edit: the foreign note becomes an editor object; the original is hidden in the viewer.
+    await (await (await rowWith(/Reviewed by legal/)).asElement().$('[data-testid="comment-edit"]')).click();
+    await page.waitForFunction(() => window.__adika.store.getState().objects.some((o) => o.fileAnnot && o.type === 'note'), null, { timeout: 8000 });
+    assert(await S(() => window.__adika.store.getState().pages[0].takenAnnots?.length === 1), 'note taken over');
+    await page.waitForSelector('[data-testid="inspector-file-comment"]');
+    await page.click('[data-testid="inspector-note-text"]', { clickCount: 3 });
+    await page.keyboard.type('Reviewed by legal, approved');
+    // Move it with the keyboard-free path: the store, as a drag would.
+    await S(() => {
+      const s = window.__adika.store.getState();
+      const o = s.objects.find((x) => x.fileAnnot);
+      s.updateObject(o.id, { x: o.x - 100 });
+    });
+    // Delete the highlight (with any replies).
+    await (await (await rowWith(/Highlight/)).asElement().$('[data-testid="comment-delete"]')).click();
+    await page.waitForFunction(() => window.__adika.store.getState().pages[0].takenAnnots?.length >= 2, null, { timeout: 8000 });
+    // Undo brings the highlight back, redo deletes it again.
+    await page.keyboard.press('Control+z');
+    assert(await S(() => window.__adika.store.getState().pages[0].takenAnnots?.length === 1), 'undo restores the highlight');
+    await page.keyboard.press('Control+y');
+    assert(await S(() => window.__adika.store.getState().pages[0].takenAnnots?.length >= 2), 'redo deletes it again');
+    await page.keyboard.press('Control+Shift+s');
+    await idle();
+    const after = await annotsOf(await savedFile(/comments\.pdf$/));
+    const note = after.find((a) => a.id === foreign.id);
+    assert(note && note.contentsObj?.str === 'Reviewed by legal, approved' && note.titleObj?.str === 'Foxit user', `edited in place (${note?.contentsObj?.str})`);
+    assert(note.rect[0] < foreign.rect[0] - 50, 'moved');
+    assert(!after.some((a) => a.subtype === 'Highlight'), 'highlight deleted');
+    assert(after.some((a) => a.subtype === 'FreeText' && a.contentsObj?.str === 'Aprobat, semnat: Ana'), 'other comments untouched');
+  });
+
   test('tools: PDF to Word / JPG / PPT / Excel from the Tools hub', async () => {
     await S(() => { const t = window.__adika.tabs; for (const tab of [...t.useTabs.getState().tabs]) t.removeTab(tab.id); });
     await page.click('[data-testid="tab-home"]');

@@ -13,6 +13,7 @@ import { LinkLayer, TextSelectionLayer } from './ReaderLayers';
 import { FormFillLayer } from './FormFillLayer';
 import { isTextTool } from '@/lib/tools';
 import { cn } from '@/lib/cn';
+import { hiddenKey } from '@/actions/fileComments';
 
 interface Props {
   page: PageRef;
@@ -46,6 +47,8 @@ export const PageView = memo(function PageView({ page, index, zoom, scrollRoot }
   const renderEpoch = usePDFStore((s) => s.renderEpoch);
   const tool = usePDFStore((s) => s.tool);
   const nightMode = usePDFStore((s) => s.nightMode);
+  // Comments of the file taken over by the editor are not drawn by pdf.js.
+  const hidden = usePDFStore((s) => hiddenKey(page, s.objects));
   const reading = tool === 'selectText' || tool === 'pan';
 
   useEffect(() => {
@@ -71,7 +74,7 @@ export const PageView = memo(function PageView({ page, index, zoom, scrollRoot }
     };
     // renderedZoom is intentionally excluded: it only chooses the delay.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [near, zoom, page.sourceId, page.sourceIndex, page.baseRotation, page.userRotation, page.kind, renderEpoch]);
+  }, [near, zoom, page.sourceId, page.sourceIndex, page.baseRotation, page.userRotation, page.kind, renderEpoch, hidden]);
 
   // Free bitmap memory for pages far away.
   useEffect(() => {
