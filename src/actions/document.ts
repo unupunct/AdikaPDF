@@ -2,7 +2,7 @@
  * Document-level operations wired to the ribbon, keyboard shortcuts and
  * drag-and-drop: open, save, save as, merge, export bytes.
  */
-import { currentDoc, usePDFStore } from '@/store/usePDFStore';
+import { currentDoc, primarySourceId, usePDFStore } from '@/store/usePDFStore';
 import { askConfirm, askPassword } from '@/store/useDialogs';
 import { buildPdf, ExportError, type ExportOptions, type RasterResult } from '@/lib/pdf/exportPdf';
 import { PasswordRequiredError, canvasToBytes, rasterizePage } from '@/lib/pdf/pdfService';
@@ -282,8 +282,8 @@ export async function saveDerived(bytes: Uint8Array, suffix: string, reopen: boo
 
 export async function refreshSignatureStatus(): Promise<void> {
   const s = usePDFStore.getState();
-  const first = s.pages.find((p) => p.kind === 'source' && p.sourceId);
-  const src = first?.sourceId ? s.sources[first.sourceId] : undefined;
+  const id = primarySourceId(s);
+  const src = id ? s.sources[id] : undefined;
   if (!src) return usePDFStore.getState().setSignatureStatus([]);
   try {
     const status = await verifyPdfSignatures(src.bytes);
@@ -311,9 +311,9 @@ export async function closeTabAction(tabId: string): Promise<void> {
   if (tabId !== activeId && useTabs.getState().tabs.some((t) => t.id === activeId)) switchTab(activeId);
 }
 
-/** Primary (first page's) source bytes, i.e. the file as last opened/saved. */
+/** The primary source's bytes (the opened file as loaded). */
 export function primarySourceBytes(): Uint8Array | null {
   const s = usePDFStore.getState();
-  const first = s.pages.find((p) => p.kind === 'source' && p.sourceId);
-  return first?.sourceId ? (s.sources[first.sourceId]?.bytes ?? null) : null;
+  const id = primarySourceId(s);
+  return id ? (s.sources[id]?.bytes ?? null) : null;
 }

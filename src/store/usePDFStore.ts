@@ -180,6 +180,8 @@ interface PDFState extends UndoableState {
   docMeta: DocMeta | null;
   /** Size + mtime of the file on disk when opened/saved, for auto-reload. */
   fileStamp: string | null;
+  /** The source opened in this tab (the base its edits are saved into), see `primarySourceId`. */
+  primarySource: string | null;
   setView: (patch: Partial<Pick<PDFState, 'viewScroll' | 'viewSpread' | 'viewRotation' | 'nightMode' | 'presentation' | 'fullscreen' | 'sidebarTab'>>) => void;
   /** Jumps to a page (and optional y), remembering where we came from. */
   navigateTo: (pageId: string, y?: number) => void;
@@ -376,6 +378,7 @@ export const usePDFStore = create<PDFState>()((set, get) => ({
   searchOptions: { caseSensitive: false, wholeWord: false },
   docMeta: null,
   fileStamp: null,
+  primarySource: null,
   setView: (patch) => set(patch),
   navigateTo: (pageId, y) => {
     const s = get();
@@ -478,6 +481,7 @@ export const usePDFStore = create<PDFState>()((set, get) => ({
       viewRotation: 0,
       docMeta: null,
       fileStamp: null,
+      primarySource: pages[0]?.sourceId ?? null,
     }));
   },
 
@@ -505,6 +509,7 @@ export const usePDFStore = create<PDFState>()((set, get) => ({
       viewRotation: 0,
       docMeta: null,
       fileStamp: null,
+      primarySource: null,
       scrollRequest: null,
     });
     await Promise.all(ids.map((id) => releaseSource(id)));
@@ -809,8 +814,17 @@ usePDFStore.subscribe((s, prev) => {
   if (s.dirty && !prev.dirty && s.savedDoc && sameDoc(s, s.savedDoc)) usePDFStore.setState({ savedDoc: null });
 });
 
+/**
+ * The tab's own document: the opened file while any of its pages is still in
+ * the document (also when another file's page was put first), else the first page's source.
+ */
+export function primarySourceId(s: Pick<PDFState, 'pages' | 'primarySource'> = usePDFStore.getState()): string | null {
+  if (s.primarySource && s.pages.some((p) => p.sourceId === s.primarySource)) return s.primarySource;
+  return s.pages.find((p) => p.kind === 'source' && p.sourceId)?.sourceId ?? null;
+}
+
 /** Snapshot of the undoable document, e.g. for export. */
-export function currentDoc(): DocSnapshot & { sources: Record<string, SourceDoc>; fieldValues: Record<string, FieldValue> } {
+export function currentDoc(): DocSnapshot & { sources: Record<string, SourceDoc>; fieldValues: Record<string, FieldValue>; baseSourceId: string | null } {
   const s = usePDFStore.getState();
-  return { pages: s.pages, objects: s.objects, sources: s.sources, fieldValues: s.fieldValues, outline: s.outline };
+  return { pages: s.pages, objects: s.objects, sources: s.sources, fieldValues: s.fieldValues, outline: s.outline, baseSourceId: primarySourceId(s) };
 }

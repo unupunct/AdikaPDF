@@ -36,6 +36,7 @@ const DOC_KEYS = [
   'viewRotation',
   'docMeta',
   'fileStamp',
+  'primarySource',
   'scrollRequest',
 ] as const satisfies ReadonlyArray<keyof StoreState>;
 
@@ -86,6 +87,7 @@ function emptySlice(): DocSlice {
     viewRotation: 0,
     docMeta: null,
     fileStamp: null,
+    primarySource: null,
     scrollRequest: null,
   };
 }

@@ -109,6 +109,18 @@ export interface ExportInput {
   fieldValues: Record<string, FieldValue>;
   /** Edited bookmarks; null/undefined keeps the file's own outline. */
   outline?: BookmarkItem[] | null;
+  /**
+   * The document the edits are made to (the opened file): it stays the base
+   * even when another file's page comes first, so its outline, attachments,
+   * metadata, tags, page labels and layers are kept. Default: the first page's source.
+   */
+  baseSourceId?: string | null;
+}
+
+/** The source a document is written into: the requested base while it still has pages, else the first page's. */
+export function baseSourceOf(pages: PageRef[], wanted?: string | null): string | null {
+  if (wanted && pages.some((p) => p.kind === 'source' && p.sourceId === wanted)) return wanted;
+  return pages.find((p) => p.kind === 'source')?.sourceId ?? null;
 }
 
 export interface RasterResult {
@@ -251,6 +263,110 @@ function attachCopiedFields(doc: PDFDocument, page: PDFPage): void {
       existing.add(root.toString());
     }
   }
+}
+
+/** Field-level keys of a field dictionary merged with its widget (ISO 32000 12.7.4). */
+const FIELD_KEYS = ['FT', 'T', 'TU', 'TM', 'Ff', 'V', 'DV', 'Opt', 'TI', 'I', 'MaxLen', 'Lock', 'SV'];
+
+function fieldTypeOf(dict: PDFDict): PDFName | undefined {
+  for (let d: PDFDict | undefined = dict, depth = 0; d && depth < 32; depth++) {
+    const ft = d.lookup(PDFName.of('FT'));
+    if (ft instanceof PDFName) return ft;
+    const parent: unknown = d.lookup(PDFName.of('Parent'));
+    d = parent instanceof PDFDict ? parent : undefined;
+  }
+  return undefined;
+}
+
+/**
+ * The terminal field of a widget. A widget merged with its field is split
+ * first (field keys moved to a new field dictionary that has it as a kid), so
+ * further widgets can join the same field.
+ */
+function terminalField(doc: PDFDocument, widgetRef: PDFRef, widget: PDFDict): PDFRef {
+  if (!widget.has(PDFName.of('T'))) {
+    const parent = widget.get(PDFName.of('Parent'));
+    if (parent instanceof PDFRef) return parent;
+  }
+  const field = doc.context.obj({}) as PDFDict;
+  for (const k of FIELD_KEYS) {
+    const v = widget.get(PDFName.of(k));
+    if (v === undefined) continue;
+    field.set(PDFName.of(k), v);
+    widget.delete(PDFName.of(k));
+  }
+  const up = widget.get(PDFName.of('Parent'));
+  if (up) field.set(PDFName.of('Parent'), up);
+  field.set(PDFName.of('Kids'), doc.context.obj([widgetRef]));
+  const fieldRef = doc.context.register(field);
+  widget.set(PDFName.of('Parent'), fieldRef);
+  // The new field takes the widget's place in its parent's kids (or the form's top-level fields).
+  const parentDict = up ? lookupDict(doc, up) : undefined;
+  const siblings = parentDict ? parentDict.lookup(PDFName.of('Kids')) : acroFormFields(doc, true);
+  if (siblings instanceof PDFArray) {
+    let found = false;
+    for (let i = 0; i < siblings.size(); i++) {
+      if (String(siblings.get(i)) === widgetRef.toString()) {
+        siblings.set(i, fieldRef);
+        found = true;
+      }
+    }
+    if (!found && !parentDict) siblings.push(fieldRef);
+  }
+  return fieldRef;
+}
+
+/**
+ * A second copy of a page of the base document. Its form fields are the same
+ * fields as on the original (as in Acrobat when a page is duplicated: same
+ * name, same value): each copied widget becomes another kid of the
+ * original's field. Other annotations are copied (without their pop-ups);
+ * signature fields are not duplicated.
+ */
+async function duplicateBasePage(doc: PDFDocument, original: PDFPage, index: number): Promise<PDFPage> {
+  const ANNOTS = PDFName.of('Annots');
+  const annots = original.node.get(ANNOTS);
+  // Copy the page without its annotations (the copier would follow widgets into their whole field tree).
+  original.node.delete(ANNOTS);
+  let copy: PDFPage;
+  try {
+    [copy] = await doc.copyPages(doc, [index]);
+  } finally {
+    if (annots) original.node.set(ANNOTS, annots);
+  }
+  const list = original.node.Annots();
+  if (!list) return copy;
+  const out = doc.context.obj([]) as PDFArray;
+  for (let i = 0; i < list.size(); i++) {
+    const ref = list.get(i);
+    const dict = lookupDict(doc, ref);
+    if (!dict) continue;
+    const subtype = dict.get(PDFName.of('Subtype'));
+    if (subtype === PDFName.of('Popup')) continue;
+    if (subtype === PDFName.of('Widget')) {
+      if (!(ref instanceof PDFRef) || fieldTypeOf(dict) === PDFName.of('Sig')) continue;
+      const fieldRef = terminalField(doc, ref, dict);
+      const clone = dict.clone(doc.context);
+      clone.set(PDFName.of('P'), copy.ref);
+      clone.set(PDFName.of('Parent'), fieldRef);
+      const cloneRef = doc.context.register(clone);
+      const field = lookupDict(doc, fieldRef);
+      let kids = field?.lookup(PDFName.of('Kids'));
+      if (field && !(kids instanceof PDFArray)) {
+        kids = doc.context.obj([]);
+        field.set(PDFName.of('Kids'), kids);
+      }
+      (kids as PDFArray).push(cloneRef);
+      out.push(cloneRef);
+    } else {
+      const clone = dict.clone(doc.context);
+      clone.set(PDFName.of('P'), copy.ref);
+      clone.delete(PDFName.of('Popup'));
+      out.push(doc.context.register(clone));
+    }
+  }
+  if (out.size()) copy.node.set(ANNOTS, out);
+  return copy;
 }
 
 function removeAnnotations(page: PDFPage): void {
@@ -751,8 +867,8 @@ export async function buildPdf(input: ExportInput, options: ExportOptions = {}):
     loadFont: options.loadFont ?? loadFontBytes,
   };
 
-  // 1. Base document: the first page's source, edited in place.
-  const baseSourceId = pages.find((p) => p.kind === 'source')?.sourceId ?? null;
+  // 1. Base document: the opened file (or the first page's source), edited in place.
+  const baseSourceId = baseSourceOf(pages, input.baseSourceId);
   let doc: PDFDocument;
   if (baseSourceId) {
     const src = sources[baseSourceId];
@@ -801,8 +917,7 @@ export async function buildPdf(input: ExportInput, options: ExportOptions = {}):
         baseUsed.add(ref.sourceIndex);
         planned.push({ ref, page: baseOriginal[ref.sourceIndex], rasterized: false });
       } else {
-        const [copy] = await doc.copyPages(doc, [ref.sourceIndex]);
-        planned.push({ ref, page: copy, rasterized: false });
+        planned.push({ ref, page: await duplicateBasePage(doc, baseOriginal[ref.sourceIndex], ref.sourceIndex), rasterized: false });
       }
       continue;
     }

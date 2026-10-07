@@ -39,6 +39,8 @@ interface BackupState {
   /** The file's stamp when it was opened or last saved (Save checks whether it changed since). */
   fileStamp?: string | null;
   readOnlyReason?: string | null;
+  /** The source opened in the tab (see primarySourceId). */
+  primary?: string | null;
   docMeta: unknown;
   pages: PageRef[];
   objects: EditorObject[];
@@ -57,7 +59,7 @@ export interface BackupInfo {
   edits: number;
 }
 
-type Doc = Pick<DocSlice, 'sources' | 'pages' | 'objects' | 'fieldValues' | 'outline' | 'fileName' | 'filePath' | 'fileStamp' | 'readOnlyReason' | 'docMeta' | 'dirty'>;
+type Doc = Pick<DocSlice, 'primarySource' | 'sources' | 'pages' | 'objects' | 'fieldValues' | 'outline' | 'fileName' | 'filePath' | 'fileStamp' | 'readOnlyReason' | 'docMeta' | 'dirty'>;
 
 async function write(name: string, bytes: Uint8Array): Promise<void> {
   await invoke('recovery_write', bytes, { headers: { 'x-name': encodeURIComponent(name) } });
@@ -116,6 +118,7 @@ async function writeState(dir: string, done: Set<string>, s: Doc, extra: Partial
     fileName: s.fileName,
     filePath: s.filePath,
     fileStamp: s.fileStamp,
+    primary: s.primarySource,
     docMeta: s.docMeta,
     pages: s.pages,
     objects: s.objects,
@@ -292,6 +295,7 @@ async function restore(dir: string, crashed: boolean, passwords: Record<string, 
     fileName: st.fileName,
     filePath: st.filePath,
     fileStamp: st.fileStamp ?? null,
+    primarySource: st.primary ? (map.get(st.primary) ?? null) : null,
     readOnlyReason: crashed ? null : (st.readOnlyReason ?? null),
     dirty,
     savedDoc: dirty ? null : doc,
