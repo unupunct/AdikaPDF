@@ -149,6 +149,29 @@ describe('sources', () => {
   });
 });
 
+describe('whole-document tools', () => {
+  it('swap in the tool result as one undoable step; pending redactions stay editable', async () => {
+    const { replaceWholeDocument } = await import('@/actions/sourceRewrite');
+    await open(2);
+    const [p0, p1] = S().pages;
+    S().addObject(note('n1', p0.id));
+    const redact = { id: 'r1', type: 'redact', pageId: p1.id, x: 5, y: 6, width: 10, height: 10, rotation: 0, opacity: 1, fill: '#000' } as unknown as EditorObject;
+    S().addObject(redact);
+    S().setFieldValue(`${p0.sourceId}::name`, 'x');
+    const before = S().past.length;
+    await replaceWholeDocument(new Uint8Array([2, 0]), [redact]);
+    expect(S().past.length).toBe(before + 1);
+    expect(S().pages[0].sourceId).not.toBe(p0.sourceId);
+    expect(S().objects).toEqual([{ ...redact, pageId: S().pages[1].id }]);
+    expect(S().fieldValues).toEqual({});
+    expect(S().primarySource).toBe(S().pages[0].sourceId);
+    S().undo();
+    expect(S().pages[0].id).toBe(p0.id);
+    expect(S().objects).toHaveLength(2);
+    expect(S().sources[p0.sourceId!]).toBeDefined();
+  });
+});
+
 describe('tabs', () => {
   it('each tab keeps its own saved state; a path already open is found', async () => {
     await open(1, 'C:\\docs\\a.pdf');

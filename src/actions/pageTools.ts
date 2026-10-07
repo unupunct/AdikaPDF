@@ -4,10 +4,12 @@
  * comment import/export (XFDF, FDF), comment summary and file comparison.
  *
  * In-place tools apply the current edits first, transform the bytes and
- * reopen them in the same tab, marked as unsaved.
+ * swap them in as one undoable step, marked as unsaved.
  */
 import { usePDFStore } from '@/store/usePDFStore';
-import { exportCurrentPdf, openPdfBytes, withBusy, PDF_FILTER } from './document';
+import { exportCurrentPdf, openPdfBytes, refreshSignatureStatus, withBusy, PDF_FILTER } from './document';
+import { replaceWholeDocument } from './sourceRewrite';
+import { askConfirm } from '@/store/useDialogs';
 import { pickFiles, saveBytes } from '@/lib/platform';
 import { openPdf } from '@/lib/pdf/pdfService';
 import { loadFontBytes } from '@/lib/fonts';
@@ -20,19 +22,41 @@ function busyNow(message: string): void {
   usePDFStore.getState().setBusy({ message: `${message}…`, progress: null });
 }
 
-/** Applies `transform` to the current document (with edits) and reopens the result in place, unsaved. */
-async function applyInPlace(label: string, transform: (bytes: Uint8Array, progress: (m: string, f: number | null) => void) => Promise<{ bytes: Uint8Array; summary: string } | null>): Promise<boolean> {
+/**
+ * Applies `transform` to the current document (with its edits) and swaps the
+ * result in as one undoable step, unsaved. Redaction boxes not yet applied
+ * stay pending; a tool that moves page content (`geometry`: crop, page size)
+ * asks to apply them first.
+ */
+async function applyInPlace(
+  label: string,
+  transform: (bytes: Uint8Array, progress: (m: string, f: number | null) => void) => Promise<{ bytes: Uint8Array; summary: string } | null>,
+  geometry = false,
+): Promise<boolean> {
   const s = usePDFStore.getState();
   if (!s.pages.length) {
     s.setBusy(null);
     return false;
   }
-  const name = s.fileName ?? 'Untitled.pdf';
-  const path = s.filePath;
-  const out = await withBusy(`${label}…`, async (progress) => transform(await exportCurrentPdf({}, progress), progress));
+  let pending = s.objects.filter((o) => o.type === 'redact');
+  if (pending.length && geometry) {
+    s.setBusy(null);
+    const ok = await askConfirm({
+      title: 'Apply redactions first?',
+      message: 'This tool moves page content, so the redaction boxes must be applied first: the content under them is removed for good once you save. (Undo still brings them back before saving.)',
+      confirmLabel: 'Apply redactions',
+      danger: true,
+    });
+    if (!ok) return false;
+    pending = [];
+  }
+  const out = await withBusy(`${label}…`, async (progress) => {
+    const r = await transform(await exportCurrentPdf({}, progress, pending.map((o) => o.id)), progress);
+    if (r) await replaceWholeDocument(r.bytes, pending);
+    return r;
+  });
   if (!out) return false;
-  if (!(await openPdfBytes(out.bytes, name, path, true))) return false;
-  usePDFStore.setState({ dirty: true });
+  void refreshSignatureStatus();
   usePDFStore.getState().toast(`${out.summary} Save to keep the changes.`, 'success');
   log('info', `${label}: ${out.summary}`);
   return true;
@@ -76,7 +100,7 @@ export async function applyCrop(margins: CropMargins, pageNumbers?: number[]): P
       return null;
     }
     return { bytes: out.bytes, summary: `Cropped ${out.cropped} page${out.cropped === 1 ? '' : 's'}.` };
-  });
+  }, true);
 }
 
 // ------------------------------------------------------------------ comments: import / export
@@ -261,5 +285,5 @@ export async function applyPageSize(o: import('@/lib/pdf/pageSize').PageSizeOpti
       return null;
     }
     return { bytes: out.bytes, summary: `Resized ${out.resized} page${out.resized === 1 ? '' : 's'}.` };
-  });
+  }, true);
 }

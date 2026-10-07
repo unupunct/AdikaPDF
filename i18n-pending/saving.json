@@ -134,5 +134,29 @@
     "hu": "Mentés növekményes frissítésként, ha lehetséges",
     "it": "Salva come aggiornamento incrementale quando possibile",
     "es": "Guardar como actualización incremental cuando sea posible"
+  },
+  "Apply redactions first?": {
+    "ro": "Aplicați mai întâi redactările?",
+    "de": "Schwärzungen zuerst anwenden?",
+    "fr": "Appliquer d’abord les caviardages ?",
+    "hu": "Előbb alkalmazza a kitakarásokat?",
+    "it": "Applicare prima gli oscuramenti?",
+    "es": "¿Aplicar primero las censuras?"
+  },
+  "This tool moves page content, so the redaction boxes must be applied first: the content under them is removed for good once you save. (Undo still brings them back before saving.)": {
+    "ro": "Acest instrument mută conținutul paginilor, așa că zonele de redactare trebuie aplicate mai întâi: conținutul de sub ele este eliminat definitiv după salvare. (Până la salvare, Anulare le readuce.)",
+    "de": "Dieses Werkzeug verschiebt Seiteninhalte, daher müssen die Schwärzungsfelder zuerst angewendet werden: Der Inhalt darunter wird beim Speichern endgültig entfernt. (Bis zum Speichern holt Rückgängig sie zurück.)",
+    "fr": "Cet outil déplace le contenu des pages : les zones de caviardage doivent donc être appliquées d’abord, et le contenu qu’elles couvrent est supprimé définitivement à l’enregistrement. (Avant l’enregistrement, Annuler les rétablit.)",
+    "hu": "Ez az eszköz áthelyezi az oldalak tartalmát, ezért előbb alkalmazni kell a kitakarási mezőket: az alattuk lévő tartalom mentéskor végleg törlődik. (Mentés előtt a Visszavonás visszahozza őket.)",
+    "it": "Questo strumento sposta il contenuto delle pagine, quindi le aree di oscuramento vanno applicate prima: il contenuto sottostante viene rimosso definitivamente al salvataggio. (Prima di salvare, Annulla le ripristina.)",
+    "es": "Esta herramienta mueve el contenido de las páginas, así que primero hay que aplicar los cuadros de censura: el contenido que cubren se elimina definitivamente al guardar. (Antes de guardar, Deshacer los recupera.)"
+  },
+  "Apply redactions": {
+    "ro": "Aplică redactările",
+    "de": "Schwärzungen anwenden",
+    "fr": "Appliquer les caviardages",
+    "hu": "Kitakarások alkalmazása",
+    "it": "Applica oscuramenti",
+    "es": "Aplicar censuras"
   }
 }
