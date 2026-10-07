@@ -52,20 +52,16 @@ export interface BatchContext {
 
 export class BatchSkip extends Error {}
 
-/** Metadata stripped, document info cleared, orphaned objects dropped. */
+/**
+ * Metadata (document, XMP and per object), scripts, thumbnails, private
+ * application data and earlier revisions removed; orphaned objects dropped.
+ * The same removal as the Hidden information dialog.
+ */
 export async function sanitizeBytes(bytes: Uint8Array): Promise<Uint8Array> {
-  const [{ compressPdf }, { dropUnreachableObjects }] = await Promise.all([import('./pdf/compress'), import('./pdf/prune')]);
-  const r = await compressPdf(bytes, { imageQuality: 1, maxImageDpi: 10000, stripMetadata: true });
-  const doc = await PDFDocument.load(r.bytes);
-  doc.setTitle('');
-  doc.setAuthor('');
-  doc.setSubject('');
-  doc.setKeywords([]);
-  doc.setCreator('');
-  doc.setProducer('Adika PDF Editor');
-  dropUnreachableObjects(doc);
-  return doc.save();
+  const { removeHiddenInfo, SANITIZE_KINDS } = await import('./pdf/hiddenInfo');
+  return removeHiddenInfo(bytes, SANITIZE_KINDS);
 }
+
 
 /** Form fields and annotations burned into the page content. */
 export async function flattenBytes(bytes: Uint8Array, loadFont: BatchContext['loadFont']): Promise<Uint8Array> {

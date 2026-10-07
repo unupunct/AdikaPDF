@@ -551,6 +551,8 @@ export interface Glyph {
   k: number;
   /** Text state at this glyph, used to write replacement text in the same font. */
   run: GlyphRun;
+  /** Text rendering mode (3 = invisible, e.g. the text layer of a scan). */
+  mode?: number;
 }
 
 export interface GlyphRun {
@@ -674,8 +676,9 @@ function interpret(doc: PDFDocument, page: PDFPage): Interpretation {
     TL: number;
     Ts: number;
     fill: string;
+    Tr: number;
   }
-  let gs: GS = { ctm: I, font: null, fontKey: '', fs: 0, Tc: 0, Tw: 0, Th: 1, TL: 0, Ts: 0, fill: '#000000' };
+  let gs: GS = { ctm: I, font: null, fontKey: '', fs: 0, Tc: 0, Tw: 0, Th: 1, TL: 0, Ts: 0, fill: '#000000', Tr: 0 };
   const stack: GS[] = [];
   let Tm: M = I;
   // Current path: user-space points and whether it is more than lines / rectangles.
@@ -741,6 +744,7 @@ function interpret(doc: PDFDocument, page: PDFPage): Interpretation {
           advance: advance * Math.hypot(mul(Tm, gs.ctm)[0], mul(Tm, gs.ctm)[1]),
           font: f.baseName,
           color: gs.fill,
+          mode: gs.Tr,
           k: 1000 / (gs.fs * gs.Th * (Math.hypot(mul(Tm, gs.ctm)[0], mul(Tm, gs.ctm)[1]) || 1)),
           run: { key: gs.fontKey, font: f, bytes: Array.from(bytes.subarray(k, k + step)), fs: gs.fs, Tc: gs.Tc, Tw: gs.Tw, Th: gs.Th, s: Math.hypot(mul(Tm, gs.ctm)[0], mul(Tm, gs.ctm)[1]) || 1, show: shows.length },
         });
@@ -814,6 +818,9 @@ function interpret(doc: PDFDocument, page: PDFPage): Interpretation {
         break;
       case 'TL':
         gs.TL = nums(a)[0] ?? 0;
+        break;
+      case 'Tr':
+        gs.Tr = nums(a)[0] ?? 0;
         break;
       case 'Ts':
         gs.Ts = nums(a)[0] ?? 0;
@@ -1190,7 +1197,54 @@ export function removeGlyphs(doc: PDFDocument, page: PDFPage, boxes: Box[], mode
   return { ok: true, removedGlyphs: remove.size, removedAnnots, coversImage, editShifts, editScales, editNative, mcids, removedAnnotRefs };
 }
 
+/**
+ * Deletes the glyphs `pick` selects (wherever they are), keeping the rest of
+ * the text in place. Returns how many were removed; -1 when the page content
+ * could not be read.
+ */
+export function removeGlyphsWhere(doc: PDFDocument, page: PDFPage, pick: (g: Glyph) => boolean): number {
+  let it: Interpretation;
+  try {
+    it = interpret(doc, page);
+  } catch {
+    return -1;
+  }
+  const remove = new Set<number>();
+  it.glyphs.forEach((g, i) => pick(g) && remove.add(i));
+  if (!remove.size) return 0;
+  const byInstr = new Map<number, string>();
+  let acc = 0;
+  for (const s of it.shows) {
+    if (s.positioned) acc = 0;
+    const r = rewriteShow(s, remove, new Map(), it.glyphs, acc, new Map());
+    acc = r.acc;
+    if (r.changed) byInstr.set(s.instr, r.text);
+  }
+  writeContent(doc, page, it, byInstr);
+  return remove.size;
+}
+
+function writeContent(doc: PDFDocument, page: PDFPage, it: Interpretation, byInstr: Map<number, string>): void {
+  const chunks: Uint8Array[] = [];
+  let last = 0;
+  it.instrs.forEach((ins, idx) => {
+    const s = byInstr.get(idx);
+    if (!s) return;
+    chunks.push(it.src.subarray(last, ins.start), new TextEncoder().encode(s));
+    last = ins.end;
+  });
+  chunks.push(it.src.subarray(last));
+  const out = new Uint8Array(chunks.reduce((n, c) => n + c.length, 0));
+  let o = 0;
+  for (const c of chunks) {
+    out.set(c, o);
+    o += c.length;
+  }
+  page.node.set(PDFName.of('Contents'), doc.context.register(doc.context.flateStream(out)));
+}
+
 /** A name as written in a content stream. */
+
 function pdfName(name: string): string {
   return `/${(name || 'Span').replace(/[^!-~]|[()<>[\]{}/%#]/g, (c) => `#${c.charCodeAt(0).toString(16).padStart(2, '0')}`)}`;
 }
