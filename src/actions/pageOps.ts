@@ -5,7 +5,7 @@
 import { usePDFStore } from '@/store/usePDFStore';
 import { withBusy } from './document';
 import { makeLink } from '@/lib/objectFactory';
-import { saveBytes } from '@/lib/platform';
+import { saveFile } from './saveGuard';
 import type { BookmarkItem, LinkObject, PageRef } from '@/types';
 import type { Rect } from '@/lib/geometry';
 
@@ -204,8 +204,9 @@ export async function exportImages(): Promise<number> {
     return 0;
   }
   const base = (store.fileName ?? 'document.pdf').replace(/\.pdf$/i, '');
-  const path = await saveBytes(result.zip, `${base}-images.zip`, [{ name: 'ZIP archive', extensions: ['zip'] }]);
-  if (path) store.toast(`Exported ${result.count} image${result.count === 1 ? '' : 's'}${result.skipped ? ` (${result.skipped} skipped: unusual formats)` : ''}.`, 'success');
+  await saveFile(result.zip, `${base}-images.zip`, [{ name: 'ZIP archive', extensions: ['zip'] }], {
+    successMessage: `Exported ${result.count} image${result.count === 1 ? '' : 's'}${result.skipped ? ` (${result.skipped} skipped: unusual formats)` : ''}.`,
+  });
   return result.count;
 }
 

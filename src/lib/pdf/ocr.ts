@@ -128,6 +128,8 @@ export async function ocrPages(
     sample?: (result: OcrPageResult, pixels: { data: Uint8ClampedArray; width: number; height: number; scale: number }) => void;
     /** Paint table lines white before recognising: letters touching ruling lines read much better. */
     eraseLines?: boolean;
+    /** Stops between pages when aborted. */
+    signal?: AbortSignal;
   },
   onProgress?: (msg: string, fraction: number) => void,
 ): Promise<OcrPageResult[]> {
@@ -158,6 +160,7 @@ export async function ocrPages(
   const results: OcrPageResult[] = [];
   try {
     for (current = 0; current < pages.length; current++) {
+      opts.signal?.throwIfAborted();
       const n = pages[current];
       report(`Rendering page ${n}`, 0);
       // Rotation 0: boxes come out in unrotated page space.

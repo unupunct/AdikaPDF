@@ -72,8 +72,61 @@ export function comboOf(e: { key: string; ctrlKey: boolean; metaKey: boolean; al
   return parts.join('+');
 }
 
-/** Shortcuts the app already uses (a custom one takes their place). */
-export const BUILT_IN = ['Ctrl+S', 'Ctrl+Shift+S', 'Ctrl+O', 'Ctrl+P', 'Ctrl+F', 'Ctrl+H', 'Ctrl+K', 'Ctrl+W', 'Ctrl+Z', 'Ctrl+Y', 'Ctrl+D', 'Ctrl+G', 'Ctrl+A', 'Ctrl+C', 'Ctrl+V', 'Ctrl+X', 'Ctrl+Tab', 'F5', 'F7', 'F11', 'Delete', 'Escape'];
+export interface BuiltInShortcut {
+  combo: string;
+  /** What it does (English, translated when shown). */
+  label: string;
+  /** The same keys as `comboOf` may name them (e.g. Ctrl+Shift+- arrives as Ctrl+Shift+_). */
+  aliases?: string[];
+}
+
+/** Shortcuts the app already uses (a custom one takes their place). Keep in step with useShortcuts. */
+export const BUILT_IN_SHORTCUTS: BuiltInShortcut[] = [
+  { combo: 'Ctrl+O', label: 'Open' },
+  { combo: 'Ctrl+S', label: 'Save' },
+  { combo: 'Ctrl+Shift+S', label: 'Save as' },
+  { combo: 'Ctrl+P', label: 'Print' },
+  { combo: 'Ctrl+W', label: 'Close document' },
+  { combo: 'Ctrl+Tab', label: 'Next document' },
+  { combo: 'Ctrl+Shift+Tab', label: 'Previous document' },
+  { combo: 'Ctrl+F', label: 'Find' },
+  { combo: 'Ctrl+H', label: 'Find and replace' },
+  { combo: 'Ctrl+K', label: 'Tool search' },
+  { combo: 'Ctrl+G', label: 'Go to page' },
+  { combo: 'Ctrl+D', label: 'Document properties' },
+  { combo: 'Ctrl+Z', label: 'Undo' },
+  { combo: 'Ctrl+Y', label: 'Redo', aliases: ['Ctrl+Shift+Z'] },
+  { combo: 'Ctrl+A', label: 'Select all' },
+  { combo: 'Ctrl+C', label: 'Copy' },
+  { combo: 'Ctrl+X', label: 'Cut' },
+  { combo: 'Ctrl+V', label: 'Paste' },
+  { combo: 'Ctrl+Shift+D', label: 'Duplicate' },
+  { combo: 'Ctrl+=', label: 'Zoom in', aliases: ['Ctrl++'] },
+  { combo: 'Ctrl+-', label: 'Zoom out' },
+  { combo: 'Ctrl+0', label: 'Fit width' },
+  { combo: 'Ctrl+Shift+-', label: 'Rotate view left', aliases: ['Ctrl+Shift+_'] },
+  { combo: 'Ctrl+Shift++', label: 'Rotate view right', aliases: ['Ctrl+Shift+='] },
+  { combo: 'Ctrl+\\', label: 'Split view' },
+  { combo: 'Ctrl+Shift+H', label: 'Auto-scroll' },
+  { combo: 'Ctrl+Shift+V', label: 'Read this page aloud' },
+  { combo: 'Ctrl+Shift+B', label: 'Read to the end' },
+  { combo: 'Ctrl+Shift+C', label: 'Pause or resume reading' },
+  { combo: 'Ctrl+Shift+E', label: 'Stop reading' },
+  { combo: 'Alt+ArrowLeft', label: 'Previous view' },
+  { combo: 'Alt+ArrowRight', label: 'Next view' },
+  { combo: 'F5', label: 'Presentation' },
+  { combo: 'F7', label: 'Spelling' },
+  { combo: 'F11', label: 'Full screen' },
+  { combo: 'Delete', label: 'Delete' },
+  { combo: 'Escape', label: 'Cancel' },
+];
+
+export const BUILT_IN = BUILT_IN_SHORTCUTS.flatMap((b) => [b.combo, ...(b.aliases ?? [])]);
+
+/** The built-in shortcut on these keys, if any. */
+export function builtInFor(combo: string): BuiltInShortcut | undefined {
+  return BUILT_IN_SHORTCUTS.find((b) => b.combo === combo || b.aliases?.includes(combo));
+}
 
 /** Single letters, digits and plain keys are for tools and typing: a shortcut needs Ctrl or Alt, or a function key. */
 export function usableCombo(combo: string): boolean {

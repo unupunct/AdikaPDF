@@ -194,12 +194,13 @@ export async function compareVisually(): Promise<void> {
   const [f] = await pickFiles(PDF_FILTER);
   if (!f) return;
   const newName = s.fileName ?? 'Current document';
-  const out = await withBusy('Comparing documents…', async (progress) => {
+  const out = await withBusy('Comparing documents…', async (progress, signal) => {
     const newBytes = await exportCurrentPdf({}, progress);
     const [oldDoc, newDoc] = await Promise.all([openPdf(f.bytes), openPdf(newBytes)]);
     try {
       const [{ visualCompareReport }, { renderPageToCanvas }] = await Promise.all([import('@/lib/pdf/visualCompare'), import('@/lib/pdf/convert')]);
       const raster = (pdf: typeof oldDoc, n: number) => async () => {
+        signal.throwIfAborted();
         const { canvas, viewport, scale } = await renderPageToCanvas(pdf, n, 100);
         const img = (canvas.getContext('2d') as CanvasRenderingContext2D).getImageData(0, 0, canvas.width, canvas.height);
         canvas.width = canvas.height = 0;

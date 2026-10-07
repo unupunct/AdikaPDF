@@ -16,6 +16,7 @@ import { SplitView, useSplit } from '@/components/viewer/SplitView';
 import { useShortcuts } from '@/hooks/useShortcuts';
 import { useFileDrop } from '@/hooks/useFileDrop';
 import { useAutoReload } from '@/hooks/useAutoReload';
+import { useViewPrefs } from '@/hooks/useViewPrefs';
 import { TabBar } from '@/components/shell/TabBar';
 import { PresentationView } from '@/components/viewer/PresentationView';
 import { SelectionToolbar } from '@/components/viewer/SelectionToolbar';
@@ -38,6 +39,7 @@ export default function App() {
   const split = useSplit((s) => s.open);
   useShortcuts();
   useAutoReload();
+  useViewPrefs();
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', theme === 'dark');

@@ -40,7 +40,9 @@ export function NotePopup({ note, zoom, pageWidth }: { note: NoteObject; zoom: n
       style={{ left, top: note.y * zoom, width }}
     >
       <div className="flex items-center gap-1 border-b border-amber-200 bg-amber-100 px-2 py-1 text-[11px] text-amber-900 dark:border-amber-800 dark:bg-amber-900/60 dark:text-amber-100">
-        <span className="min-w-0 flex-1 truncate font-semibold">{note.author}</span>
+        <span className="min-w-0 flex-1 truncate font-semibold" data-no-translate>
+          {note.author}
+        </span>
         <span className="opacity-70">{new Date(note.modifiedAt).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' })}</span>
         <button
           type="button"

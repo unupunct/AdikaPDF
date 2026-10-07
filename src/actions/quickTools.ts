@@ -164,7 +164,7 @@ export async function mergeFiles(files: PickedFile[]): Promise<void> {
   }
   const locked = files.filter((f) => isPdfEncrypted(f.bytes));
   if (locked.length) {
-    usePDFStore.getState().toast(`${locked.map((f) => f.name).join(', ')} ${locked.length > 1 ? 'are' : 'is'} password-protected and cannot be merged.`, 'error');
+    usePDFStore.getState().toast(`Password-protected files cannot be merged: ${locked.map((f) => f.name).join(', ')}.`, 'error');
     return;
   }
   const outputs = await withBusy('Merging…', async (progress) => {

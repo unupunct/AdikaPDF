@@ -53,7 +53,7 @@ async function findPdfs(folder: string, out: Array<{ path: string; size: number;
 export async function updateSearchIndex(): Promise<SearchIndex | undefined> {
   const index = await loadSearchIndex();
   if (!index.folders.length) return index;
-  return withBusy('Updating the search index…', async (progress) => {
+  return withBusy('Updating the search index…', async (progress, signal) => {
     const found: Array<{ path: string; size: number; modified: number }> = [];
     progress('Looking for PDF files…', null);
     for (const f of index.folders) await findPdfs(f, found);
@@ -63,6 +63,11 @@ export async function updateSearchIndex(): Promise<SearchIndex | undefined> {
     const meta = new Map(found.map((f) => [f.path, f]));
     const { openPdf } = await import('@/lib/pdf/pdfService');
     for (let i = 0; i < plan.toRead.length; i++) {
+      // Cancelled: what was read so far stays in the index (saved below).
+      if (signal.aborted) {
+        await save(next);
+        signal.throwIfAborted();
+      }
       const path = plan.toRead[i];
       progress(`Reading ${path.split(/[\\/]/).pop()} (${i + 1} of ${plan.toRead.length})`, (i + 1) / plan.toRead.length);
       const m = meta.get(path)!;

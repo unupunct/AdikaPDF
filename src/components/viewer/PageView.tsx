@@ -6,7 +6,7 @@
  */
 import { memo, useEffect, useRef, useState, type RefObject } from 'react';
 import type { PageRef } from '@/types';
-import { renderPageToCanvas } from '@/lib/pdf/pdfService';
+import { isRenderCancelled, renderPageToCanvas } from '@/lib/pdf/pdfService';
 import { usePDFStore } from '@/store/usePDFStore';
 import { PageOverlay } from './PageOverlay';
 import { LinkLayer, TextSelectionLayer } from './ReaderLayers';
@@ -65,7 +65,10 @@ export const PageView = memo(function PageView({ page, index, zoom, scrollRoot }
           setRenderedZoom(zoom);
           setError(null);
         },
-        (e: unknown) => setError(e instanceof Error ? e.message : 'Render failed'),
+        // A cancelled render drew nothing at this zoom: renderedZoom stays as it was.
+        (e: unknown) => {
+          if (!isRenderCancelled(e)) setError(e instanceof Error ? e.message : 'Render failed');
+        },
       );
     }, delay);
     return () => {

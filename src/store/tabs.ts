@@ -36,6 +36,10 @@ const DOC_KEYS = [
   'docMeta',
   'fileStamp',
   'scrollRequest',
+  // A placement started in one tab must not carry over to the next.
+  'pendingImage',
+  'pendingSignature',
+  'pendingStamp',
 ] as const satisfies ReadonlyArray<keyof StoreState>;
 
 export type DocSlice = Pick<StoreState, (typeof DOC_KEYS)[number]>;
@@ -81,6 +85,9 @@ function emptySlice(): DocSlice {
     selectedIds: [],
     editingTextId: null,
     search: { query: '', hits: [], active: 0, open: false, running: false },
+    pendingImage: null,
+    pendingSignature: null,
+    pendingStamp: null,
     navBack: [],
     navForward: [],
     viewRotation: 0,

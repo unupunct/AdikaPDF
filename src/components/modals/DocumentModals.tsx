@@ -481,8 +481,12 @@ export function CompressModal() {
             variant="primary"
             data-testid="compress-run"
             onClick={async () => {
-              const r = await runCompress({ ...presets[preset], stripMetadata: strip });
-              if (r) setResult(r);
+              try {
+                const r = await runCompress({ ...presets[preset], stripMetadata: strip });
+                if (r) setResult(r);
+              } catch (e) {
+                usePDFStore.getState().toast(e instanceof Error ? e.message : String(e), 'error');
+              }
             }}
           >
             Compress and save copy
@@ -534,15 +538,24 @@ export function OcrModal() {
     setLangs(next.length ? next : ['eng']);
   };
 
+  useEffect(() => {
+    if (open) setError(null);
+  }, [open]);
+
   const run = async () => {
+    let pageNumbers: number[];
     try {
-      const pageNumbers = scope === 'all' ? Array.from({ length: count }, (_, i) => i + 1) : scope === 'current' ? [Math.max(1, current)] : [...new Set(parseRanges(range, count).flat())];
-      saveOcrLangs(langs);
-      close();
-      await runOcr({ pageNumbers, dpi, lang: langs.join('+'), editable: output === 'searchable' ? undefined : { family: output } });
+      pageNumbers = scope === 'all' ? Array.from({ length: count }, (_, i) => i + 1) : scope === 'current' ? [Math.max(1, current)] : [...new Set(parseRanges(range, count).flat())];
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
+      return;
     }
+    saveOcrLangs(langs);
+    close();
+    // The dialog is closed by now: failures are shown as a toast.
+    await runOcr({ pageNumbers, dpi, lang: langs.join('+'), editable: output === 'searchable' ? undefined : { family: output } }).catch((e: unknown) =>
+      usePDFStore.getState().toast(e instanceof Error ? e.message : String(e), 'error'),
+    );
   };
 
   return (

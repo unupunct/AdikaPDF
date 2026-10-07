@@ -43,7 +43,7 @@ export function WatchPanel({ sequences }: { sequences: ActionSequence[] }) {
         {list.map((w) => (
           <div key={w.id} className="rounded-md border border-app p-2 text-xs" data-testid="watch-item">
             <div className="mb-1 flex items-center gap-2">
-              <Checkbox checked={w.enabled} onChange={(v) => change(w.id, { enabled: v })} label="" />
+              <Checkbox checked={w.enabled} onChange={(v) => change(w.id, { enabled: v })} label="" ariaLabel="Watch this folder" />
               <span className="min-w-0 flex-1 truncate font-medium" title={w.folder} data-no-translate>
                 {w.folder}
               </span>

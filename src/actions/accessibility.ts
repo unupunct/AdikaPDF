@@ -70,7 +70,7 @@ export async function makeCurrentAccessible(opts: FixOptions): Promise<boolean> 
     return makeAccessible(bytes, opts);
   });
   if (!res) return false;
-  await saveDerived(res.bytes, '-accessible', true);
+  if (!(await saveDerived(res.bytes, '-accessible', true))) return false;
   store.toast(res.tagged ? `Accessible copy saved: ${res.elements} structure elements, title and language set.` : 'Accessible copy saved: title, language and descriptions set.', 'success');
   return true;
 }
