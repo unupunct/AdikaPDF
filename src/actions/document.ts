@@ -3,11 +3,11 @@
  * drag-and-drop: open, save, save as, merge, export bytes.
  */
 import { currentDoc, primarySourceId, usePDFStore } from '@/store/usePDFStore';
-import { askConfirm, askPassword } from '@/store/useDialogs';
+import { askChoice, askConfirm, askPassword } from '@/store/useDialogs';
 import { buildPdf, ExportError, type ExportOptions, type RasterResult } from '@/lib/pdf/exportPdf';
 import { PasswordRequiredError, canvasToBytes, rasterizePage } from '@/lib/pdf/pdfService';
 import { fileStamp, pickFiles, saveBytes, readFile, type FileFilter } from '@/lib/platform';
-import { activeTabIsEmpty, newTab, removeTab, switchTab, useTabs } from '@/store/tabs';
+import { activeTabIsEmpty, newTab, removeTab, switchTab, tabWithPath, useTabs } from '@/store/tabs';
 import { addRecent } from '@/lib/recent';
 import { errorText, log } from '@/lib/log';
 import { verifyPdfSignatures } from '@/lib/crypto/digitalSignature';
@@ -56,6 +56,14 @@ async function confirmDiscard(): Promise<boolean> {
  * `replaceCurrent` reuses the current tab (e.g. reopening a just-signed copy).
  */
 export async function openPdfBytes(bytes: Uint8Array, name: string, path: string | null = null, replaceCurrent = false): Promise<boolean> {
+  // Already open in a tab: go there (two tabs saving the same file would overwrite each other).
+  const open = !replaceCurrent && path ? tabWithPath(path) : null;
+  if (open) {
+    switchTab(open);
+    usePDFStore.getState().toast(` is already open.`, 'info');
+    return true;
+  }
+  const stampAtRead = path ? await fileStamp(path).catch(() => null) : null;
   const previousTab = useTabs.getState().activeId;
   const createdTab = !replaceCurrent && !activeTabIsEmpty() ? newTab() : null;
   const ok = await openIntoCurrentTab(bytes, name, path);
@@ -65,7 +73,8 @@ export async function openPdfBytes(bytes: Uint8Array, name: string, path: string
   }
   if (ok && path) {
     addRecent(path, name, usePDFStore.getState().pages.length);
-    usePDFStore.setState({ fileStamp: await fileStamp(path) });
+    // The stamp of the bytes read: a change from now on is someone else's.
+    usePDFStore.setState({ fileStamp: stampAtRead ?? (await fileStamp(path)) });
   }
   return ok;
 }
@@ -73,6 +82,8 @@ export async function openPdfBytes(bytes: Uint8Array, name: string, path: string
 async function openIntoCurrentTab(bytes: Uint8Array, name: string, path: string | null): Promise<boolean> {
   let password: string | undefined;
   let incorrect = false;
+  // The bytes stay the file on disk (not decrypted or converted): incremental saves can append to them.
+  let original = !!path;
   // Encrypted for certificates: opened with the private key of one of them.
   const { isPubSecEncrypted } = await import('@/lib/crypto/pubsec');
   if (isPubSecEncrypted(bytes)) {
@@ -85,6 +96,7 @@ async function openIntoCurrentTab(bytes: Uint8Array, name: string, path: string 
       if (!key) return false;
       try {
         bytes = await withBusyThrow(`Opening ${name} with your certificate…`, () => decryptWithCertificate(bytes, key));
+        original = false;
         break;
       } catch (e) {
         error = errorMessage(e);
@@ -100,6 +112,7 @@ async function openIntoCurrentTab(bytes: Uint8Array, name: string, path: string 
     if (conv) {
       xfaOriginal = conv.original;
       bytes = conv.bytes;
+      original = false;
     }
   } catch (e) {
     log('warn', `XFA conversion of ${name} failed: ${errorText(e)}`);
@@ -107,7 +120,7 @@ async function openIntoCurrentTab(bytes: Uint8Array, name: string, path: string 
   }
   for (;;) {
     try {
-      await withBusyThrow(`Opening ${name}…`, () => usePDFStore.getState().loadDocument(bytes, name, path, password));
+      await withBusyThrow(`Opening ${name}…`, () => usePDFStore.getState().loadDocument(bytes, name, path, password, original));
       void refreshSignatureStatus();
       const primary = usePDFStore.getState().pages.find((p) => p.kind === 'source')?.sourceId;
       if (primary) void import('./xfaForms').then((m) => m.noteXfaSource(primary, xfaOriginal));
@@ -249,22 +262,79 @@ export async function saveDocument(saveAs = false): Promise<boolean> {
     });
     if (!ok) return false;
   }
+  // Changed on disk since it was opened or saved (another program, or the same file in another window)?
+  if (!saveAs && s.filePath && s.fileStamp) {
+    const onDisk = await fileStamp(s.filePath);
+    if (onDisk && onDisk !== s.fileStamp) {
+      const choice = await askChoice({
+        title: 'The file changed on disk',
+        message: 'Another program changed this file after you opened it. Overwrite it with your version, or save your version as a new file?',
+        confirmLabel: 'Overwrite',
+        altLabel: 'Save as…',
+        danger: true,
+      });
+      if (!choice) return false;
+      if (choice === 'alt') saveAs = true;
+    }
+  }
+  const mode = await chooseSaveMode();
+  if (!mode) return false;
+  if (mode === 'copy') saveAs = true;
   const result = await withBusy('Saving…', async (progress) => {
     // A converted XFA form that was only filled in stays the original XFA form.
     const xfa = await import('./xfaForms').then((m) => m.xfaSaveBytes());
-    const bytes = xfa ?? (await exportCurrentPdf({}, progress));
+    const bytes = xfa ?? (mode === 'incremental' ? await exportIncrementalPdf(progress) : await exportCurrentPdf({}, progress));
     const path = await saveBytes(bytes, suggestedName(), PDF_FILTER, saveAs ? null : s.filePath);
-    return { path, bytes };
+    // The file's new stamp before the document counts as saved, so the reload watcher never mistakes our own save for another program's.
+    const stamp = path && path !== 'downloaded' ? await fileStamp(path) : null;
+    return { path, bytes, stamp };
   });
   if (!result?.path) return false;
   const name = result.path === 'downloaded' ? suggestedName() : result.path.split(/[\\/]/).pop();
+  if (result.path !== 'downloaded') usePDFStore.setState({ fileStamp: result.stamp });
   usePDFStore.getState().markSaved(result.path === 'downloaded' ? null : result.path, name);
-  if (result.path !== 'downloaded') {
-    addRecent(result.path, name ?? suggestedName(), usePDFStore.getState().pages.length);
-    usePDFStore.setState({ fileStamp: await fileStamp(result.path) });
-  }
+  if (result.path !== 'downloaded') addRecent(result.path, name ?? suggestedName(), usePDFStore.getState().pages.length);
   usePDFStore.getState().toast(result.path === 'downloaded' ? 'Downloaded.' : `Saved to ${result.path}`, 'success');
   return true;
+}
+
+/** True when the opened file carries digital signatures. */
+function isSigned(): boolean {
+  return usePDFStore.getState().signatureStatus.length > 0;
+}
+
+/**
+ * Incremental update (signed documents always, others when preferred and the
+ * changes allow it), full rewrite, or a copy when a full rewrite would break
+ * signatures; null when cancelled.
+ */
+async function chooseSaveMode(): Promise<'incremental' | 'full' | 'copy' | null> {
+  const s = usePDFStore.getState();
+  const signed = isSigned();
+  const { useSaveSettings } = await import('@/lib/saveSettings');
+  const { incrementalBlocker } = await import('@/lib/pdf/exportPdf');
+  const blocker = incrementalBlocker(currentDoc(), s.docMeta);
+  if (!blocker && (signed || useSaveSettings.getState().preferIncremental)) return 'incremental';
+  if (!signed) return 'full';
+  log('info', `Save: full rewrite of a signed document (${blocker})`);
+  const choice = await askChoice({
+    title: 'Saving will invalidate the signatures',
+    message:
+      'This PDF is digitally signed. Your changes (pages, page content, redactions or properties) need the whole file to be rewritten, which invalidates its signatures. Comments, form values and bookmarks alone are saved without touching the signed content. Save a copy to keep the signed original as it is.',
+    confirmLabel: 'Save anyway',
+    altLabel: 'Save a copy',
+    danger: true,
+  });
+  return choice === 'confirm' ? 'full' : choice === 'alt' ? 'copy' : null;
+}
+
+/** The current edits as an incremental update of the opened file. */
+async function exportIncrementalPdf(progress?: (msg: string, f: number | null) => void): Promise<Uint8Array> {
+  const s = usePDFStore.getState();
+  if (s.editingTextId) usePDFStore.getState().setEditingText(null);
+  const { buildIncrementalPdf } = await import('@/lib/pdf/exportPdf');
+  const doc = currentDoc();
+  return buildIncrementalPdf(doc, { fieldDisplay: formattedDisplay(doc.fieldValues), onProgress: (m, f) => progress?.(m, f) });
 }
 
 /** Saves bytes produced by an operation (sign, protect, compress…) as a new file. */

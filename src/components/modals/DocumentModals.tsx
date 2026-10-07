@@ -12,6 +12,7 @@ import { AdikaLogo } from '@/components/shell/AdikaLogo';
 import { logsFolder, openLogsFolder } from '@/lib/log';
 import { APP_VERSION, checkForUpdates, useUpdates } from '@/lib/updates';
 import { openExternal } from '@/lib/platform';
+import { useSaveSettings } from '@/lib/saveSettings';
 
 function UpdateInfo() {
   const { status, latest, error, auto, setAuto } = useUpdates();
@@ -44,6 +45,19 @@ function UpdateInfo() {
       </div>
       <div className="mt-1.5">
         <Checkbox checked={auto} onChange={setAuto} label="Check automatically once a week" />
+      </div>
+    </div>
+  );
+}
+
+function SaveInfo() {
+  const { preferIncremental, setPreferIncremental } = useSaveSettings();
+  return (
+    <div className="mt-4 rounded-lg border border-app px-3 py-2 text-[11.5px]" data-testid="save-info">
+      <span className="block font-semibold">Saving</span>
+      <span className="block text-muted">Signed documents are saved as an incremental update, so their signatures stay valid. Other documents are rewritten in full, which also removes earlier versions kept inside the file.</span>
+      <div className="mt-1.5">
+        <Checkbox checked={preferIncremental} onChange={setPreferIncremental} label="Save as incremental update when possible" />
       </div>
     </div>
   );
@@ -725,6 +739,7 @@ export function AboutModal() {
         </tbody>
       </table>
       <UpdateInfo />
+      <SaveInfo />
       <LogsInfo />
       <p className="mt-4 text-[11px] text-muted">
         Built with pdf.js (Mozilla), pdf-lib, Konva, node-forge, Tesseract.js, libheif (LGPL-3.0), postal-mime, msgreader, dxf-parser, Noto fonts (SIL OFL) and Tauri.

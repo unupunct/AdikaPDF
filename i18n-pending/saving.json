@@ -38,5 +38,101 @@
     "hu": "A dokumentum megnyitásához meg kell adni a jelszavát.",
     "it": "Per aprire il documento serve la sua password.",
     "es": "El documento necesita su contraseña para abrirse."
+  },
+  "comments were added": {
+    "ro": "au fost adăugate comentarii",
+    "de": "Kommentare wurden hinzugefügt",
+    "fr": "des commentaires ont été ajoutés",
+    "hu": "megjegyzéseket adtak hozzá",
+    "it": "sono stati aggiunti commenti",
+    "es": "se añadieron comentarios"
+  },
+  "{0} is already open.": {
+    "ro": "{0} este deja deschis.",
+    "de": "{0} ist bereits geöffnet.",
+    "fr": "{0} est déjà ouvert.",
+    "hu": "{0} már meg van nyitva.",
+    "it": "{0} è già aperto.",
+    "es": "{0} ya está abierto."
+  },
+  "The file changed on disk": {
+    "ro": "Fișierul s-a modificat pe disc",
+    "de": "Die Datei wurde auf dem Datenträger geändert",
+    "fr": "Le fichier a été modifié sur le disque",
+    "hu": "A fájl megváltozott a lemezen",
+    "it": "Il file è cambiato sul disco",
+    "es": "El archivo cambió en el disco"
+  },
+  "Another program changed this file after you opened it. Overwrite it with your version, or save your version as a new file?": {
+    "ro": "Un alt program a modificat acest fișier după ce l-ați deschis. Îl suprascrieți cu versiunea dvs. sau salvați versiunea dvs. ca fișier nou?",
+    "de": "Ein anderes Programm hat diese Datei geändert, nachdem Sie sie geöffnet haben. Mit Ihrer Version überschreiben oder Ihre Version als neue Datei speichern?",
+    "fr": "Un autre programme a modifié ce fichier après son ouverture. L’écraser avec votre version, ou enregistrer votre version dans un nouveau fichier ?",
+    "hu": "Egy másik program megváltoztatta ezt a fájlt, miután megnyitotta. Felülírja a saját változatával, vagy új fájlként menti a változatát?",
+    "it": "Un altro programma ha modificato questo file dopo che lo hai aperto. Sovrascriverlo con la tua versione o salvare la tua versione come nuovo file?",
+    "es": "Otro programa cambió este archivo después de abrirlo. ¿Sobrescribirlo con su versión o guardar su versión como un archivo nuevo?"
+  },
+  "Overwrite": {
+    "ro": "Suprascrie",
+    "de": "Überschreiben",
+    "fr": "Écraser",
+    "hu": "Felülírás",
+    "it": "Sovrascrivi",
+    "es": "Sobrescribir"
+  },
+  "Saving will invalidate the signatures": {
+    "ro": "Salvarea va invalida semnăturile",
+    "de": "Das Speichern macht die Signaturen ungültig",
+    "fr": "L’enregistrement invalidera les signatures",
+    "hu": "A mentés érvényteleníti az aláírásokat",
+    "it": "Il salvataggio invaliderà le firme",
+    "es": "Al guardar se invalidarán las firmas"
+  },
+  "This PDF is digitally signed. Your changes (pages, page content, redactions or properties) need the whole file to be rewritten, which invalidates its signatures. Comments, form values and bookmarks alone are saved without touching the signed content. Save a copy to keep the signed original as it is.": {
+    "ro": "Acest PDF este semnat digital. Modificările dvs. (pagini, conținutul paginilor, redactări sau proprietăți) necesită rescrierea întregului fișier, ceea ce îi invalidează semnăturile. Doar comentariile, valorile din formulare și marcajele se salvează fără a atinge conținutul semnat. Salvați o copie pentru a păstra originalul semnat neschimbat.",
+    "de": "Dieses PDF ist digital signiert. Ihre Änderungen (Seiten, Seiteninhalt, Schwärzungen oder Eigenschaften) erfordern ein Neuschreiben der gesamten Datei, wodurch die Signaturen ungültig werden. Nur Kommentare, Formularwerte und Lesezeichen werden gespeichert, ohne den signierten Inhalt zu berühren. Speichern Sie eine Kopie, um das signierte Original unverändert zu behalten.",
+    "fr": "Ce PDF est signé numériquement. Vos modifications (pages, contenu des pages, caviardages ou propriétés) nécessitent de réécrire tout le fichier, ce qui invalide ses signatures. Les commentaires, valeurs de formulaire et signets seuls sont enregistrés sans toucher au contenu signé. Enregistrez une copie pour conserver l’original signé tel quel.",
+    "hu": "Ez a PDF digitálisan alá van írva. A módosításai (oldalak, oldaltartalom, kitakarások vagy tulajdonságok) miatt az egész fájlt újra kell írni, ami érvényteleníti az aláírásait. A megjegyzések, űrlapértékek és könyvjelzők önmagukban az aláírt tartalom érintése nélkül menthetők. Mentsen másolatot, hogy az aláírt eredeti változatlan maradjon.",
+    "it": "Questo PDF è firmato digitalmente. Le tue modifiche (pagine, contenuto delle pagine, oscuramenti o proprietà) richiedono la riscrittura dell’intero file, il che invalida le firme. Commenti, valori dei moduli e segnalibri da soli vengono salvati senza toccare il contenuto firmato. Salva una copia per mantenere invariato l’originale firmato.",
+    "es": "Este PDF está firmado digitalmente. Sus cambios (páginas, contenido de las páginas, censuras o propiedades) requieren reescribir todo el archivo, lo que invalida sus firmas. Los comentarios, valores de formulario y marcadores por sí solos se guardan sin tocar el contenido firmado. Guarde una copia para conservar el original firmado tal cual."
+  },
+  "Save anyway": {
+    "ro": "Salvează oricum",
+    "de": "Trotzdem speichern",
+    "fr": "Enregistrer quand même",
+    "hu": "Mentés mindenképp",
+    "it": "Salva comunque",
+    "es": "Guardar de todos modos"
+  },
+  "Save a copy": {
+    "ro": "Salvează o copie",
+    "de": "Kopie speichern",
+    "fr": "Enregistrer une copie",
+    "hu": "Másolat mentése",
+    "it": "Salva una copia",
+    "es": "Guardar una copia"
+  },
+  "Saving": {
+    "ro": "Salvare",
+    "de": "Speichern",
+    "fr": "Enregistrement",
+    "hu": "Mentés",
+    "it": "Salvataggio",
+    "es": "Guardado"
+  },
+  "Signed documents are saved as an incremental update, so their signatures stay valid. Other documents are rewritten in full, which also removes earlier versions kept inside the file.": {
+    "ro": "Documentele semnate se salvează ca actualizare incrementală, astfel încât semnăturile lor rămân valide. Celelalte documente sunt rescrise complet, ceea ce elimină și versiunile anterioare păstrate în fișier.",
+    "de": "Signierte Dokumente werden als inkrementelle Aktualisierung gespeichert, sodass ihre Signaturen gültig bleiben. Andere Dokumente werden vollständig neu geschrieben, wodurch auch frühere, in der Datei gespeicherte Versionen entfernt werden.",
+    "fr": "Les documents signés sont enregistrés par mise à jour incrémentielle, afin que leurs signatures restent valides. Les autres documents sont entièrement réécrits, ce qui supprime aussi les versions antérieures conservées dans le fichier.",
+    "hu": "Az aláírt dokumentumok növekményes frissítésként mentődnek, így aláírásaik érvényesek maradnak. A többi dokumentum teljesen újraíródik, ami a fájlban tárolt korábbi változatokat is eltávolítja.",
+    "it": "I documenti firmati vengono salvati come aggiornamento incrementale, così le firme restano valide. Gli altri documenti vengono riscritti per intero, rimuovendo anche le versioni precedenti conservate nel file.",
+    "es": "Los documentos firmados se guardan como una actualización incremental, para que sus firmas sigan siendo válidas. Los demás documentos se reescriben por completo, lo que también elimina las versiones anteriores guardadas en el archivo."
+  },
+  "Save as incremental update when possible": {
+    "ro": "Salvează ca actualizare incrementală când este posibil",
+    "de": "Wenn möglich als inkrementelle Aktualisierung speichern",
+    "fr": "Enregistrer par mise à jour incrémentielle si possible",
+    "hu": "Mentés növekményes frissítésként, ha lehetséges",
+    "it": "Salva come aggiornamento incrementale quando possibile",
+    "es": "Guardar como actualización incremental cuando sea posible"
   }
 }

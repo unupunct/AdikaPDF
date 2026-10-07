@@ -17,7 +17,9 @@ interface ConfirmPrompt {
   danger: boolean;
   /** Only an OK button (a message, nothing to decide). */
   messageOnly?: boolean;
-  resolve: (ok: boolean) => void;
+  /** A third button between Cancel and the main one (`askChoice`). */
+  altLabel?: string;
+  resolve: (ok: boolean | 'alt') => void;
 }
 
 interface CertKeyPrompt {
@@ -97,7 +99,26 @@ export function askConfirm(opts: { title: string; message: string; confirmLabel?
         danger: opts.danger ?? false,
         resolve: (ok) => {
           useDialogs.setState({ confirm: null });
-          resolve(ok);
+          resolve(ok === true);
+        },
+      },
+    });
+  });
+}
+
+/** Asks with three buttons: Cancel (null), `altLabel` ('alt') and `confirmLabel` ('confirm'). */
+export function askChoice(opts: { title: string; message: string; confirmLabel: string; altLabel: string; danger?: boolean }): Promise<'confirm' | 'alt' | null> {
+  return new Promise((resolve) => {
+    useDialogs.setState({
+      confirm: {
+        title: opts.title,
+        message: opts.message,
+        confirmLabel: opts.confirmLabel,
+        altLabel: opts.altLabel,
+        danger: opts.danger ?? false,
+        resolve: (v) => {
+          useDialogs.setState({ confirm: null });
+          resolve(v === 'alt' ? 'alt' : v ? 'confirm' : null);
         },
       },
     });

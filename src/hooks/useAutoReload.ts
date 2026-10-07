@@ -11,6 +11,7 @@ export function useAutoReload(): void {
   useEffect(() => {
     if (!isDesktop) return;
     let busy = false;
+    let warned = '';
     const timer = setInterval(async () => {
       const s = usePDFStore.getState();
       if (busy || !s.filePath || !s.fileStamp || s.busy || s.modal) return;
@@ -21,7 +22,9 @@ export function useAutoReload(): void {
         const now = usePDFStore.getState();
         if (!stamp || stamp === now.fileStamp || now.filePath !== path) return;
         if (now.dirty) {
-          usePDFStore.setState({ fileStamp: stamp });
+          // fileStamp stays the one we opened or saved: Save then asks before overwriting the other program's version.
+          if (warned === `${path}|${stamp}`) return;
+          warned = `${path}|${stamp}`;
           now.toast(`${now.fileName} was changed by another program. Your unsaved edits are kept; save to a new file or reopen it to see the other changes.`, 'info');
           return;
         }
