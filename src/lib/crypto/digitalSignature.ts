@@ -2277,7 +2277,7 @@ export async function verifyPdfSignatures(pdfBytes: Uint8Array, opts: VerifyOpti
         if (info.sigValue) {
           const tsProblems: string[] = [];
           for (const t of info.tokens) {
-            const ts = await verifyTimestampToken(t, [info.sigValue], trust, 'The timestamp does not belong to this signature (message imprint mismatch).');
+            const ts = await verifyTimestampToken(t, [info.sigValue], { ...trust, pool: [...info.certs, ...trust.pool] }, 'The timestamp does not belong to this signature (message imprint mismatch).');
             if (ts.verified) {
               tsTime = ts.genTime;
               break;
