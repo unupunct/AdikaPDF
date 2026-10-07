@@ -92,6 +92,8 @@ import { addReviewReply, type ReviewState } from './review';
 import { writeAttachment, writeLink, writeMeasure, writePoly, writeStamp } from './commentAnnots';
 import { writeOutline } from './outline';
 import { dropUnreachableObjects } from './prune';
+import { retargetPageRefs, scrubStructTree } from './redactCleanup';
+
 import { removeGlyphs, type Box, type LineEdit } from './textRemoval';
 import { readFieldLogic, writeCalcOrder, writeFieldLogic } from './formScripts';
 import { readXfaPackets, restoreStaticXfa, xfaKindOf } from './xfa';
@@ -869,6 +871,13 @@ export async function buildPdf(input: ExportInput, options: ExportOptions = {}):
   const replacerScale = new Map<string, number>();
   // Replacements the engine wrote into the page in the document's own font.
   const replacerNative = new Set<string>();
+  // Redacted letters' marked-content ids per page, and annotations taken off (for the structure tree).
+  const redactedMcids = new Map<string, Set<number>>();
+  const goneAnnots = new Set<string>();
+  const noteRemoval = (page: PDFPage, res: { mcids: number[]; removedAnnotRefs: string[] }) => {
+    if (res.mcids.length) redactedMcids.set(page.ref.toString(), new Set([...(redactedMcids.get(page.ref.toString()) ?? []), ...res.mcids]));
+    for (const r of res.removedAnnotRefs) goneAnnots.add(r);
+  };
   for (let k = 0; k < planned.length; k++) {
     const { ref, page } = planned[k];
     const redactions = redactsByPage.get(ref.id);
@@ -882,6 +891,7 @@ export async function buildPdf(input: ExportInput, options: ExportOptions = {}):
     const editable = ref.kind === 'source' && !!ref.sourceId;
     if (redactions?.length) {
       const res = editable ? removeGlyphs(doc, page, redactions.map(toPdf), 'redact') : null;
+      if (res?.ok) noteRemoval(page, res);
       if (!res?.ok) {
         if (!options.rasterizeRedactedPage) throw new ExportError('Redaction needs a page rasterizer.');
         const raster = await options.rasterizeRedactedPage(ref, redactions);
@@ -913,6 +923,7 @@ export async function buildPdf(input: ExportInput, options: ExportOptions = {}):
         };
       });
       const res = editable ? removeGlyphs(doc, page, edits.flatMap((e) => e.boxes), 'replace', edits) : null;
+      if (res?.ok) noteRemoval(page, res);
       if (!res?.ok || res.coversImage) coverReplaced.add(ref.id);
       else {
         replacers.forEach((o, i) => {
@@ -1187,10 +1198,40 @@ export async function buildPdf(input: ExportInput, options: ExportOptions = {}):
     const values = Object.fromEntries(Object.entries(input.fieldValues).filter(([k]) => k.startsWith(prefix)).map(([k, v]) => [k.slice(prefix.length), v]));
     keepXfa = restoreStaticXfa(doc, staticXfa, values) === 'synced';
   }
+  // Nothing may keep a deleted or rasterised page (and its text) alive: tags, bookmarks, links, open action.
+  cleanUpGonePages(doc, baseOriginal, planned, baseSourceId, redactedMcids, goneAnnots);
   // Embed fonts/images first, then drop orphans (replaced or deleted pages).
   await doc.flush();
   dropUnreachableObjects(doc);
   return doc.save({ useObjectStreams: true, updateFieldAppearances: !keepXfa });
+}
+
+/** Original pages no longer in the document: their references move to the page that replaced them, or go. */
+function cleanUpGonePages(doc: PDFDocument, original: PDFPage[], planned: PlannedPage[], baseSourceId: string | null, mcids: Map<string, Set<number>>, goneAnnots: Set<string>): void {
+  const live = new Set(planned.map((p) => p.page.ref.toString()));
+  const fates = new Map<string, PDFRef | null>();
+  original.forEach((page, i) => {
+    if (live.has(page.ref.toString())) return;
+    const next = planned.find((p) => p.ref.sourceId === baseSourceId && p.ref.sourceIndex === i);
+    fates.set(page.ref.toString(), next ? next.page.ref : null);
+  });
+  scrubStructTree(doc, { gonePages: new Set(fates.keys()), goneObjs: goneAnnots, mcids });
+  retargetPageRefs(doc, fates);
+  // The calculation order may still name fields that were removed with their pages.
+  const acro = lookupDict(doc, doc.catalog.get(PDFName.of('AcroForm')));
+  const co = acro?.lookup(PDFName.of('CO'));
+  if (acro && co instanceof PDFArray) {
+    const inTree = new Set<string>();
+    const walk = (ref: unknown, depth = 0) => {
+      if (!(ref instanceof PDFRef) || depth > 32 || inTree.has(ref.toString())) return;
+      inTree.add(ref.toString());
+      const kids = lookupDict(doc, ref)?.lookup(PDFName.of('Kids'));
+      if (kids instanceof PDFArray) for (let i = 0; i < kids.size(); i++) walk(kids.get(i), depth + 1);
+    };
+    const fields = acroFormFields(doc, false);
+    for (let i = 0; fields && i < fields.size(); i++) walk(fields.get(i));
+    for (let i = co.size() - 1; i >= 0; i--) if (!inTree.has(String(co.get(i)))) co.remove(i);
+  }
 }
 
 /**
