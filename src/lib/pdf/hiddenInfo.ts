@@ -590,9 +590,22 @@ export function removeHiddenDoc(doc: PDFDocument, kinds: Iterable<HiddenKind>): 
 
 /** Loads, removes the chosen kinds, drops what is left unreferenced and saves a fresh file (no earlier revisions). */
 export async function removeHiddenInfo(bytes: Uint8Array, kinds: Iterable<HiddenKind>): Promise<Uint8Array> {
-  const want = new Set(kinds);
   const doc = await PDFDocument.load(bytes, { updateMetadata: false });
-  removeHiddenDoc(doc, want);
+  removeHiddenBeforeSave(doc, kinds);
   dropUnreachableObjects(doc);
-  return doc.save({ useObjectStreams: true, updateFieldAppearances: want.has('formData') });
+  return doc.save({ useObjectStreams: true, updateFieldAppearances: false });
+}
+
+/** `removeHiddenDoc` plus what must happen before unreferenced objects are dropped and the file saved. */
+export function removeHiddenBeforeSave(doc: PDFDocument, kinds: Iterable<HiddenKind>): void {
+  const want = new Set(kinds);
+  removeHiddenDoc(doc, want);
+  if (want.has('formData')) {
+    // New (empty) appearances before pruning, so the old ones showing the values are dropped.
+    try {
+      doc.getForm().updateFieldAppearances();
+    } catch {
+      /* an odd field keeps no appearance */
+    }
+  }
 }
