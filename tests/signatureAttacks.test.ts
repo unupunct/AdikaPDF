@@ -10,7 +10,9 @@ import forge from 'node-forge';
 import { PDFArray, PDFDocument, PDFName, PDFRef, PDFString, StandardFonts } from 'pdf-lib';
 import {
   addValidationData,
+  certIssuedBy,
   certificateToDer,
+  identityFromCertificateDer,
   insertTimestampToken,
   signPdf,
   signerSignatureValue,
@@ -403,6 +405,23 @@ describe('algorithms and signed attributes', () => {
     expect(r.message).toMatch(/signing-certificate/);
     const right = replaceContents(signed, cmsSign(data(signed), { signer: leaf, chain: [inter.cert], essCert: leaf.cert }));
     expect((await first(right)).integrity).toBe('valid');
+  });
+});
+
+describe('issuer lookup when signing', () => {
+  it('certIssuedBy checks RSA and ECDSA issuers with the strict verifier', async () => {
+    expect(await certIssuedBy(leaf.cert, inter.cert)).toBe(true);
+    expect(await certIssuedBy(leaf.cert, root.cert)).toBe(false);
+    // ECDSA (forge's issuer.verify cannot check these, so their CA chains were never embedded).
+    const kp = (await crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, false, ['sign', 'verify'])) as CryptoKeyPair;
+    const spki = new Uint8Array(await crypto.subtle.exportKey('spki', kp.publicKey));
+    const alg = der(0x30, oid('1.2.840.10045.4.3.2'));
+    const name = der(0x30, der(0x31, der(0x30, oid('2.5.4.3'), der(0x0c, new Uint8Array(Buffer.from('EC CA'))))));
+    const tbs = der(0x30, der(0xa0, der(0x02, new Uint8Array([2]))), der(0x02, new Uint8Array([5])), alg, name, der(0x30, utc(new Date(Date.now() - 86400_000)), utc(new Date(Date.now() + 86400_000))), name, spki);
+    const rs = new Uint8Array(await crypto.subtle.sign({ name: 'ECDSA', hash: 'SHA-256' }, kp.privateKey, tbs as BufferSource));
+    const ec = identityFromCertificateDer(der(0x30, tbs, alg, der(0x03, new Uint8Array([0]), der(0x30, int(rs.slice(0, 32)), int(rs.slice(32)))))).certificate;
+    expect(await certIssuedBy(ec, ec)).toBe(true);
+    expect(await certIssuedBy(leaf.cert, ec)).toBe(false);
   });
 });
 
