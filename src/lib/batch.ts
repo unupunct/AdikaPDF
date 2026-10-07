@@ -110,8 +110,12 @@ export async function runBatchOp(bytes: Uint8Array, op: BatchOp, ctx: BatchConte
       return { bytes: out };
     }
     case 'pdfa': {
-      const { convertToPdfA } = await import('./pdf/pdfa');
-      return { bytes: await convertToPdfA(bytes, { title: ctx.fileName.replace(/\.pdf$/i, ''), author: '', level: '2b' }) };
+      const { convertToPdfADetailed, pdfaWarnings } = await import('./pdf/pdfa');
+      const fieldFont = await ctx.loadFont({ family: 'sans', bold: false, italic: false }).catch(() => undefined);
+      const r = await convertToPdfADetailed(bytes, { title: ctx.fileName.replace(/\.pdf$/i, ''), author: '', level: '2b', fieldFont });
+      // Without the closing "validate with veraPDF" reminder, which would repeat for every file.
+      const warnings = (await pdfaWarnings(r.bytes, '2b')).slice(0, -1);
+      return { bytes: r.bytes, note: [...r.notes, ...warnings].join(' ') || undefined };
     }
     case 'protect':
       if (!op.userPassword) throw new Error('A password is needed.');
