@@ -177,7 +177,29 @@ const OID = {
   adOcsp: '1.3.6.1.5.5.7.48.1',
   ocspBasic: '1.3.6.1.5.5.7.48.1.1',
   crlDp: '2.5.29.31',
+  md5: '1.2.840.113549.2.5',
+  md5WithRsa: '1.2.840.113549.1.1.4',
+  signingCertV1: '1.2.840.113549.1.9.16.2.12',
+  basicConstraints: '2.5.29.19',
+  keyUsage: '2.5.29.15',
+  extKeyUsage: '2.5.29.37',
+  ekuTimeStamping: '1.3.6.1.5.5.7.3.8',
+  ekuOcspSigning: '1.3.6.1.5.5.7.3.9',
 } as const;
+
+/** Extended key usages a document signing certificate may carry (any one of them). */
+const SIGNING_EKUS = new Set([
+  '2.5.29.37.0', // anyExtendedKeyUsage
+  '1.3.6.1.5.5.7.3.4', // emailProtection
+  '1.3.6.1.5.5.7.3.2', // clientAuth
+  '1.3.6.1.5.5.7.3.36', // documentSigning
+  '1.2.840.113583.1.1.5', // Adobe Authentic Documents Trust
+  '1.3.6.1.4.1.311.10.3.12', // Microsoft document signing
+  '1.3.6.1.4.1.311.80.1', // Microsoft document encryption (often paired)
+]);
+
+/** Clock skew accepted between this computer, signers and servers. */
+const CLOCK_TOLERANCE_MS = 15 * 60_000;
 
 /** Signature algorithm OID -> digest OID. */
 const SIG_HASH: Record<string, string> = {
@@ -631,6 +653,91 @@ function keyDescription(cert: forge.pki.Certificate): string {
   return 'unsupported key type';
 }
 
+/** Key size in bits (RSA modulus, EC field), or 0 when unknown. */
+function keyBits(cert: forge.pki.Certificate): number {
+  const m = metaOf(cert);
+  if (m.keyAlgorithm === 'rsa') return (cert.publicKey as forge.pki.rsa.PublicKey | null)?.n?.bitLength() ?? 0;
+  return m.curve ? m.curve.size * 8 - (m.curve.size === 66 ? 7 : 0) : 0;
+}
+
+/** "RSA-1024 is a weak key" style warning for keys below RSA-2048 / EC-256, or null. */
+function weakKeyWarning(cert: forge.pki.Certificate): string | null {
+  const m = metaOf(cert);
+  const bits = keyBits(cert);
+  if (!bits) return null;
+  if ((m.keyAlgorithm === 'rsa' && bits < 2048) || (m.keyAlgorithm === 'ecdsa' && bits < 256)) {
+    return `The key of “${certCommonName(cert)}” (${keyDescription(cert)}) is too short to be considered secure.`;
+  }
+  return null;
+}
+
+/** basicConstraints, or null when the extension is absent. */
+function basicConstraintsOf(cert: forge.pki.Certificate): { ca: boolean; pathLen: number | null } | null {
+  const v = metaOf(cert).extensions.get(OID.basicConstraints);
+  if (!v) return null;
+  try {
+    const out = { ca: false, pathLen: null as number | null };
+    for (const k of kids(v, readTlv(v, 0))) {
+      if (k.tag === 0x01) out.ca = content(v, k)[0] !== 0;
+      else if (k.tag === 0x02) out.pathLen = [...content(v, k)].reduce((n, x) => n * 256 + x, 0);
+    }
+    return out;
+  } catch {
+    return { ca: false, pathLen: 0 };
+  }
+}
+
+/** keyUsage bit test (0 digitalSignature, 1 nonRepudiation, 5 keyCertSign, 6 cRLSign), or null when absent. */
+function keyUsageOf(cert: forge.pki.Certificate): ((bit: number) => boolean) | null {
+  const v = metaOf(cert).extensions.get(OID.keyUsage);
+  if (!v) return null;
+  try {
+    const bits = content(v, readTlv(v, 0)).subarray(1);
+    return (bit) => (((bits[bit >> 3] ?? 0) >> (7 - (bit & 7))) & 1) === 1;
+  } catch {
+    return () => false;
+  }
+}
+
+/** extKeyUsage OIDs, or null when absent. */
+function extKeyUsageOf(cert: forge.pki.Certificate): string[] | null {
+  const v = metaOf(cert).extensions.get(OID.extKeyUsage);
+  if (!v) return null;
+  try {
+    return kids(v, readTlv(v, 0)).map((t) => oidOf(v, t));
+  } catch {
+    return [];
+  }
+}
+
+/** Why a certificate may not be used for `purpose`, or null when it may. */
+function usageProblem(cert: forge.pki.Certificate, purpose: 'sign' | 'tsa' | 'ocsp'): string | null {
+  const name = certCommonName(cert);
+  const ku = keyUsageOf(cert);
+  if (ku && !ku(0) && !ku(1)) return `The certificate of “${name}” may not be used for signatures (key usage).`;
+  const eku = extKeyUsageOf(cert);
+  if (purpose === 'sign') {
+    if (eku && !eku.some((o) => SIGNING_EKUS.has(o))) return `The certificate of “${name}” is not meant for signing documents (extended key usage).`;
+  } else if (purpose === 'tsa') {
+    if (!eku?.includes(OID.ekuTimeStamping)) return `The certificate of “${name}” is not a timestamping certificate.`;
+  } else if (!eku?.includes(OID.ekuOcspSigning)) return `The certificate of “${name}” is not an OCSP responder certificate.`;
+  return null;
+}
+
+/** Why `cert` may not issue certificates with `below` intermediates under it, or null. */
+function caProblem(cert: forge.pki.Certificate, below: number, anchor: boolean): string | null {
+  const name = certCommonName(cert);
+  const bc = basicConstraintsOf(cert);
+  // Trust anchors from old root stores may lack the extension; anything else must say it is a CA.
+  if (bc ? !bc.ca : !anchor) return `“${name}” is not a certificate authority, so it cannot issue certificates (basic constraints).`;
+  if (bc?.pathLen !== null && bc?.pathLen !== undefined && below > bc.pathLen) {
+    return `“${name}” allows at most ${bc.pathLen} intermediate certificate(s) below it (path length).`;
+  }
+  const ku = keyUsageOf(cert);
+  if (ku && !ku(5)) return `“${name}” may not sign certificates (key usage).`;
+  return null;
+}
+
 function identityFrom(
   certificate: forge.pki.Certificate,
   privateKey: forge.pki.rsa.PrivateKey,
@@ -848,12 +955,25 @@ function ecdsaDerToRaw(sig: Uint8Array, size: number): Uint8Array {
 }
 
 // ---------------------------------------------------------------------------
-// Generic signature verification (RSA via forge, ECDSA via Web Crypto)
+// Signature verification (one strict verifier: Web Crypto for RSA and ECDSA)
 // ---------------------------------------------------------------------------
 
+/** Key family a signature algorithm OID belongs to (null: unknown). */
+function sigFamily(sigOid: string): KeyAlgorithm | null {
+  if (sigOid.startsWith('1.2.840.113549.1.1.')) return 'rsa';
+  if (sigOid.startsWith('1.2.840.10045.')) return 'ecdsa';
+  return null;
+}
+
+/** MD5 is broken: signatures using it are never accepted. */
+const isMd5 = (oid: string | null | undefined) => oid === OID.md5 || oid === OID.md5WithRsa;
+
 /**
- * Verify `sig` over `data` with the key of `keyCert`.
- * Returns null when the algorithm is not supported.
+ * Verify `sig` over `data` with the key of `keyCert` (RSASSA-PKCS1-v1_5 or
+ * ECDSA through Web Crypto, which checks the padding strictly; forge's RSA
+ * verify is lenient, GHSA-86w9-cpqp-85rv). Every signature (CMS, chain
+ * links, OCSP, CRL, timestamps) goes through here. Returns null when the
+ * algorithm is not supported.
  */
 async function verifyWithCert(
   keyCert: forge.pki.Certificate,
@@ -863,27 +983,29 @@ async function verifyWithCert(
   digestOidHint?: string,
 ): Promise<boolean | null> {
   const m = metaOf(keyCert);
+  if (isMd5(sigOid) || isMd5(digestOidHint)) return false;
   const hashOid = SIG_HASH[sigOid] ?? digestOidHint;
-  if (!hashOid || !createMd(hashOid)) return null;
-  if (m.keyAlgorithm === 'rsa') {
-    const pub = keyCert.publicKey as forge.pki.rsa.PublicKey | null;
-    if (!pub) return null;
-    try {
-      return pub.verify(bytesToBinary(digest(hashOid, data)), bytesToBinary(sig));
-    } catch {
-      return false;
+  const hash = hashOid ? HASH_NAME[hashOid] : undefined;
+  if (!hash) return null;
+  const family = sigFamily(sigOid);
+  if (family && family !== m.keyAlgorithm) return false;
+  const subtle = globalThis.crypto?.subtle;
+  if (!subtle) return null;
+  try {
+    if (m.keyAlgorithm === 'rsa') {
+      const key = await subtle.importKey('spki', buf(m.spki), { name: 'RSASSA-PKCS1-v1_5', hash }, false, ['verify']);
+      // Some signers drop leading zero bytes of the signature value.
+      const k = Math.ceil(keyBits(keyCert) / 8);
+      const s = k > sig.length ? concatBytes([new Uint8Array(k - sig.length), sig]) : sig;
+      return await subtle.verify({ name: 'RSASSA-PKCS1-v1_5' }, key, buf(s), buf(data));
     }
-  }
-  if (m.keyAlgorithm === 'ecdsa' && m.curve) {
-    const subtle = globalThis.crypto?.subtle;
-    if (!subtle) return null;
-    try {
+    if (m.keyAlgorithm === 'ecdsa' && m.curve) {
       const key = await subtle.importKey('spki', buf(m.spki), { name: 'ECDSA', namedCurve: m.curve.name }, false, ['verify']);
       const rawSig = isDerEcdsaSig(sig) ? ecdsaDerToRaw(sig, m.curve.size) : sig;
-      return await subtle.verify({ name: 'ECDSA', hash: HASH_NAME[hashOid] }, key, buf(rawSig), buf(data));
-    } catch {
-      return false;
+      return await subtle.verify({ name: 'ECDSA', hash }, key, buf(rawSig), buf(data));
     }
+  } catch {
+    return false;
   }
   return null;
 }
@@ -892,6 +1014,12 @@ async function verifyWithCert(
 function verifyCertSignature(child: forge.pki.Certificate, issuer: forge.pki.Certificate): Promise<boolean | null> {
   const m = metaOf(child);
   return verifyWithCert(issuer, m.sigOid, m.tbs, m.sigValue);
+}
+
+/** True when `issuer` issued `cert` (name match and a verifying signature; RSA and ECDSA). */
+export async function certIssuedBy(cert: forge.pki.Certificate, issuer: forge.pki.Certificate): Promise<boolean> {
+  if (!bytesEqual(metaOf(cert).issuerDer, metaOf(issuer).subjectDer)) return false;
+  return (await verifyCertSignature(cert, issuer)) === true;
 }
 
 // ---------------------------------------------------------------------------
