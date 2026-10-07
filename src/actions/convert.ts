@@ -490,7 +490,8 @@ export async function runPdfA(meta: PdfAMeta): Promise<string[] | undefined> {
   const level = meta.level ?? '2b';
   const out = await withBusy(`Converting to PDF/A-${level}…`, async (progress) => {
     const bytes = await exportCurrentPdf({}, progress);
-    const r = await convertToPdfADetailed(bytes, meta);
+    const fieldFont = await loadFontBytes({ family: 'sans', bold: false, italic: false }).catch(() => undefined);
+    const r = await convertToPdfADetailed(bytes, { fieldFont, ...meta });
     return { pdfa: r.bytes, warnings: [...r.notes, ...(await pdfaWarnings(r.bytes, level))] };
   });
   if (!out) return undefined;

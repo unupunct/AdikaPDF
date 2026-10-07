@@ -2,6 +2,7 @@ import { afterAll, describe, expect, it } from 'vitest';
 import { PDFArray, PDFDict, PDFDocument, PDFName, PDFRawStream, PDFRef, StandardFonts } from 'pdf-lib';
 import * as pdfjs from 'pdfjs-dist/legacy/build/pdf.mjs';
 import { resolve } from 'node:path';
+import { readFileSync } from 'node:fs';
 import { convertToPdfA, convertToPdfADetailed, pdfaWarnings, type PdfALevel } from '../src/lib/pdf/pdfa';
 
 const standardFontDataUrl = resolve('node_modules/pdfjs-dist/standard_fonts').replace(/\\/g, '/') + '/';
@@ -141,5 +142,62 @@ describe('convertToPdfA defaults', () => {
     expect(w).toMatch(/16 bits/);
     expect(w).toMatch(/LZW/);
     expect(w).toMatch(/header/);
+  });
+});
+
+describe('PDF/A annotations, forms and colours', () => {
+  const fieldFont = new Uint8Array(readFileSync(resolve('node_modules/@expo-google-fonts/noto-sans/400Regular/NotoSans_400Regular.ttf')));
+
+  async function formSource(): Promise<Uint8Array> {
+    const doc = await PDFDocument.create();
+    const page = doc.addPage([400, 300]);
+    const f = doc.getForm().createTextField('Name');
+    f.addToPage(page, { x: 40, y: 200, width: 200, height: 24 });
+    f.setText('Ana');
+    const ctx = doc.context;
+    // No appearance, no Print flag, NeedAppearances: what many form tools write.
+    const w = f.acroField.getWidgets()[0].dict;
+    w.delete(PDFName.of('AP'));
+    w.delete(PDFName.of('F'));
+    const note = ctx.obj({ Type: 'Annot', Subtype: 'Square', Rect: [50, 50, 100, 100], F: 2 });
+    page.node.set(PDFName.of('Annots'), ctx.obj([...(page.node.lookup(PDFName.of('Annots'), PDFArray).asArray()), ctx.register(note)]));
+    doc.catalog.lookup(PDFName.of('AcroForm'), PDFDict).set(PDFName.of('NeedAppearances'), ctx.obj(true));
+    return doc.save({ updateFieldAppearances: false });
+  }
+
+  it('warns about missing appearances, print flags and NeedAppearances', async () => {
+    const w = (await pdfaWarnings(await formSource(), '2b')).join('\n');
+    expect(w).toMatch(/2 annotation\(s\) or form field\(s\) have no appearance/);
+    expect(w).toMatch(/2 annotation\(s\) are hidden or not set to print/);
+    expect(w).toMatch(/NeedAppearances/);
+  });
+
+  it('regenerates field appearances and sets the Print flag', async () => {
+    const r = await convertToPdfADetailed(await formSource(), { title: 'F', author: '', fieldFont });
+    expect(r.notes.join('\n')).toMatch(/appearances were regenerated/);
+    expect(r.notes.join('\n')).toMatch(/2 annotation\(s\) were made printable/);
+    const out = await PDFDocument.load(r.bytes);
+    const annots = out.getPage(0).node.lookup(PDFName.of('Annots'), PDFArray);
+    const widget = annots.lookup(0, PDFDict);
+    expect(widget.lookup(PDFName.of('AP'), PDFDict).has(PDFName.of('N'))).toBe(true);
+    expect((widget.lookup(PDFName.of('F')) as unknown as { asNumber(): number }).asNumber() & 4).toBe(4);
+    expect(out.catalog.lookup(PDFName.of('AcroForm'), PDFDict).has(PDFName.of('NeedAppearances'))).toBe(false);
+    const w = (await pdfaWarnings(r.bytes, '2b')).join('\n');
+    // The square annotation has no appearance Adika could draw: still reported.
+    expect(w).toMatch(/1 annotation\(s\) or form field\(s\) have no appearance/);
+    expect(w).not.toMatch(/not set to print|NeedAppearances/);
+    // The regenerated appearance uses an embedded font (the source's unused /DR Helvetica is still reported).
+    expect(w).not.toMatch(/NotoSans/);
+  });
+
+  it('warns about DeviceCMYK under an sRGB output intent', async () => {
+    const doc = await PDFDocument.create();
+    const page = doc.addPage([200, 200]);
+    page.node.set(PDFName.of('Contents'), doc.context.register(doc.context.stream('0 0 0 1 k 10 10 50 50 re f')));
+    const out = await convertToPdfA(await doc.save(), { title: 'C', author: '' });
+    expect((await pdfaWarnings(out, '2b')).join('\n')).toMatch(/1 page\(s\), image\(s\) or drawing\(s\) use DeviceCMYK/);
+    const rgb = await PDFDocument.create();
+    rgb.addPage([200, 200]).drawRectangle({ x: 10, y: 10, width: 20, height: 20 });
+    expect((await pdfaWarnings(await convertToPdfA(await rgb.save(), { title: 'R', author: '' }), '2b')).join('\n')).not.toMatch(/DeviceCMYK/);
   });
 });
