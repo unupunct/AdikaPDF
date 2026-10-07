@@ -105,7 +105,6 @@
  "{0}.pdf": "{0}.pdf",
  "Creating PDF from images…": "Se creează PDF din imagini…",
  "Choose at least two PDFs to merge.": "Alegeți cel puțin două fișiere PDF de combinat.",
- "{0} {1} password-protected and cannot be merged.": "Fișiere protejate cu parolă, care nu pot fi combinate: {0}.",
  "Merging…": "Combinare…",
  "Adding {0}": "Se adaugă {0}",
  "{0}-merged.pdf": "{0}-combinat.pdf",
