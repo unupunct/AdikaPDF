@@ -274,7 +274,7 @@ export async function addLongTermValidation(): Promise<void> {
 
 
 /** fetch() shim routed through the native HTTP command (no CORS for TSAs). */
-const nativeFetch: typeof fetch = async (input, init) => {
+export const nativeFetch: typeof fetch = async (input, init) => {
   const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
   const body = init?.body instanceof Uint8Array ? init.body : init?.body instanceof ArrayBuffer ? new Uint8Array(init.body) : new Uint8Array(0);
   const headers = new Headers(init?.headers);
@@ -336,7 +336,7 @@ export async function signWithExternalSigner(
 }
 
 /** Intermediate certificates from the Windows CA store, so verifiers can build the chain. */
-async function issuerChain(leaf: forge.pki.Certificate): Promise<forge.pki.Certificate[]> {
+export async function issuerChain(leaf: forge.pki.Certificate): Promise<forge.pki.Certificate[]> {
   const certs = await systemCertificates();
   const pool: forge.pki.Certificate[] = [];
   for (const b64 of certs.intermediates) {
@@ -404,14 +404,14 @@ export async function updateEuTrustedLists(): Promise<TrustedListCache | null> {
   return res;
 }
 
-function cnOf(dn: string): string {
+export function cnOf(dn: string): string {
   const m = /CN=([^,/]+)/.exec(dn);
   return m ? m[1].trim() : dn;
 }
 
 let rootsCache: forge.pki.Certificate[] | null = null;
 
-async function trustedRoots(): Promise<forge.pki.Certificate[]> {
+export async function trustedRoots(): Promise<forge.pki.Certificate[]> {
   if (rootsCache) return rootsCache;
   const certs = await systemCertificates();
   const out: forge.pki.Certificate[] = [];
