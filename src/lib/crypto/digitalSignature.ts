@@ -123,6 +123,8 @@ interface SignOptionsBase {
   lock?: { action: 'All' | 'Include' | 'Exclude'; fields?: string[] };
   /** PAdES baseline (EU eIDAS): ETSI.CAdES.detached without the signing-time attribute. */
   pades?: boolean;
+  /** Sign into this existing empty signature field (full name); its widget gives page and rectangle, so pageIndex and rect are ignored. */
+  intoField?: string;
 }
 
 /** Sign either with a software identity (.p12 / self-signed) or an external signer (token). */
@@ -1249,7 +1251,11 @@ function attribute(oid: string, value: Uint8Array): Uint8Array {
   return der(0x30, derOid(oid), der(0x31, value));
 }
 
-async function buildCms(signer: ExternalSigner, contentDigest: Uint8Array, signingTime: Date, pades = false): Promise<Uint8Array> {
+/** The certificates and key type of a signer, without its signing function. */
+export type SignerCertificates = Omit<ExternalSigner, 'sign'>;
+
+/** DER SET of the signed attributes: what the signer's key signs. */
+function signedAttributes(signer: SignerCertificates, contentDigest: Uint8Array, signingTime: Date, pades: boolean): Uint8Array {
   const leaf = metaOf(signer.certificate);
   if (leaf.keyAlgorithm !== signer.keyAlgorithm) {
     throw new Error(`Signer key type (${signer.keyAlgorithm}) does not match its certificate (${leaf.keyAlgorithm}).`);
@@ -1264,9 +1270,13 @@ async function buildCms(signer: ExternalSigner, contentDigest: Uint8Array, signi
     attribute(OID.messageDigest, der(0x04, contentDigest)),
     attribute(OID.signingCertV2, signingCertV2),
   ].sort(compareBytes);
-  const signedAttrsSet = der(0x31, ...attrs);
+  return der(0x31, ...attrs);
+}
 
-  let sig = await signer.sign(signedAttrsSet);
+/** CMS SignedData around the signed attributes and the signature value over them. */
+function assembleCms(signer: SignerCertificates, signedAttrsSet: Uint8Array, signature: Uint8Array): Uint8Array {
+  const leaf = metaOf(signer.certificate);
+  let sig = signature;
   if (!(sig instanceof Uint8Array) || sig.length === 0) throw new Error('The signer returned no signature.');
   if (signer.keyAlgorithm === 'ecdsa' && !isDerEcdsaSig(sig)) sig = ecdsaRawToDer(sig);
 
@@ -1360,6 +1370,84 @@ function collectFields(catalog: PDFDict): { sigFields: SigFieldRef[]; topNames: 
   return { sigFields, topNames };
 }
 
+interface EmptySigField {
+  name: string;
+  field: PDFDict;
+  widget: PDFDict;
+  pageIndex: number;
+  rect: [number, number, number, number];
+}
+
+/** Unsigned signature fields with a widget on a page (where a signature can go). */
+function emptySignatureFields(doc: PDFDocument): EmptySigField[] {
+  const out: EmptySigField[] = [];
+  const pages = doc.getPages();
+  for (const f of collectFields(doc.catalog).sigFields) {
+    if (f.sig) continue;
+    let widget: PDFDict | null = f.field.lookup(PDFName.of('Subtype')) === PDFName.of('Widget') ? f.field : null;
+    let widgetRef: PDFRef | null = widget ? f.container : null;
+    const kids = f.field.lookupMaybe(PDFName.of('Kids'), PDFArray);
+    if (!widget && kids) {
+      for (let i = 0; i < kids.size() && !widget; i++) {
+        const k = kids.lookup(i);
+        const r = kids.get(i);
+        if (k instanceof PDFDict) {
+          widget = k;
+          widgetRef = r instanceof PDFRef ? r : null;
+        }
+      }
+    }
+    if (!widget) continue;
+    const r = widget.lookupMaybe(PDFName.of('Rect'), PDFArray);
+    if (!r || r.size() < 4) continue;
+    const nums = [0, 1, 2, 3].map((i) => (r.lookup(i) instanceof PDFNumber ? (r.lookup(i) as PDFNumber).asNumber() : 0));
+    const p = widget.get(PDFName.of('P'));
+    let pageIndex = p instanceof PDFRef ? pages.findIndex((pg) => pg.ref === p) : -1;
+    if (pageIndex < 0 && widgetRef) {
+      pageIndex = pages.findIndex((pg) => {
+        const annots = pg.node.lookupMaybe(PDFName.of('Annots'), PDFArray);
+        return !!annots && annots.asArray().some((a) => a === widgetRef);
+      });
+    }
+    if (pageIndex < 0) continue;
+    out.push({
+      name: f.fullName,
+      field: f.field,
+      widget,
+      pageIndex,
+      rect: [Math.min(nums[0], nums[2]), Math.min(nums[1], nums[3]), Math.max(nums[0], nums[2]), Math.max(nums[1], nums[3])],
+    });
+  }
+  return out;
+}
+
+/** What batch signing needs to know before signing a file. */
+export interface SigningInspection {
+  pageCount: number;
+  /** Signatures already in the file (a new one is added as an incremental update). */
+  signatureCount: number;
+  /** Certification level (DocMDP P) when the document is certified. */
+  certification: 1 | 2 | 3 | null;
+  emptyFields: Array<{ name: string; pageIndex: number; rect: [number, number, number, number] }>;
+}
+
+/** Reads a PDF for signing; throws for encrypted or unreadable files. */
+export async function inspectForSigning(pdfBytes: Uint8Array): Promise<SigningInspection> {
+  let doc: PDFDocument;
+  try {
+    doc = await PDFDocument.load(pdfBytes, { updateMetadata: false });
+  } catch (e) {
+    if (e instanceof EncryptedPDFError) throw new Error('Cannot sign an encrypted PDF. Remove its password first.');
+    throw e;
+  }
+  return {
+    pageCount: doc.getPageCount(),
+    signatureCount: collectFields(doc.catalog).sigFields.filter((f) => f.sig).length,
+    certification: docMdpLevel(doc.catalog),
+    emptyFields: emptySignatureFields(doc).map(({ name, pageIndex, rect }) => ({ name, pageIndex, rect })),
+  };
+}
+
 function textOf(dict: PDFDict, key: string): string | null {
   const v = dict.lookup(PDFName.of(key));
   return v instanceof PDFString || v instanceof PDFHexString ? v.decodeText() : null;
@@ -1383,7 +1471,8 @@ export async function signPdf(pdfBytes: Uint8Array, opts: SignOptions): Promise<
   const displayName = opts.identity?.name ?? certCommonName(signer.certificate);
   let size = SIGNATURE_PLACEHOLDER_BYTES;
   for (let attempt = 0; attempt < 2; attempt++) {
-    const result = await signOnce(pdfBytes, opts, signer, displayName, size);
+    const prepared = await prepareOnce(pdfBytes, opts, signer, displayName, size);
+    const result = await prepared.complete(await signer.sign(prepared.signedAttrs));
     if (result.ok) return result.bytes;
     size = Math.ceil((result.needed + 4096) / 1024) * 1024; // grow once and retry
   }
@@ -1392,13 +1481,50 @@ export async function signPdf(pdfBytes: Uint8Array, opts: SignOptions): Promise<
 
 type SignResult = { ok: true; bytes: Uint8Array } | { ok: false; needed: number };
 
-async function signOnce(
+/** Signing options without the key: the signature value is supplied later (see prepareSignature). */
+export type PrepareOptions = SignOptionsBase & { signer: SignerCertificates; displayName?: string };
+
+/**
+ * A PDF ready for its signature: the placeholders are written and the signed
+ * attributes computed. Signing the attributes (or their hash) can happen
+ * elsewhere, e.g. many at once with one authorization.
+ */
+export interface PreparedSignature {
+  /** DER SET of the signed attributes (what ExternalSigner.sign receives). */
+  signedAttributes: Uint8Array;
+  /** SHA-256 of signedAttributes (what a hash-signing service signs). */
+  hash: Uint8Array;
+  /** Embeds the signature value (and a timestamp when tsaUrl is set); returns the signed file. */
+  finish(signatureValue: Uint8Array): Promise<Uint8Array>;
+}
+
+/**
+ * First half of signPdf. The hole for the CMS is sized up front from the
+ * certificates (a retry would need a second signature).
+ */
+export async function prepareSignature(pdfBytes: Uint8Array, opts: PrepareOptions): Promise<PreparedSignature> {
+  const certBytes = [opts.signer.certificate, ...opts.signer.chain].reduce((n, c) => n + metaOf(c).der.length, 0);
+  const estimate = certBytes + 2048 + (opts.tsaUrl ? 8192 : 0);
+  const size = Math.max(SIGNATURE_PLACEHOLDER_BYTES, Math.ceil((estimate + 4096) / 1024) * 1024);
+  const prepared = await prepareOnce(pdfBytes, opts, opts.signer, opts.displayName ?? certCommonName(opts.signer.certificate), size);
+  return {
+    signedAttributes: prepared.signedAttrs,
+    hash: digest(OID.sha256, prepared.signedAttrs),
+    finish: async (sig) => {
+      const r = await prepared.complete(sig);
+      if (!r.ok) throw new Error('The signature does not fit into the reserved space.');
+      return r.bytes;
+    },
+  };
+}
+
+async function prepareOnce(
   pdfBytes: Uint8Array,
-  opts: SignOptions,
-  signer: ExternalSigner,
+  opts: SignOptionsBase,
+  signer: SignerCertificates,
   displayName: string,
   placeholderBytes: number,
-): Promise<SignResult> {
+): Promise<{ signedAttrs: Uint8Array; complete: (sig: Uint8Array) => Promise<SignResult> }> {
   let probe: PDFDocument;
   try {
     probe = await PDFDocument.load(pdfBytes);
@@ -1422,17 +1548,35 @@ async function signOnce(
     bytes = await probe.save({ useObjectStreams: false });
   }
   const signingTime = opts.signingTime ?? new Date();
-  return fillSignature(bytes, searchFrom, opts, signer, placeholderBytes, signingTime);
+  const { contentsStart, contentsEnd } = fillByteRange(bytes, searchFrom, placeholderBytes);
+  const contentDigest = digest(OID.sha256, bytes.subarray(0, contentsStart), bytes.subarray(contentsEnd));
+  const signedAttrs = signedAttributes(signer, contentDigest, signingTime, !!opts.pades);
+  const complete = async (signature: Uint8Array): Promise<SignResult> => {
+    let cms = assembleCms(signer, signedAttrs, signature);
+    if (opts.tsaUrl) {
+      const fetchImpl = opts.fetchImpl ?? globalThis.fetch?.bind(globalThis);
+      if (!fetchImpl) throw new Error('No fetch implementation available for the timestamp request.');
+      const token = await fetchTimestampToken(opts.tsaUrl, signerSignatureValue(cms), fetchImpl);
+      cms = insertTimestampToken(cms, token);
+    }
+    if (cms.length > placeholderBytes) return { ok: false, needed: cms.length };
+    const out = bytes.slice();
+    out.set(asciiBytes(bytesToHex(cms).padEnd(placeholderBytes * 2, '0')), contentsStart + 1);
+    return { ok: true, bytes: out };
+  };
+  return { signedAttrs, complete };
 }
 
 /** The signature field, widget, value dictionary (with placeholders) and AcroForm entries. */
-async function addSignatureObjects(doc: PDFDocument, opts: SignOptions, displayName: string, placeholderBytes: number): Promise<void> {
+async function addSignatureObjects(doc: PDFDocument, opts: SignOptionsBase, displayName: string, placeholderBytes: number): Promise<void> {
   const { topNames } = collectFields(doc.catalog);
   const pages = doc.getPages();
-  if (!Number.isInteger(opts.pageIndex) || opts.pageIndex < 0 || opts.pageIndex >= pages.length) {
+  const target = opts.intoField ? emptySignatureFields(doc).find((f) => f.name === opts.intoField) : undefined;
+  if (opts.intoField && !target) throw new Error(`There is no empty signature field named “${opts.intoField}”.`);
+  if (!target && (!Number.isInteger(opts.pageIndex) || opts.pageIndex < 0 || opts.pageIndex >= pages.length)) {
     throw new Error(`Page index ${opts.pageIndex} is out of range (document has ${pages.length} pages).`);
   }
-  const page = pages[opts.pageIndex];
+  const page = pages[target ? target.pageIndex : opts.pageIndex];
   const ctx = doc.context;
   const signingTime = opts.signingTime ?? new Date();
 
@@ -1457,7 +1601,7 @@ async function addSignatureObjects(doc: PDFDocument, opts: SignOptions, displayN
   if (opts.certify) doc.catalog.set(PDFName.of('Perms'), ctx.obj({ DocMDP: sigRef }));
 
   // --- appearance stream (image scaled to fill the widget, or empty)
-  const [x1, y1, x2, y2] = opts.rect;
+  const [x1, y1, x2, y2] = target ? target.rect : opts.rect;
   const rect = [Math.min(x1, x2), Math.min(y1, y2), Math.max(x1, x2), Math.max(y1, y2)];
   const w = rect[2] - rect[0];
   const h = rect[3] - rect[1];
@@ -1474,6 +1618,19 @@ async function addSignatureObjects(doc: PDFDocument, opts: SignOptions, displayN
     apStream = ctx.stream('', { Type: 'XObject', Subtype: 'Form', BBox: [0, 0, Math.max(w, 0), Math.max(h, 0)] });
   }
   const apRef = ctx.register(apStream);
+
+  if (target) {
+    // The prepared field keeps its name, widget and position; it gets the value and the appearance.
+    target.field.set(PDFName.of('V'), sigRef);
+    target.widget.set(PDFName.of('AP'), ctx.obj({ N: apRef }));
+    if (opts.lock && !target.field.has(PDFName.of('Lock'))) {
+      const lock = ctx.obj({ Type: 'SigFieldLock', Action: opts.lock.action }) as PDFDict;
+      if (opts.lock.action !== 'All') lock.set(PDFName.of('Fields'), ctx.obj((opts.lock.fields ?? []).map((n) => pdfText(n))));
+      target.field.set(PDFName.of('Lock'), lock);
+    }
+    doc.catalog.lookup(PDFName.of('AcroForm'), PDFDict).set(PDFName.of('SigFlags'), PDFNumber.of(3));
+    return;
+  }
 
   // --- merged field + widget
   const widget = ctx.obj({
@@ -1541,30 +1698,6 @@ function fillByteRange(bytes: Uint8Array, searchFrom: number, placeholderBytes: 
   if (brText.length > brLen) throw new Error('Internal error: /ByteRange placeholder too small.');
   bytes.set(asciiBytes(brText.padEnd(brLen, ' ')), brOpen);
   return { contentsStart, contentsEnd };
-}
-
-/** Finds the placeholders in the written file, fills /ByteRange and the CMS signature. */
-async function fillSignature(
-  bytes: Uint8Array,
-  searchFrom: number,
-  opts: SignOptions,
-  signer: ExternalSigner,
-  placeholderBytes: number,
-  signingTime: Date,
-): Promise<SignResult> {
-  const { contentsStart, contentsEnd } = fillByteRange(bytes, searchFrom, placeholderBytes);
-  const contentDigest = digest(OID.sha256, bytes.subarray(0, contentsStart), bytes.subarray(contentsEnd));
-  let cms = await buildCms(signer, contentDigest, signingTime, !!opts.pades);
-  if (opts.tsaUrl) {
-    const fetchImpl = opts.fetchImpl ?? globalThis.fetch?.bind(globalThis);
-    if (!fetchImpl) throw new Error('No fetch implementation available for the timestamp request.');
-    const token = await fetchTimestampToken(opts.tsaUrl, signerSignatureValue(cms), fetchImpl);
-    cms = insertTimestampToken(cms, token);
-  }
-
-  if (cms.length > placeholderBytes) return { ok: false, needed: cms.length };
-  bytes.set(asciiBytes(bytesToHex(cms).padEnd(placeholderBytes * 2, '0')), contentsStart + 1);
-  return { ok: true, bytes };
 }
 
 /**
