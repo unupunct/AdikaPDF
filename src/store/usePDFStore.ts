@@ -88,6 +88,7 @@ export type ModalId =
   | 'replacePages'
   | 'spell'
   | 'einvoice'
+  | 'einvoiceNew'
   | 'portfolio'
   | 'pageSize'
   | 'customize'

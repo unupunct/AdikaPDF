@@ -86,6 +86,69 @@ export function registerEInvoiceTests(test, ctx) {
     await page.keyboard.press('Escape');
   });
 
+  // Not run yet (round 13): written with the New e-invoice dialog, run with the next E2E pass.
+  test('a new e-Factura is made from the form: XML and PDF/A-3 saved, customer remembered, credit note from it', async () => {
+    await page.click('[data-testid="tab-convert"]');
+    await page.click('[data-testid="btn-einvoice-new"]');
+    await page.waitForSelector('[data-testid="einvoice-new-modal"]');
+    const m = '[data-testid="einvoice-new-modal"]';
+    if (!(await page.$('[data-testid="einv-seller-name"]'))) await page.click(`${m} button:has-text("Edit")`);
+    await page.fill('[data-testid="einv-seller-name"]', 'Adika Software SRL');
+    await page.fill('[data-testid="einv-seller-vat"]', 'RO12345674');
+    await page.fill('[data-testid="einv-seller-reg"]', 'J12/3456/2020');
+    await page.fill('[data-testid="einv-seller-street"]', 'Str. Memorandumului 28');
+    await page.fill('[data-testid="einv-seller-city"]', 'Cluj-Napoca');
+    await page.selectOption(`${m} select[aria-label="County"] >> nth=0`, 'RO-CJ');
+    await page.fill('[data-testid="einv-buyer-name"]', 'Tipografia Sector SRL');
+    await page.fill('[data-testid="einv-buyer-vat"]', 'RO18594852');
+    await page.fill('[data-testid="einv-buyer-street"]', 'Calea Victoriei 10');
+    await page.selectOption(`${m} select[aria-label="County"] >> nth=1`, 'RO-B');
+    await page.selectOption(`${m} select[aria-label="Sector"]`, 'SECTOR3');
+    await page.fill('[data-testid="einv-number"]', 'ADK-2026-0100');
+    await page.fill('[data-testid="einv-due"]', '2026-12-31');
+    await page.fill('[data-testid="einv-line-name"]', 'Licență Adika PDF');
+    await page.fill('[data-testid="einv-line-qty"]', '3');
+    await page.fill('[data-testid="einv-line-price"]', '500');
+    await page.fill('[data-testid="einv-line-vat"]', '21');
+    await page.fill('[data-testid="einv-iban"]', 'RO49AAAA1B31007593840000');
+    await page.click('[data-testid="einv-save-seller"]');
+    await page.waitForSelector('[data-testid="einv-valid"]', { timeout: 10000 });
+    const due = await page.textContent('[data-testid="einv-payable"]');
+    assert(due.includes('1815.00') && due.includes('RON'), `amount due (${due})`);
+    await page.click('[data-testid="einv-create"]');
+    await waitSaved(/ADK-2026-0100\.xml$/);
+    await waitSaved(/ADK-2026-0100\.pdf$/);
+    await idle();
+    const xml = readFileSync(await savedFile(/ADK-2026-0100\.xml$/), 'utf8');
+    assert(xml.includes('urn:efactura.mfinante.ro:CIUS-RO:1.0.1') && xml.includes('<cbc:PayableAmount currencyID="RON">1815.00</cbc:PayableAmount>'), `e-Factura XML (${xml.slice(0, 300)})`);
+    assert(xml.includes('<cbc:CityName>SECTOR3</cbc:CityName>') && xml.includes('<cbc:CountrySubentity>RO-B</cbc:CountrySubentity>'), 'Bucharest address');
+    const files = embedded(await PD.load(readFileSync(await savedFile(/ADK-2026-0100\.pdf$/))));
+    assert(files.some((f) => f.name === 'ADK-2026-0100.xml' && f.text.includes('ADK-2026-0100')), `PDF/A-3 attachment (${files.map((f) => f.name)})`);
+    // The saved PDF is open: its E-invoice dialog makes the credit note.
+    await page.click('[data-testid="tab-convert"]');
+    await page.click('[data-testid="btn-einvoice"]');
+    await page.waitForSelector('[data-testid="einvoice-credit-note"]', { timeout: 20000 });
+    await page.click('[data-testid="einvoice-credit-note"]');
+    await page.waitForSelector('[data-testid="einv-preceding"]');
+    assert((await page.inputValue('[data-testid="einv-preceding"]')) === 'ADK-2026-0100', 'credit note refers to the invoice');
+    await page.fill('[data-testid="einv-number"]', 'NC-2026-0001');
+    await page.waitForSelector('[data-testid="einv-valid"], [data-testid="einv-issues"]');
+    await page.click('[data-testid="einv-create"]');
+    await waitSaved(/NC-2026-0001\.xml$/);
+    const credit = readFileSync(await savedFile(/NC-2026-0001\.xml$/), 'utf8');
+    assert(credit.includes('<CreditNote') && credit.includes('<cbc:CreditNoteTypeCode>381</cbc:CreditNoteTypeCode>') && credit.includes('<cbc:ID>ADK-2026-0100</cbc:ID>'), `credit note XML (${credit.slice(0, 300)})`);
+    await waitSaved(/NC-2026-0001\.pdf$/);
+    await idle();
+    // The buyer is in the customer list now.
+    await page.click('[data-testid="tab-convert"]');
+    await page.click('[data-testid="btn-einvoice-new"]');
+    await page.fill('[data-testid="einv-buyer-search"]', 'Tipografia');
+    await page.waitForSelector('[data-testid="einv-buyer-match"]');
+    await page.click('[data-testid="einv-buyer-match"]');
+    assert((await page.inputValue('[data-testid="einv-buyer-vat"]')) === 'RO18594852', 'customer filled in');
+    await page.keyboard.press('Escape');
+  });
+
   test('a PDF Portfolio carries files; opening it lists them', async () => {
     const a = join(dir, 'oferta.txt');
     writeFileSync(a, 'Oferta de pret');

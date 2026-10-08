@@ -1,6 +1,6 @@
 /** Convert → E-invoice (e-Factura, Factur-X / ZUGFeRD) and Organize → Portfolio. */
 import { useEffect, useState } from 'react';
-import { FileDown, FilePlus2, Trash2 } from 'lucide-react';
+import { FileDown, FileMinus2, FilePlus2, Trash2 } from 'lucide-react';
 import { usePDFStore } from '@/store/usePDFStore';
 import { Button, Callout, Dialog, Input } from '@/components/ui/primitives';
 import type { EInvoice } from '@/lib/einvoice/parse';
@@ -41,6 +41,12 @@ export function EInvoiceModal() {
           </Button>
           <Button disabled={!hasDoc} onClick={() => void act((m) => m.makeEInvoicePdf())} data-testid="einvoice-embed">
             Embed invoice XML…
+          </Button>
+          <Button onClick={() => {
+              close();
+              void import('@/actions/einvoiceCreate').then((m) => m.openNewEInvoice());
+            }} data-testid="einvoice-new">
+            New e-invoice…
           </Button>
           <Button onClick={close}>Close</Button>
         </>
@@ -145,6 +151,16 @@ export function EInvoiceModal() {
                 }
               >
                 Readable copy
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => {
+                  close();
+                  void import('@/actions/einvoiceCreate').then((m) => m.createCreditNote(found.invoice));
+                }}
+                data-testid="einvoice-credit-note"
+              >
+                <FileMinus2 size={14} /> Create credit note
               </Button>
             </div>
           </>

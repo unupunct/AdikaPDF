@@ -71,6 +71,9 @@ export function WelcomeScreen() {
             <button type="button" className="text-brand-600 hover:underline" onClick={() => openImport('scan')}>
               Camera
             </button>
+            <button type="button" className="text-brand-600 hover:underline" onClick={() => void import('@/actions/einvoiceCreate').then((m) => m.openNewEInvoice())} data-testid="welcome-einvoice">
+              New e-invoice
+            </button>
           </div>
         </div>
         <div className="mt-8 grid grid-cols-3 gap-3 border-t border-app pt-6 text-[11.5px] text-muted">

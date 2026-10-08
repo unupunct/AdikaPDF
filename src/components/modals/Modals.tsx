@@ -19,6 +19,7 @@ import { ScanModal } from './ScanModal';
 import { PrintProductionModal } from './PrintProductionModal';
 import { SpellCheckModal } from './SpellCheckModal';
 import { EInvoiceModal, PortfolioModal } from './EInvoiceModals';
+import { EInvoiceCreateModal } from './EInvoiceCreateModal';
 import { PageSizeModal } from './PageToolModals';
 import { CustomizeModal } from '@/components/shell/CustomizeModal';
 import { FolderSearchModal } from './FolderSearchModal';
@@ -61,6 +62,7 @@ export function Modals() {
       <PrintProductionModal />
       <SpellCheckModal />
       <EInvoiceModal />
+      <EInvoiceCreateModal />
       <PortfolioModal />
       <PageSizeModal />
       <CustomizeModal />
