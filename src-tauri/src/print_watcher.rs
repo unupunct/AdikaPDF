@@ -93,10 +93,11 @@ mod owner {
     use std::ptr::null_mut;
     use windows_sys::Win32::Foundation::{CloseHandle, LocalFree, HANDLE};
     use windows_sys::Win32::Security::Authorization::{GetSecurityInfo, SE_FILE_OBJECT};
-    use windows_sys::Win32::Security::{EqualSid, GetTokenInformation, TokenUser, OWNER_SECURITY_INFORMATION, PSECURITY_DESCRIPTOR, PSID, TOKEN_QUERY, TOKEN_USER};
+    use windows_sys::Win32::Security::{EqualSid, GetTokenInformation, TokenOwner, TokenUser, OWNER_SECURITY_INFORMATION, PSECURITY_DESCRIPTOR, PSID, TOKEN_OWNER, TOKEN_QUERY, TOKEN_USER};
     use windows_sys::Win32::System::Threading::{GetCurrentProcess, OpenProcessToken};
 
-    /// True when the open file is owned by the user running this process.
+    /// True when the open file is owned by the user running this process, or
+    /// by the default owner of what it creates (Administrators when elevated).
     pub fn owned_by_me(file: &std::fs::File) -> bool {
         unsafe {
             let mut owner: PSID = null_mut();
@@ -113,6 +114,11 @@ mod owner {
                 if GetTokenInformation(token, TokenUser, buf.as_mut_ptr().cast(), (buf.len() * 8) as u32, &mut len) != 0 {
                     let user = &*(buf.as_ptr() as *const TOKEN_USER);
                     same = !owner.is_null() && EqualSid(user.User.Sid, owner) != 0;
+                }
+                let mut buf = vec![0u64; 64];
+                if !same && GetTokenInformation(token, TokenOwner, buf.as_mut_ptr().cast(), (buf.len() * 8) as u32, &mut len) != 0 {
+                    let default_owner = &*(buf.as_ptr() as *const TOKEN_OWNER);
+                    same = !owner.is_null() && EqualSid(default_owner.Owner, owner) != 0;
                 }
                 CloseHandle(token);
             }
