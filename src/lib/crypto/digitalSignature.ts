@@ -73,9 +73,11 @@ export interface ExternalSigner {
   certificate: forge.pki.Certificate;
   chain: forge.pki.Certificate[];
   keyAlgorithm: KeyAlgorithm;
+  /** RSA keys: the signature is RSASSA-PSS (SHA-256, MGF1-SHA-256, 32-byte salt) instead of PKCS#1 v1.5. */
+  rsaPss?: boolean;
   /**
    * Signs DER(signedAttributes as SET) with SHA-256; returns a PKCS#1 v1.5
-   * signature (rsa) or a DER ECDSA-Sig-Value (ecdsa; raw r||s is accepted too).
+   * (or PSS) signature (rsa) or a DER ECDSA-Sig-Value (ecdsa; raw r||s is accepted too).
    */
   sign(signedAttrsDer: Uint8Array): Promise<Uint8Array>;
 }
@@ -175,6 +177,8 @@ const OID = {
   sha384: '2.16.840.1.101.3.4.2.2',
   sha512: '2.16.840.1.101.3.4.2.3',
   rsaEncryption: '1.2.840.113549.1.1.1',
+  rsaPss: '1.2.840.113549.1.1.10',
+  mgf1: '1.2.840.113549.1.1.8',
   ecPublicKey: '1.2.840.10045.2.1',
   ecdsaSha256: '1.2.840.10045.4.3.2',
   aia: '1.3.6.1.5.5.7.1.1',
@@ -460,6 +464,35 @@ function derTime(d: Date): Uint8Array {
 
 function algId(oid: string, withNull: boolean): Uint8Array {
   return withNull ? der(0x30, derOid(oid), DER_NULL) : der(0x30, derOid(oid));
+}
+
+/** RSASSA-PSS-params: SHA-256, MGF1 with SHA-256, 32-byte salt (DER). */
+export function pssSha256Params(): Uint8Array {
+  return der(0x30, der(0xa0, algId(OID.sha256, true)), der(0xa1, der(0x30, derOid(OID.mgf1), algId(OID.sha256, true))), der(0xa2, derInt(32)));
+}
+
+interface PssParams {
+  hashOid: string;
+  saltLength: number;
+}
+
+/** Parses RSASSA-PSS-params (RFC 4055 defaults: SHA-1, salt 20); null when MGF1 uses another hash than the message. */
+function pssParamsOf(b: Uint8Array, t: Tlv | undefined): PssParams | null {
+  let hashOid: string = OID.sha1;
+  let mgfHash: string = OID.sha1;
+  let saltLength = 20;
+  if (t && t.tag === 0x30) {
+    for (const k of kids(b, t)) {
+      const inner = kids(b, k)[0];
+      if (k.tag === 0xa0) hashOid = oidOf(b, kids(b, inner)[0]);
+      else if (k.tag === 0xa1) {
+        const [mgfOid, mgfParams] = kids(b, inner);
+        if (oidOf(b, mgfOid) !== OID.mgf1 || !mgfParams) return null;
+        mgfHash = oidOf(b, kids(b, mgfParams)[0]);
+      } else if (k.tag === 0xa2) saltLength = Number(BigInt('0x' + (bytesToHex(content(b, inner)) || '0')));
+    }
+  }
+  return hashOid === mgfHash ? { hashOid, saltLength } : null;
 }
 
 // ---------------------------------------------------------------------------
@@ -991,9 +1024,21 @@ async function verifyWithCert(
   data: Uint8Array,
   sig: Uint8Array,
   digestOidHint?: string,
+  pss?: PssParams | null,
 ): Promise<boolean | null> {
   const m = metaOf(keyCert);
   if (isMd5(sigOid) || isMd5(digestOidHint)) return false;
+  if (sigOid === OID.rsaPss) {
+    const pssHash = pss ? HASH_NAME[pss.hashOid] : undefined;
+    if (!pss || !pssHash || !globalThis.crypto?.subtle) return null;
+    if (m.keyAlgorithm !== 'rsa') return false;
+    try {
+      const key = await globalThis.crypto.subtle.importKey('spki', buf(m.spki), { name: 'RSA-PSS', hash: pssHash }, false, ['verify']);
+      return await globalThis.crypto.subtle.verify({ name: 'RSA-PSS', saltLength: pss.saltLength }, key, buf(sig), buf(data));
+    } catch {
+      return false;
+    }
+  }
   const hashOid = SIG_HASH[sigOid] ?? digestOidHint;
   const hash = hashOid ? HASH_NAME[hashOid] : undefined;
   if (!hash) return null;
@@ -1226,7 +1271,12 @@ async function buildCms(signer: ExternalSigner, contentDigest: Uint8Array, signi
   if (signer.keyAlgorithm === 'ecdsa' && !isDerEcdsaSig(sig)) sig = ecdsaRawToDer(sig);
 
   const sha256Alg = algId(OID.sha256, true);
-  const sigAlg = signer.keyAlgorithm === 'rsa' ? algId(OID.rsaEncryption, true) : algId(OID.ecdsaSha256, false);
+  const sigAlg =
+    signer.keyAlgorithm === 'rsa'
+      ? signer.rsaPss
+        ? der(0x30, derOid(OID.rsaPss), pssSha256Params())
+        : algId(OID.rsaEncryption, true)
+      : algId(OID.ecdsaSha256, false);
   const signedAttrsImplicit = signedAttrsSet.slice();
   signedAttrsImplicit[0] = 0xa0; // [0] IMPLICIT
   const signerInfo = der(
@@ -2027,7 +2077,9 @@ async function verifyCms(d: Uint8Array, signedData: Uint8Array[]): Promise<CmsIn
   info.digestOid = digestOid;
   let idx = 3;
   const signedAttrs = si[idx]?.tag === 0xa0 ? si[idx++] : null;
-  const sigAlgOid = oidOf(d, kids(d, si[idx++])[0]);
+  const [sigAlgOidT, sigAlgParamsT] = kids(d, si[idx++]);
+  const sigAlgOid = oidOf(d, sigAlgOidT);
+  const pss = sigAlgOid === OID.rsaPss ? pssParamsOf(d, sigAlgParamsT) : null;
   const sigValue = si[idx]?.tag === 0x04 ? content(d, si[idx]) : null;
   info.sigValue = sigValue ? sigValue.slice() : null;
   const unsigned = si.find((t) => t.tag === 0xa1);
@@ -2098,7 +2150,7 @@ async function verifyCms(d: Uint8Array, signedData: Uint8Array[]): Promise<CmsIn
       return info;
     }
   }
-  const ok = await verifyWithCert(info.cert, sigAlgOid, toVerify, sigValue, digestOid);
+  const ok = await verifyWithCert(info.cert, sigAlgOid, toVerify, sigValue, digestOid, pss);
   if (ok === null) {
     info.problems.push(`Unsupported signature algorithm (${keyDescription(info.cert)}, ${sigAlgOid}).`);
     return info;
