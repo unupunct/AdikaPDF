@@ -1429,6 +1429,8 @@ export interface SigningInspection {
   /** Certification level (DocMDP P) when the document is certified. */
   certification: 1 | 2 | 3 | null;
   emptyFields: Array<{ name: string; pageIndex: number; rect: [number, number, number, number] }>;
+  /** Visible box (crop box) and /Rotate of each page. */
+  pages: Array<{ x: number; y: number; width: number; height: number; rotation: number }>;
 }
 
 /** Reads a PDF for signing; throws for encrypted or unreadable files. */
@@ -1445,6 +1447,7 @@ export async function inspectForSigning(pdfBytes: Uint8Array): Promise<SigningIn
     signatureCount: collectFields(doc.catalog).sigFields.filter((f) => f.sig).length,
     certification: docMdpLevel(doc.catalog),
     emptyFields: emptySignatureFields(doc).map(({ name, pageIndex, rect }) => ({ name, pageIndex, rect })),
+    pages: doc.getPages().map((p) => ({ ...p.getCropBox(), rotation: p.getRotation().angle })),
   };
 }
 

@@ -534,6 +534,21 @@ export async function pkcs11Sign(args: {
   });
 }
 
+/** Logs in once for a batch of signatures; close the session at the end (also after errors). */
+export async function pkcs11OpenSession(args: { module: string; slotId: number; certIdHex: string; pin: string | null }): Promise<{ handle: number; keyType: string; alwaysAuthenticate: boolean }> {
+  if (!isDesktop) throw new DesktopOnlyError('Hardware token signing');
+  return invoke('pkcs11_open_session', { module: args.module, slotId: args.slotId, certIdHex: args.certIdHex, pin: args.pin });
+}
+
+export async function pkcs11SessionSign(handle: number, data: Uint8Array): Promise<Uint8Array> {
+  const res = await invoke<TokenSignature>('pkcs11_session_sign', { handle, dataBase64: bytesToBase64(data) });
+  return base64ToBytes(res.signatureBase64);
+}
+
+export async function pkcs11CloseSession(handle: number): Promise<void> {
+  await invoke('pkcs11_close_session', { handle });
+}
+
 export function bytesToBase64(bytes: Uint8Array): string {
   let s = '';
   for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
