@@ -45,6 +45,7 @@ import {
   PDFTextField,
   StandardFonts,
   clip,
+  clipEvenOdd,
   concatTransformationMatrix,
   degrees,
   drawObject,
@@ -73,6 +74,7 @@ import type {
 } from '@/types';
 import {
   displaySize,
+  objectDisplayBounds,
   displayToPdfMatrix,
   multiply,
   rotateCw,
@@ -88,8 +90,11 @@ import { embedFontForText } from './fontEmbed';
 import { writeFreeText, writeMarkup, writeNote } from './annotations';
 import { addReviewReply, type ReviewState } from './review';
 import { writeAttachment, writeLink, writeMeasure, writePoly, writeStamp } from './commentAnnots';
+import { prepareFileAnnotEdits } from './fileAnnots';
 import { writeOutline } from './outline';
 import { dropUnreachableObjects } from './prune';
+import { retargetPageRefs, scrubStructTree } from './redactCleanup';
+
 import { removeGlyphs, type Box, type LineEdit } from './textRemoval';
 import { readFieldLogic, writeCalcOrder, writeFieldLogic } from './formScripts';
 import { readXfaPackets, restoreStaticXfa, xfaKindOf } from './xfa';
@@ -109,6 +114,18 @@ export interface ExportInput {
   fieldValues: Record<string, FieldValue>;
   /** Edited bookmarks; null/undefined keeps the file's own outline. */
   outline?: BookmarkItem[] | null;
+  /**
+   * The document the edits are made to (the opened file): it stays the base
+   * even when another file's page comes first, so its outline, attachments,
+   * metadata, tags, page labels and layers are kept. Default: the first page's source.
+   */
+  baseSourceId?: string | null;
+}
+
+/** The source a document is written into: the requested base while it still has pages, else the first page's. */
+export function baseSourceOf(pages: PageRef[], wanted?: string | null): string | null {
+  if (wanted && pages.some((p) => p.kind === 'source' && p.sourceId === wanted)) return wanted;
+  return pages.find((p) => p.kind === 'source')?.sourceId ?? null;
 }
 
 export interface RasterResult {
@@ -251,6 +268,118 @@ function attachCopiedFields(doc: PDFDocument, page: PDFPage): void {
       existing.add(root.toString());
     }
   }
+}
+
+/** Field-level keys of a field dictionary merged with its widget (ISO 32000 12.7.4). */
+const FIELD_KEYS = ['FT', 'T', 'TU', 'TM', 'Ff', 'V', 'DV', 'Opt', 'TI', 'I', 'MaxLen', 'Lock', 'SV'];
+
+function fieldTypeOf(dict: PDFDict): PDFName | undefined {
+  for (let d: PDFDict | undefined = dict, depth = 0; d && depth < 32; depth++) {
+    const ft = d.lookup(PDFName.of('FT'));
+    if (ft instanceof PDFName) return ft;
+    const parent: unknown = d.lookup(PDFName.of('Parent'));
+    d = parent instanceof PDFDict ? parent : undefined;
+  }
+  return undefined;
+}
+
+/**
+ * The terminal field of a widget. A widget merged with its field is split
+ * first (field keys moved to a new field dictionary that has it as a kid), so
+ * further widgets can join the same field.
+ */
+function terminalField(doc: PDFDocument, widgetRef: PDFRef, widget: PDFDict): PDFRef {
+  if (!widget.has(PDFName.of('T'))) {
+    const parent = widget.get(PDFName.of('Parent'));
+    if (parent instanceof PDFRef) return parent;
+  }
+  const field = doc.context.obj({}) as PDFDict;
+  for (const k of FIELD_KEYS) {
+    const v = widget.get(PDFName.of(k));
+    if (v === undefined) continue;
+    field.set(PDFName.of(k), v);
+    widget.delete(PDFName.of(k));
+  }
+  const up = widget.get(PDFName.of('Parent'));
+  if (up) field.set(PDFName.of('Parent'), up);
+  field.set(PDFName.of('Kids'), doc.context.obj([widgetRef]));
+  const fieldRef = doc.context.register(field);
+  widget.set(PDFName.of('Parent'), fieldRef);
+  // The new field takes the widget's place in its parent's kids (or the form's top-level fields).
+  const parentDict = up ? lookupDict(doc, up) : undefined;
+  const siblings = parentDict ? parentDict.lookup(PDFName.of('Kids')) : acroFormFields(doc, true);
+  if (siblings instanceof PDFArray) {
+    let found = false;
+    for (let i = 0; i < siblings.size(); i++) {
+      if (String(siblings.get(i)) === widgetRef.toString()) {
+        siblings.set(i, fieldRef);
+        found = true;
+      }
+    }
+    if (!found && !parentDict) siblings.push(fieldRef);
+  }
+  return fieldRef;
+}
+
+/**
+ * A second copy of a page of the base document. Its form fields are the same
+ * fields as on the original (as in Acrobat when a page is duplicated: same
+ * name, same value): each copied widget becomes another kid of the
+ * original's field. Other annotations are copied (without their pop-ups);
+ * signature fields are not duplicated.
+ */
+/** For each duplicated page: which copy stands for which original annotation (by the original's ref). */
+const annotCopies = new WeakMap<PDFPage, Map<string, PDFRef>>();
+
+async function duplicateBasePage(doc: PDFDocument, original: PDFPage, index: number): Promise<PDFPage> {
+  const ANNOTS = PDFName.of('Annots');
+  const annots = original.node.get(ANNOTS);
+  // Copy the page without its annotations (the copier would follow widgets into their whole field tree).
+  original.node.delete(ANNOTS);
+  let copy: PDFPage;
+  try {
+    [copy] = await doc.copyPages(doc, [index]);
+  } finally {
+    if (annots) original.node.set(ANNOTS, annots);
+  }
+  const list = original.node.Annots();
+  if (!list) return copy;
+  const out = doc.context.obj([]) as PDFArray;
+  const copies = new Map<string, PDFRef>();
+  annotCopies.set(copy, copies);
+  for (let i = 0; i < list.size(); i++) {
+    const ref = list.get(i);
+    const dict = lookupDict(doc, ref);
+    if (!dict) continue;
+    const subtype = dict.get(PDFName.of('Subtype'));
+    if (subtype === PDFName.of('Popup')) continue;
+    if (subtype === PDFName.of('Widget')) {
+      if (!(ref instanceof PDFRef) || fieldTypeOf(dict) === PDFName.of('Sig')) continue;
+      const fieldRef = terminalField(doc, ref, dict);
+      const clone = dict.clone(doc.context);
+      clone.set(PDFName.of('P'), copy.ref);
+      clone.set(PDFName.of('Parent'), fieldRef);
+      const cloneRef = doc.context.register(clone);
+      const field = lookupDict(doc, fieldRef);
+      let kids = field?.lookup(PDFName.of('Kids'));
+      if (field && !(kids instanceof PDFArray)) {
+        kids = doc.context.obj([]);
+        field.set(PDFName.of('Kids'), kids);
+      }
+      (kids as PDFArray).push(cloneRef);
+      out.push(cloneRef);
+      copies.set(ref.toString(), cloneRef);
+    } else {
+      const clone = dict.clone(doc.context);
+      clone.set(PDFName.of('P'), copy.ref);
+      clone.delete(PDFName.of('Popup'));
+      const cloneRef = doc.context.register(clone);
+      out.push(cloneRef);
+      if (ref instanceof PDFRef) copies.set(ref.toString(), cloneRef);
+    }
+  }
+  if (out.size()) copy.node.set(ANNOTS, out);
+  return copy;
 }
 
 function removeAnnotations(page: PDFPage): void {
@@ -552,6 +681,64 @@ function drawPen(page: PDFPage, pm: Matrix, o: PenObject): void {
   });
 }
 
+// ---------------------------------------------------------------- redaction
+
+/** Objects whose content cannot be cut: under a redaction box they are left out. */
+const CLIPPABLE = new Set<EditorObject['type']>(['rect', 'ellipse', 'highlight', 'line', 'arrow']);
+
+/**
+ * What happens to an object under a redaction box: plain shapes and lines are
+ * clipped out of the boxes; text, pictures, ink, drawings, comments and
+ * fields are dropped (their data would otherwise stay in the file), and so
+ * are comments taken over from the file.
+ */
+export function redactionFate(o: EditorObject, rects: Rect[]): 'keep' | 'clip' | 'drop' {
+  if (o.type === 'redact') return 'keep';
+  const b = objectDisplayBounds(o);
+  const eps = 0.01;
+  const hit = rects.some((r) => b.x < r.x + r.width - eps && r.x < b.x + b.width - eps && b.y < r.y + r.height - eps && r.y < b.y + b.height - eps);
+  if (!hit) return 'keep';
+  // A comment taken over from the file is written back as an annotation, which a clip cannot cut.
+  return CLIPPABLE.has(o.type) && !o.fileAnnot ? 'clip' : 'drop';
+}
+
+/** The objects of a redacted page: those under a box dropped, the boxes themselves last so nothing is drawn over them. */
+function orderForRedaction(list: EditorObject[], rects: Rect[]): EditorObject[] {
+  return [...list.filter((o) => o.type !== 'redact' && redactionFate(o, rects) !== 'drop'), ...list.filter((o) => o.type === 'redact')];
+}
+
+/** Full names of the form fields with a widget overlapping one of `boxes` (PDF user space). */
+function fieldsUnder(doc: PDFDocument, page: PDFPage, boxes: Box[]): string[] {
+  const out: string[] = [];
+  for (const ref of widgetRefs(doc, page)) {
+    const w = lookupDict(doc, ref);
+    const rect = w?.lookup(PDFName.of('Rect'));
+    if (!(rect instanceof PDFArray) || rect.size() < 4) continue;
+    const r = [0, 1, 2, 3].map((k) => (rect.lookup(k) as PDFNumber).asNumber());
+    const b = { x0: Math.min(r[0], r[2]), y0: Math.min(r[1], r[3]), x1: Math.max(r[0], r[2]), y1: Math.max(r[1], r[3]) };
+    if (!boxes.some((x) => x.x0 < b.x1 && b.x0 < x.x1 && x.y0 < b.y1 && b.y0 < x.y1)) continue;
+    const parts: string[] = [];
+    let d: PDFDict | undefined = w;
+    for (let depth = 0; d && depth < 32; depth++) {
+      const t = d.lookup(PDFName.of('T'));
+      if (t instanceof PDFString || t instanceof PDFHexString) parts.unshift(t.decodeText());
+      d = lookupDict(doc, d.get(PDFName.of('Parent')));
+    }
+    if (parts.length) out.push(parts.join('.'));
+  }
+  return out;
+}
+
+/** Opens a graphics state whose clip leaves out every redaction box (closed with Q). */
+function clipOutRedactions(page: PDFPage, pm: Matrix, rects: Rect[]): void {
+  page.pushOperators(pushGraphicsState());
+  // One even-odd clip per box: the clips intersect, so overlapping boxes stay out too.
+  for (const d of rects) {
+    const r = transformRectBounds(pm, d);
+    page.pushOperators(rectangle(-1e5, -1e5, 2e5, 2e5), rectangle(r.x, r.y, r.width, r.height), clipEvenOdd(), endPath());
+  }
+}
+
 // ---------------------------------------------------------------- forms
 
 /** The value of a form field as text (fields created from objects first, then the document's own). */
@@ -751,8 +938,8 @@ export async function buildPdf(input: ExportInput, options: ExportOptions = {}):
     loadFont: options.loadFont ?? loadFontBytes,
   };
 
-  // 1. Base document: the first page's source, edited in place.
-  const baseSourceId = pages.find((p) => p.kind === 'source')?.sourceId ?? null;
+  // 1. Base document: the opened file (or the first page's source), edited in place.
+  const baseSourceId = baseSourceOf(pages, input.baseSourceId);
   let doc: PDFDocument;
   if (baseSourceId) {
     const src = sources[baseSourceId];
@@ -801,8 +988,7 @@ export async function buildPdf(input: ExportInput, options: ExportOptions = {}):
         baseUsed.add(ref.sourceIndex);
         planned.push({ ref, page: baseOriginal[ref.sourceIndex], rasterized: false });
       } else {
-        const [copy] = await doc.copyPages(doc, [ref.sourceIndex]);
-        planned.push({ ref, page: copy, rasterized: false });
+        planned.push({ ref, page: await duplicateBasePage(doc, baseOriginal[ref.sourceIndex], ref.sourceIndex), rasterized: false });
       }
       continue;
     }
@@ -833,6 +1019,14 @@ export async function buildPdf(input: ExportInput, options: ExportOptions = {}):
   const replacerScale = new Map<string, number>();
   // Replacements the engine wrote into the page in the document's own font.
   const replacerNative = new Set<string>();
+  // Redacted letters' marked-content ids per page, and annotations taken off (for the structure tree).
+  const redactedMcids = new Map<string, Set<number>>();
+  const goneAnnots = new Set<string>();
+  const redactedFields = new Set<string>();
+  const noteRemoval = (page: PDFPage, res: { mcids: number[]; removedAnnotRefs: string[] }) => {
+    if (res.mcids.length) redactedMcids.set(page.ref.toString(), new Set([...(redactedMcids.get(page.ref.toString()) ?? []), ...res.mcids]));
+    for (const r of res.removedAnnotRefs) goneAnnots.add(r);
+  };
   for (let k = 0; k < planned.length; k++) {
     const { ref, page } = planned[k];
     const redactions = redactsByPage.get(ref.id);
@@ -845,7 +1039,10 @@ export async function buildPdf(input: ExportInput, options: ExportOptions = {}):
     };
     const editable = ref.kind === 'source' && !!ref.sourceId;
     if (redactions?.length) {
+      // Static XFA keeps its own copy of the values: fields under a box are emptied there too.
+      if (staticXfa) for (const name of fieldsUnder(doc, page, redactions.map(toPdf))) redactedFields.add(name);
       const res = editable ? removeGlyphs(doc, page, redactions.map(toPdf), 'redact') : null;
+      if (res?.ok) noteRemoval(page, res);
       if (!res?.ok) {
         if (!options.rasterizeRedactedPage) throw new ExportError('Redaction needs a page rasterizer.');
         const raster = await options.rasterizeRedactedPage(ref, redactions);
@@ -877,6 +1074,7 @@ export async function buildPdf(input: ExportInput, options: ExportOptions = {}):
         };
       });
       const res = editable ? removeGlyphs(doc, page, edits.flatMap((e) => e.boxes), 'replace', edits) : null;
+      if (res?.ok) noteRemoval(page, res);
       if (!res?.ok || res.coversImage) coverReplaced.add(ref.id);
       else {
         replacers.forEach((o, i) => {
@@ -897,6 +1095,17 @@ export async function buildPdf(input: ExportInput, options: ExportOptions = {}):
     if (p.ref.sourceId && p.ref.sourceId !== baseSourceId && !p.rasterized) attachCopiedFields(doc, p.page);
   }
   pruneOrphanFields(doc);
+
+  // 3b. Comments of the file that were edited or deleted (fileAnnots.ts).
+  const fileEdits = prepareFileAnnotEdits(
+    planned.map((p) => ({
+      ref: p.ref,
+      page: p.page,
+      origin: p.rasterized || !p.ref.sourceId ? null : p.ref.sourceId === baseSourceId ? baseOriginal[p.ref.sourceIndex] : (foreignDocs.get(p.ref.sourceId)?.getPage(p.ref.sourceIndex) ?? null),
+      copies: annotCopies.get(p.page),
+    })),
+    objects,
+  );
 
   // 4. Existing form values.
   let formTouched = false;
@@ -924,15 +1133,31 @@ export async function buildPdf(input: ExportInput, options: ExportOptions = {}):
     if (!list) continue;
     const rotation: Rotation = rasterized ? 0 : totalRotation(ref);
     const pm = displayToPdfMatrix(rotation, visibleBox(page));
-    for (const o of list) {
+    const redactRects = redactsByPage.get(ref.id) ?? [];
+    if (redactRects.length && coverReplaced.has(ref.id)) {
+      // Replacement text under a box is left out; the old letters it should have covered still are.
+      for (const o of list) {
+        if (o.type !== 'text' || !o.replaces?.length || redactionFate(o, redactRects) !== 'drop') continue;
+        withMatrix(page, pm, () => {
+          for (const r of o.replaces!) page.drawRectangle({ x: r.x, y: r.y, width: r.width, height: r.height, color: rgb(1, 1, 1) });
+        });
+      }
+    }
+    for (const o of redactRects.length ? orderForRedaction(list, redactRects) : list) {
+      if (fileEdits.skip(o)) continue;
       const review = (o as { reviewStatus?: ReviewState }).reviewStatus;
-      const annotsBefore = review ? (page.node.Annots()?.size() ?? 0) : 0;
+      const annotsBefore = page.node.Annots()?.size() ?? 0;
+      const clipped = redactRects.length > 0 && redactionFate(o, redactRects) === 'clip';
+      if (clipped) clipOutRedactions(page, pm, redactRects);
       // An object in a layer: its page content is marked as that layer's.
       const layer = o.layer && LAYERED.has(o.type) && !(o.type === 'text' && o.annotation) ? layerForContent(ctx.doc, page, o.layer) : null;
       if (layer) page.pushOperators(PDFOperator.of('BDC' as never, [PDFName.of('OC'), PDFName.of(layer)]));
-      await writeObject(o);
+      if (!fileEdits.write(ctx.doc, page, pm, o)) await writeObject(o);
       if (layer) page.pushOperators(PDFOperator.of('EMC' as never));
-      if (review && review !== 'None') {
+      if (clipped) page.pushOperators(popGraphicsState());
+      const original = fileEdits.adopt(ctx.doc, page, o, annotsBefore);
+      if (review && review !== 'None' && original) addReviewReply(ctx.doc, page, original, review, (o as { author?: string }).author ?? '');
+      else if (review && review !== 'None') {
         // The comment's annotation: the first one added for it that is not its popup.
         const annots = page.node.Annots();
         for (let k = annotsBefore; annots && k < annots.size(); k++) {
@@ -1031,68 +1256,7 @@ export async function buildPdf(input: ExportInput, options: ExportOptions = {}):
   if (input.outline) writeOutline(doc, input.outline, pageById);
 
   // 7. Form appearances, flattening, metadata.
-  const form = doc.getForm();
-  if (form.getFields().length > 0) {
-    const acro = lookupDict(doc, doc.catalog.get(PDFName.of('AcroForm')));
-    const logic = readFieldLogic(doc);
-    writeCalcOrder(doc, logic);
-    // Calculated fields get their values now, so the file is right even where form scripts do not run.
-    const names = form.getFields().map((f) => f.getName());
-    for (const name of calcOrder(logic)) {
-      const l = logic[name];
-      const get = (n: string) => {
-        try {
-          return parseNumber(form.getTextField(n).getText() ?? '');
-        } catch {
-          return NaN;
-        }
-      };
-      const v = calculate(l.calc!, names, get);
-      const dec = l.format && l.format.kind !== 'date' ? l.format.decimals + (l.format.kind === 'percent' ? 2 : 0) : 6;
-      try {
-        form.getTextField(name).setText(Number.isFinite(v) ? String(Math.round(v * 10 ** dec) / 10 ** dec) : '');
-      } catch {
-        /* not a text field */
-      }
-    }
-    if (ctx.fieldFont) {
-      // Formatted fields show "1.234,50 lei" on the page but keep the plain value (1234.5) as the PDF standard asks.
-      const raw = new Map<PDFTextField, string>();
-      for (const [name, l] of Object.entries(logic)) {
-        if (!l.format) continue;
-        try {
-          const f = form.getTextField(name);
-          const v = f.getText() ?? '';
-          if (!v) continue;
-          raw.set(f, v);
-          f.setText(displayValue(l.format, v));
-        } catch {
-          /* not a text field */
-        }
-      }
-      for (const [key, shown] of Object.entries(options.fieldDisplay ?? {})) {
-        if (!baseSourceId || !key.startsWith(`${baseSourceId}::`)) continue;
-        const name = key.slice(baseSourceId.length + 2);
-        if (logic[name]?.format) continue;
-        try {
-          const f = form.getTextField(name);
-          const v = f.getText() ?? '';
-          if (!v || v === shown || raw.has(f)) continue;
-          raw.set(f, v);
-          f.setText(shown);
-        } catch {
-          /* not a text field */
-        }
-      }
-      try {
-        form.updateFieldAppearances(ctx.fieldFont);
-      } catch {
-        /* a field with an odd appearance stream: keep its original look */
-      }
-      for (const [f, v] of raw) f.acroField.dict.set(PDFName.of('V'), PDFHexString.fromText(v));
-    }
-    acro?.set(PDFName.of('NeedAppearances'), PDFBool.False);
-  }
+  finishForm(doc, ctx.fieldFont, options.fieldDisplay, baseSourceId);
   if (options.flatten) flattenDocument(doc, ctx.fieldFont);
 
   if (options.title) doc.setTitle(options.title);
@@ -1136,12 +1300,239 @@ export async function buildPdf(input: ExportInput, options: ExportOptions = {}):
     }
     const prefix = `${baseSourceId}::`;
     const values = Object.fromEntries(Object.entries(input.fieldValues).filter(([k]) => k.startsWith(prefix)).map(([k, v]) => [k.slice(prefix.length), v]));
+    for (const name of redactedFields) values[name] = '';
     keepXfa = restoreStaticXfa(doc, staticXfa, values) === 'synced';
   }
+  // Nothing may keep a deleted or rasterised page (and its text) alive: tags, bookmarks, links, open action.
+  cleanUpGonePages(doc, baseOriginal, planned, baseSourceId, redactedMcids, goneAnnots);
   // Embed fonts/images first, then drop orphans (replaced or deleted pages).
   await doc.flush();
   dropUnreachableObjects(doc);
   return doc.save({ useObjectStreams: true, updateFieldAppearances: !keepXfa });
+}
+
+/** Original pages no longer in the document: their references move to the page that replaced them, or go. */
+function cleanUpGonePages(doc: PDFDocument, original: PDFPage[], planned: PlannedPage[], baseSourceId: string | null, mcids: Map<string, Set<number>>, goneAnnots: Set<string>): void {
+  const live = new Set(planned.map((p) => p.page.ref.toString()));
+  const fates = new Map<string, PDFRef | null>();
+  original.forEach((page, i) => {
+    if (live.has(page.ref.toString())) return;
+    const next = planned.find((p) => p.ref.sourceId === baseSourceId && p.ref.sourceIndex === i);
+    fates.set(page.ref.toString(), next ? next.page.ref : null);
+  });
+  scrubStructTree(doc, { gonePages: new Set(fates.keys()), goneObjs: goneAnnots, mcids });
+  retargetPageRefs(doc, fates);
+  // The calculation order may still name fields that were removed with their pages.
+  const acro = lookupDict(doc, doc.catalog.get(PDFName.of('AcroForm')));
+  const co = acro?.lookup(PDFName.of('CO'));
+  if (acro && co instanceof PDFArray) {
+    const inTree = new Set<string>();
+    const walk = (ref: unknown, depth = 0) => {
+      if (!(ref instanceof PDFRef) || depth > 32 || inTree.has(ref.toString())) return;
+      inTree.add(ref.toString());
+      const kids = lookupDict(doc, ref)?.lookup(PDFName.of('Kids'));
+      if (kids instanceof PDFArray) for (let i = 0; i < kids.size(); i++) walk(kids.get(i), depth + 1);
+    };
+    const fields = acroFormFields(doc, false);
+    for (let i = 0; fields && i < fields.size(); i++) walk(fields.get(i));
+    for (let i = co.size() - 1; i >= 0; i--) if (!inTree.has(String(co.get(i)))) co.remove(i);
+  }
+}
+
+/** Calculated values, formatted display text and appearances of the form's fields. */
+function finishForm(doc: PDFDocument, fieldFont: PDFFont | null, fieldDisplay: Record<string, string> | undefined, baseSourceId: string | null): void {
+  const form = doc.getForm();
+  if (form.getFields().length === 0) return;
+  const acro = lookupDict(doc, doc.catalog.get(PDFName.of('AcroForm')));
+  const logic = readFieldLogic(doc);
+  writeCalcOrder(doc, logic);
+  // Calculated fields get their values now, so the file is right even where form scripts do not run.
+  const names = form.getFields().map((f) => f.getName());
+  for (const name of calcOrder(logic)) {
+    const l = logic[name];
+    const get = (n: string) => {
+      try {
+        return parseNumber(form.getTextField(n).getText() ?? '');
+      } catch {
+        return NaN;
+      }
+    };
+    const v = calculate(l.calc!, names, get);
+    const dec = l.format && l.format.kind !== 'date' ? l.format.decimals + (l.format.kind === 'percent' ? 2 : 0) : 6;
+    try {
+      const f = form.getTextField(name);
+      const text = Number.isFinite(v) ? String(Math.round(v * 10 ** dec) / 10 ** dec) : '';
+      if ((f.getText() ?? '') !== text) f.setText(text);
+    } catch {
+      /* not a text field */
+    }
+  }
+  if (fieldFont) {
+    // Formatted fields show "1.234,50 lei" on the page but keep the plain value (1234.5) as the PDF standard asks.
+    const raw = new Map<PDFTextField, string>();
+    for (const [name, l] of Object.entries(logic)) {
+      if (!l.format) continue;
+      try {
+        const f = form.getTextField(name);
+        const v = f.getText() ?? '';
+        if (!v) continue;
+        raw.set(f, v);
+        f.setText(displayValue(l.format, v));
+      } catch {
+        /* not a text field */
+      }
+    }
+    for (const [key, shown] of Object.entries(fieldDisplay ?? {})) {
+      if (!baseSourceId || !key.startsWith(`${baseSourceId}::`)) continue;
+      const name = key.slice(baseSourceId.length + 2);
+      if (logic[name]?.format) continue;
+      try {
+        const f = form.getTextField(name);
+        const v = f.getText() ?? '';
+        if (!v || v === shown || raw.has(f)) continue;
+        raw.set(f, v);
+        f.setText(shown);
+      } catch {
+        /* not a text field */
+      }
+    }
+    try {
+      form.updateFieldAppearances(fieldFont);
+    } catch {
+      /* a field with an odd appearance stream: keep its original look */
+    }
+    for (const [f, v] of raw) f.acroField.dict.set(PDFName.of('V'), PDFHexString.fromText(v));
+  }
+  acro?.set(PDFName.of('NeedAppearances'), PDFBool.False);
+}
+
+// ---------------------------------------------------------------- incremental save
+
+/** Objects saved as annotations (not page content), so an incremental update can add them. */
+function isAnnotationObject(o: EditorObject): boolean {
+  switch (o.type) {
+    case 'note':
+    case 'markup':
+    case 'stamp':
+    case 'poly':
+    case 'attachment':
+    case 'measure':
+    case 'link':
+      return true;
+    case 'text':
+      return !!o.annotation && !o.replaces?.length;
+    default:
+      return false;
+  }
+}
+
+/**
+ * Whether the edits can be saved as an incremental update of the opened file:
+ * only comments, form values and bookmarks, on the file's own pages in their
+ * order (no page content, page changes, redactions, text edits or new fields).
+ * Returns why not, or null when they can.
+ */
+export function incrementalBlocker(input: ExportInput, meta?: import('@/store/usePDFStore').DocMeta | null): string | null {
+  const base = baseSourceOf(input.pages, input.baseSourceId);
+  const src = base ? input.sources[base] : undefined;
+  if (!src || !src.original) return 'The document was rewritten since it was opened.';
+  if (src.password) return 'The document is encrypted.';
+  if (input.pages.length !== src.pageCount || input.pages.some((p, i) => p.kind !== 'source' || p.sourceId !== base || p.sourceIndex !== i || p.userRotation !== 0)) {
+    return 'Pages were added, removed, moved or rotated.';
+  }
+  // Comments taken over from the file are rewritten in place (or removed), which only a full save does.
+  if (input.pages.some((p) => p.takenAnnots?.length)) return 'Comments from the file were edited.';
+  if (input.objects.some((o) => !isAnnotationObject(o))) return 'The page content was edited.';
+  if (Object.keys(input.fieldValues).some((k) => !k.startsWith(`${base}::`))) return 'Form values of another document.';
+  if (meta) return 'The document properties were changed.';
+  return null;
+}
+
+/**
+ * Saves comments, form values and bookmarks as an incremental update
+ * appended to the opened file: the original bytes stay as they are, so
+ * digital signatures stay valid (as Acrobat does). Check `incrementalBlocker` first.
+ */
+export async function buildIncrementalPdf(input: ExportInput, options: ExportOptions = {}): Promise<Uint8Array> {
+  const why = incrementalBlocker(input);
+  if (why) throw new ExportError(why);
+  const baseSourceId = baseSourceOf(input.pages, input.baseSourceId)!;
+  const opts = { measure: options.measure ?? canvasMeasure, loadFont: options.loadFont ?? loadFontBytes };
+  const { incrementalUpdate } = await import('./incremental');
+  const res = await incrementalUpdate(input.sources[baseSourceId].bytes, async (doc) => {
+    doc.registerFontkit(fontkit);
+    if (xfaKindOf(doc)) throw new ExportError('XFA forms are saved in full.');
+    const docPages = doc.getPages();
+    const prefix = `${baseSourceId}::`;
+    const formTouched = Object.keys(input.fieldValues).some((k) => k.startsWith(prefix)) && applyFieldValues(doc, input.fieldValues, baseSourceId);
+    const ctx: DrawContext = { doc, fonts: new Map(), fontTexts: collectFontTexts(input.objects), images: new Map(), opts, fieldFont: null, fieldNames: [], fieldObjects: [] };
+    if (formTouched) ctx.fieldFont = await doc.embedFont(await opts.loadFont({ family: 'sans', bold: false, italic: false }), { subset: false });
+    const pageById = new Map(input.pages.map((p, i) => [p.id, docPages[i]]));
+    const sans = () => fontFor(ctx, { family: 'sans', bold: false, italic: false });
+    for (let i = 0; i < input.pages.length; i++) {
+      const ref = input.pages[i];
+      const page = docPages[i];
+      const list = input.objects.filter((o) => o.pageId === ref.id);
+      if (!list.length) continue;
+      options.onProgress?.('Applying edits', i / input.pages.length);
+      const pm = displayToPdfMatrix(totalRotation(ref), visibleBox(page));
+      for (const o of list) {
+        const review = (o as { reviewStatus?: ReviewState }).reviewStatus;
+        const annotsBefore = page.node.Annots()?.size() ?? 0;
+        switch (o.type) {
+          case 'text': {
+            const v = { family: o.fontFamily, bold: o.bold, italic: o.italic };
+            writeFreeText(doc, page, pm, o, await fontFor(ctx, v), opts.measure(v, o.fontSize));
+            break;
+          }
+          case 'note':
+            writeNote(doc, page, pm, o);
+            break;
+          case 'markup':
+            writeMarkup(doc, page, pm, o);
+            break;
+          case 'stamp':
+            writeStamp(doc, page, pm, o, await sans(), await fontFor(ctx, { family: 'sans', bold: true, italic: false }), o.src ? await imageFor(ctx, o.src) : null);
+            break;
+          case 'poly':
+            writePoly(doc, page, pm, o);
+            break;
+          case 'attachment':
+            writeAttachment(doc, page, pm, o);
+            break;
+          case 'measure':
+            writeMeasure(doc, page, pm, o, await sans());
+            break;
+          case 'link':
+            writeLink(doc, page, pm, o, o.target.kind === 'page' ? (pageById.get(o.target.pageId) ?? null) : null);
+            break;
+        }
+        if (review && review !== 'None') {
+          const annots = page.node.Annots();
+          for (let k = annotsBefore; annots && k < annots.size(); k++) {
+            const r = annots.get(k);
+            const d = annots.lookup(k);
+            if (r instanceof PDFRef && d instanceof PDFDict && d.lookup(PDFName.of('Subtype')) !== PDFName.of('Popup')) {
+              addReviewReply(doc, page, r, review, (o as { author?: string }).author ?? '');
+              break;
+            }
+          }
+        }
+      }
+    }
+    if (input.outline) writeOutline(doc, input.outline, pageById);
+    if (formTouched) {
+      // Only values and appearances change (what filling in means after signing): each field keeps its own /DA.
+      const DA = PDFName.of('DA');
+      const kept = doc.getForm().getFields().map((f) => [f.acroField.dict, f.acroField.dict.get(DA)] as const);
+      finishForm(doc, ctx.fieldFont, options.fieldDisplay, baseSourceId);
+      for (const [dict, da] of kept) {
+        if (da) dict.set(DA, da);
+        else dict.delete(DA);
+      }
+    }
+  });
+  return res.bytes;
 }
 
 /**

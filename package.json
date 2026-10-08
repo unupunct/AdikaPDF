@@ -1,7 +1,7 @@
 {
   "name": "adika-pdf-editor",
   "private": true,
-  "version": "1.10.0",
+  "version": "1.11.0",
   "description": "Adika PDF Editor - privacy-first, offline PDF editor with e-signatures",
   "type": "module",
   "license": "MIT",

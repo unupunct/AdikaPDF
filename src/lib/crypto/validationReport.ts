@@ -15,13 +15,19 @@ export function reportRows(v: SignatureValidation, t: (s: string) => string = (s
   const rows: Array<[string, string, 'ok' | 'bad' | 'warn' | 'info']> = [];
   rows.push([t('Signed by'), v.signerName || v.certSubject || '—', 'info']);
   if (v.documentTimestamp) rows.push([t('Kind'), t('Document timestamp'), 'info']);
-  if (v.signedAt) rows.push([t('Signing time'), v.signedAt + (v.hasTimestamp ? ` (${t('trusted timestamp')})` : ` (${t('signer’s computer clock')})`), v.hasTimestamp ? 'ok' : 'warn']);
+  // Older results (before timestamps were verified) only have hasTimestamp.
+  const tsOk = v.timestampVerified ?? v.hasTimestamp;
+  if (v.signedAt) {
+    const how = tsOk ? t('trusted timestamp') : v.hasTimestamp ? t('timestamp not verified; signer’s claim') : t('signer’s computer clock');
+    rows.push([t('Signing time'), `${v.signedAt} (${how})`, tsOk ? 'ok' : 'warn']);
+  }
   if (v.reason) rows.push([t('Reason'), v.reason, 'info']);
   rows.push([t('Integrity'), v.integrity === 'valid' ? t('The signed content has not changed.') : v.integrity === 'invalid' ? t('The document was changed after it was signed.') : t('Could not be checked.'), v.integrity === 'valid' ? 'ok' : v.integrity === 'invalid' ? 'bad' : 'warn']);
   if (!v.coversWholeFile) {
     const c = v.laterChanges;
-    const what = c ? [c.ltv && t('validation data'), c.signatures && t('signatures'), c.form && t('form filling'), c.other && t('other changes')].filter(Boolean).join(', ') : '';
-    rows.push([t('Later changes'), what || t('The file was added to after signing.'), c?.other ? 'bad' : 'warn']);
+    const what = c ? [c.ltv && t('validation data'), c.signatures && t('signatures'), c.form && t('form filling'), c.annotations && t('comments'), c.other && t('other changes')].filter(Boolean).join(', ') : '';
+    rows.push([t('Later changes'), what || t('The file was added to after signing.'), c?.other || v.modifiedAfterSigning ? 'bad' : 'warn']);
+    for (const why of c?.reasons ?? []) rows.push(['', why, 'bad']);
   }
   const chain = v.chainStatus ?? 'unknown';
   const chainText: Record<string, string> = {
@@ -42,10 +48,11 @@ export function reportRows(v: SignatureValidation, t: (s: string) => string = (s
   if (v.algorithm) rows.push([t('Algorithm'), v.algorithm, 'info']);
   if (v.padesLevel) rows.push([t('PAdES level'), `PAdES ${v.padesLevel}`, 'info']);
   if (v.qualified) rows.push([t('Qualified'), v.qualified === 'qscd' ? t('Qualified electronic signature (qualified certificate, key on a secure device)') : t('Qualified certificate'), 'ok']);
-  if (v.euTrusted) rows.push([t('EU Trusted List'), v.euTrusted, 'ok']);
+  if (v.euTrusted) rows.push([t('EU Trusted List'), `${v.euTrusted} (${t('downloaded over HTTPS; the list’s own signature is not verified')})`, 'ok']);
   if (v.ltv) rows.push([t('Long-term validation'), t('Validation data is stored in the file.'), 'ok']);
   if (v.certified) rows.push([t('Certification'), t(['', 'No changes allowed', 'Form filling and signing allowed', 'Form filling, signing and comments allowed'][v.certified]), 'info']);
-  if (v.message) rows.push([t('Result'), v.message, v.integrity === 'valid' && !v.modifiedAfterSigning ? 'ok' : 'warn']);
+  for (const w of v.warnings ?? []) rows.push([t('Warning'), w, 'warn']);
+  if (v.message) rows.push([t('Result'), v.message, v.integrity === 'valid' && !v.modifiedAfterSigning && !v.warnings?.length ? 'ok' : 'warn']);
   return rows;
 }
 

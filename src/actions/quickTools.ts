@@ -10,7 +10,8 @@ import { askPassword } from '@/store/useDialogs';
 import { openPdfBytes, withBusy, PDF_FILTER } from './document';
 import { IMAGE_EXTENSIONS, imagesToPdf, pickImagesAsDataUrls } from './convert';
 import { openPdf, PasswordRequiredError, type PDFDocumentProxy } from '@/lib/pdf/pdfService';
-import { officeToPdf, pickFiles, pickPaths, saveBytes, type PickedFile } from '@/lib/platform';
+import { officeToPdf, pickFiles, pickPaths, type PickedFile } from '@/lib/platform';
+import { saveFileQuiet } from '@/actions/saveGuard';
 import { exportPagesAsImages, exportToPptx, exportToXlsx, extractStructuredText } from '@/lib/pdf/convert';
 import { collectDocxGraphics, exportToDocx } from '@/lib/pdf/docx';
 import { layoutRows } from '@/lib/pdf/exportFormats';
@@ -61,10 +62,10 @@ interface Output {
 /** Saves one output directly, or several as a ZIP. Returns the saved path. */
 async function saveOutputs(outputs: Output[], zipName: string, filter: { name: string; extensions: string[] }): Promise<string | null> {
   if (outputs.length === 0) return null;
-  if (outputs.length === 1) return saveBytes(outputs[0].data, outputs[0].name, [filter]);
+  if (outputs.length === 1) return saveFileQuiet(outputs[0].data, outputs[0].name, [filter]);
   const zip = new JSZip();
   for (const o of outputs) zip.file(o.name, o.data);
-  return saveBytes(await zip.generateAsync({ type: 'blob' }), zipName, [{ name: 'ZIP archive', extensions: ['zip'] }]);
+  return saveFileQuiet(await zip.generateAsync({ type: 'blob' }), zipName, [{ name: 'ZIP archive', extensions: ['zip'] }]);
 }
 
 function done(path: string | null, summary: string): void {
@@ -164,7 +165,7 @@ export async function mergeFiles(files: PickedFile[]): Promise<void> {
   }
   const locked = files.filter((f) => isPdfEncrypted(f.bytes));
   if (locked.length) {
-    usePDFStore.getState().toast(`${locked.map((f) => f.name).join(', ')} ${locked.length > 1 ? 'are' : 'is'} password-protected and cannot be merged.`, 'error');
+    usePDFStore.getState().toast(`Password-protected files cannot be merged: ${locked.map((f) => f.name).join(', ')}.`, 'error');
     return;
   }
   const outputs = await withBusy('Merging…', async (progress) => {

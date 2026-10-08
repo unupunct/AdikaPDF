@@ -90,7 +90,7 @@ export const LinkLayer = memo(function LinkLayer({ page, zoom, active }: { page:
       const [annots, pdfPage] = loaded;
       const vp = pdfPage.getViewport({ scale: 1, rotation: totalRotation(page) });
       const boxes = annots
-        .filter((a) => a.subtype === 'Link' && (a.url || a.unsafeUrl || a.dest || a.action))
+        .filter((a) => a.subtype === 'Link' && (a.url || a.unsafeUrl || a.dest || a.action) && !(a.id && page.takenAnnots?.includes(a.id)))
         .map((a) => {
           const [x1, y1] = vp.convertToViewportPoint(a.rect[0], a.rect[1]);
           const [x2, y2] = vp.convertToViewportPoint(a.rect[2], a.rect[3]);

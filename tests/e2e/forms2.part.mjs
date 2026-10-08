@@ -119,6 +119,12 @@ export function registerForms2Tests(test, ctx) {
     assert(raw.includes(Buffer.from('/Adobe.PubSec')) && !raw.toString('latin1').includes('Salarii 2026'), 'encrypted for certificates');
     // Opened with the Windows certificate.
     for (const how of ['store', 'file']) {
+      // An already-open file only switches to its tab: close it so each way of opening is tried.
+      await S(() => {
+        const t = window.__adika.tabs;
+        window.__adika.store.setState({ dirty: false });
+        for (const tab of [...t.useTabs.getState().tabs]) t.removeTab(tab.id);
+      });
       const opening = S((p) => window.__adika.document.openPdfPath(p), slash(enc));
       await page.waitForSelector('[data-testid="certkey-dialog"]', { timeout: 15000 });
       if (how === 'file') {

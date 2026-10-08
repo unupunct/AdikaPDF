@@ -40,11 +40,41 @@ export function readXfaPackets(doc: PDFDocument): Array<[string, string]> | null
     }
     return out;
   }
-  // One stream with the whole XDP: split it into its packets.
+  // One stream with the whole XDP: split it into its packets, keeping the
+  // <xdp:xdp> root as preamble / postamble like the array form has it.
   const xdp = streamText(doc, xfa);
   if (!xdp) return null;
   const root = parseXml(xdp);
-  return kids(root).map((el) => [localName(el.name), serializeXml(el)] as [string, string]);
+  const packets = kids(root).map((el) => [localName(el.name), serializeXml(el)] as [string, string]);
+  const { preamble, postamble } = xdpWrapper(xdp);
+  return [['preamble', preamble], ...packets, ['postamble', postamble]];
+}
+
+const XDP_PREAMBLE = '<xdp:xdp xmlns:xdp="http://ns.adobe.com/xdp/">';
+const XDP_POSTAMBLE = '</xdp:xdp>';
+
+/** The root element's opening tag (with what precedes it) and closing tag. */
+function xdpWrapper(xdp: string): { preamble: string; postamble: string } {
+  const re = /<(\?[^]*?\?>|!--[^]*?-->|![^>]*>)|<([^\s>/!?]+)(?:"[^"]*"|'[^']*'|[^'">])*>/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(xdp))) {
+    if (m[2] === undefined) continue;
+    if (m[0].endsWith('/>')) break;
+    const close = xdp.lastIndexOf(`</${m[2]}`);
+    if (close < re.lastIndex) break;
+    return { preamble: xdp.slice(0, re.lastIndex), postamble: xdp.slice(close).trim() };
+  }
+  return { preamble: XDP_PREAMBLE, postamble: XDP_POSTAMBLE };
+}
+
+/** Packets with the xdp wrapper and datasets in their place (before the postamble). */
+function orderedPackets(packets: Array<[string, string]>): Array<[string, string]> {
+  const body = packets.filter(([n]) => n !== 'preamble' && n !== 'postamble');
+  return [
+    ['preamble', packets.find(([n]) => n === 'preamble')?.[1] ?? XDP_PREAMBLE],
+    ...body,
+    ['postamble', packets.find(([n]) => n === 'postamble')?.[1] ?? XDP_POSTAMBLE],
+  ];
 }
 
 /** Replaces one packet (the datasets after filling). */
@@ -64,7 +94,11 @@ export function writeXfaPacket(doc: PDFDocument, name: string, xml: string): boo
       return true;
     }
     // No such packet yet: before the postamble.
-    const at = Math.max(0, xfa.size() - 2);
+    let at = xfa.size();
+    for (let i = 0; i + 1 < xfa.size(); i += 2) {
+      const n = xfa.get(i);
+      if ((n instanceof PDFString || n instanceof PDFHexString) && n.decodeText() === 'postamble') at = i;
+    }
     xfa.insert(at, PDFString.of(name));
     xfa.insert(at + 1, doc.context.register(stream));
     return true;
@@ -235,7 +269,7 @@ export function writeXfaPackets(doc: PDFDocument, packets: Array<[string, string
     doc.catalog.set(PDFName.of('AcroForm'), doc.context.register(acro));
   }
   const arr = doc.context.obj([]);
-  for (const [name, xml] of packets) {
+  for (const [name, xml] of orderedPackets(packets)) {
     arr.push(PDFString.of(name));
     arr.push(doc.context.register(doc.context.flateStream(new TextEncoder().encode(xml))));
   }
@@ -258,7 +292,12 @@ export function restoreStaticXfa(doc: PDFDocument, packets: Array<[string, strin
     const r = fillDatasets(template, datasets, values);
     if (r.unmapped.length) throw new Error(`unmapped ${r.unmapped.join(', ')}`);
     const out = packets.map(([n, x]) => [n, n === 'datasets' ? r.xml : x] as [string, string]);
-    if (!hasDatasets) out.splice(Math.max(0, out.findIndex(([n]) => n === 'postamble')), 0, ['datasets', r.xml]);
+    if (!hasDatasets) {
+      // After the template (Adobe's order), else before the postamble.
+      const t = out.findIndex(([n]) => n === 'template');
+      const post = out.findIndex(([n]) => n === 'postamble');
+      out.splice(t >= 0 ? t + 1 : post >= 0 ? post : out.length, 0, ['datasets', r.xml]);
+    }
     writeXfaPackets(doc, out);
     return 'synced';
   } catch {

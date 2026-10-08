@@ -87,7 +87,8 @@ pub fn list_dir(path: String) -> Result<Vec<DirEntry>, String> {
 /// Moves a file (creating the target folder); never overwrites: " (2)" is added.
 #[tauri::command]
 pub fn move_file(from: String, to: String) -> Result<String, String> {
-    let target = Path::new(&to);
+    let target = crate::pathguard::check_write_file(Path::new(&to))?;
+    let target = target.as_path();
     if let Some(dir) = target.parent() {
         std::fs::create_dir_all(dir).map_err(|e| format!("Could not create {}: {e}", dir.display()))?;
     }
@@ -107,5 +108,6 @@ pub fn move_file(from: String, to: String) -> Result<String, String> {
 
 #[tauri::command]
 pub fn make_dir(path: String) -> Result<(), String> {
+    crate::pathguard::check_make_dir(Path::new(&path))?;
     std::fs::create_dir_all(&path).map_err(|e| format!("Could not create {path}: {e}"))
 }

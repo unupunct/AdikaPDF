@@ -52,20 +52,16 @@ export interface BatchContext {
 
 export class BatchSkip extends Error {}
 
-/** Metadata stripped, document info cleared, orphaned objects dropped. */
+/**
+ * Metadata (document, XMP and per object), scripts, thumbnails, private
+ * application data and earlier revisions removed; orphaned objects dropped.
+ * The same removal as the Hidden information dialog.
+ */
 export async function sanitizeBytes(bytes: Uint8Array): Promise<Uint8Array> {
-  const [{ compressPdf }, { dropUnreachableObjects }] = await Promise.all([import('./pdf/compress'), import('./pdf/prune')]);
-  const r = await compressPdf(bytes, { imageQuality: 1, maxImageDpi: 10000, stripMetadata: true });
-  const doc = await PDFDocument.load(r.bytes);
-  doc.setTitle('');
-  doc.setAuthor('');
-  doc.setSubject('');
-  doc.setKeywords([]);
-  doc.setCreator('');
-  doc.setProducer('Adika PDF Editor');
-  dropUnreachableObjects(doc);
-  return doc.save();
+  const { removeHiddenInfo, SANITIZE_KINDS } = await import('./pdf/hiddenInfo');
+  return removeHiddenInfo(bytes, SANITIZE_KINDS);
 }
+
 
 /** Form fields and annotations burned into the page content. */
 export async function flattenBytes(bytes: Uint8Array, loadFont: BatchContext['loadFont']): Promise<Uint8Array> {
@@ -110,8 +106,12 @@ export async function runBatchOp(bytes: Uint8Array, op: BatchOp, ctx: BatchConte
       return { bytes: out };
     }
     case 'pdfa': {
-      const { convertToPdfA } = await import('./pdf/pdfa');
-      return { bytes: await convertToPdfA(bytes, { title: ctx.fileName.replace(/\.pdf$/i, ''), author: '', level: '2b' }) };
+      const { convertToPdfADetailed, pdfaWarnings } = await import('./pdf/pdfa');
+      const fieldFont = await ctx.loadFont({ family: 'sans', bold: false, italic: false }).catch(() => undefined);
+      const r = await convertToPdfADetailed(bytes, { title: ctx.fileName.replace(/\.pdf$/i, ''), author: '', level: '2b', fieldFont });
+      // Without the closing "validate with veraPDF" reminder, which would repeat for every file.
+      const warnings = (await pdfaWarnings(r.bytes, '2b')).slice(0, -1);
+      return { bytes: r.bytes, note: [...r.notes, ...warnings].join(' ') || undefined };
     }
     case 'protect':
       if (!op.userPassword) throw new Error('A password is needed.');
@@ -149,7 +149,8 @@ export function sequenceProblem(steps: BatchOp[]): string | null {
   const protect = steps.findIndex((s) => s.kind === 'protect');
   if (protect >= 0 && protect !== steps.length - 1) return 'Password protection must be the last step (the other steps cannot open a protected file).';
   const pdfa = steps.findIndex((s) => s.kind === 'pdfa');
-  if (pdfa >= 0 && steps.slice(pdfa + 1).some((s) => s.kind !== 'protect')) return 'PDF/A conversion should come last (later steps would break PDF/A conformance).';
+  if (pdfa >= 0 && protect >= 0) return 'PDF/A files cannot be password-protected (PDF/A forbids encryption): leave out one of the two steps.';
+  if (pdfa >= 0 && pdfa !== steps.length - 1) return 'PDF/A conversion should come last (later steps would break PDF/A conformance).';
   const bad = steps.find((s) => (s.kind === 'watermark' && !s.text.trim()) || (s.kind === 'protect' && !s.userPassword));
   if (bad) return bad.kind === 'protect' ? 'A password is needed.' : 'The watermark text is empty.';
   return null;

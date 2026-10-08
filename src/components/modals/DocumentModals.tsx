@@ -12,6 +12,7 @@ import { AdikaLogo } from '@/components/shell/AdikaLogo';
 import { logsFolder, openLogsFolder } from '@/lib/log';
 import { APP_VERSION, checkForUpdates, useUpdates } from '@/lib/updates';
 import { openExternal } from '@/lib/platform';
+import { useSaveSettings } from '@/lib/saveSettings';
 
 function UpdateInfo() {
   const { status, latest, error, auto, setAuto } = useUpdates();
@@ -44,6 +45,19 @@ function UpdateInfo() {
       </div>
       <div className="mt-1.5">
         <Checkbox checked={auto} onChange={setAuto} label="Check automatically once a week" />
+      </div>
+    </div>
+  );
+}
+
+function SaveInfo() {
+  const { preferIncremental, setPreferIncremental } = useSaveSettings();
+  return (
+    <div className="mt-4 rounded-lg border border-app px-3 py-2 text-[11.5px]" data-testid="save-info">
+      <span className="block font-semibold">Saving</span>
+      <span className="block text-muted">Signed documents are saved as an incremental update, so their signatures stay valid. Other documents are rewritten in full, which also removes earlier versions kept inside the file.</span>
+      <div className="mt-1.5">
+        <Checkbox checked={preferIncremental} onChange={setPreferIncremental} label="Save as incremental update when possible" />
       </div>
     </div>
   );
@@ -481,8 +495,12 @@ export function CompressModal() {
             variant="primary"
             data-testid="compress-run"
             onClick={async () => {
-              const r = await runCompress({ ...presets[preset], stripMetadata: strip });
-              if (r) setResult(r);
+              try {
+                const r = await runCompress({ ...presets[preset], stripMetadata: strip });
+                if (r) setResult(r);
+              } catch (e) {
+                usePDFStore.getState().toast(e instanceof Error ? e.message : String(e), 'error');
+              }
             }}
           >
             Compress and save copy
@@ -527,6 +545,7 @@ export function OcrModal() {
   const [dpi, setDpi] = useState(300);
   const [langs, setLangs] = useState<string[]>(() => loadOcrLangs());
   const [output, setOutput] = useState<'searchable' | 'sans' | 'serif'>('searchable');
+  const [straighten, setStraighten] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const toggleLang = (code: string) => {
@@ -534,15 +553,24 @@ export function OcrModal() {
     setLangs(next.length ? next : ['eng']);
   };
 
+  useEffect(() => {
+    if (open) setError(null);
+  }, [open]);
+
   const run = async () => {
+    let pageNumbers: number[];
     try {
-      const pageNumbers = scope === 'all' ? Array.from({ length: count }, (_, i) => i + 1) : scope === 'current' ? [Math.max(1, current)] : [...new Set(parseRanges(range, count).flat())];
-      saveOcrLangs(langs);
-      close();
-      await runOcr({ pageNumbers, dpi, lang: langs.join('+'), editable: output === 'searchable' ? undefined : { family: output } });
+      pageNumbers = scope === 'all' ? Array.from({ length: count }, (_, i) => i + 1) : scope === 'current' ? [Math.max(1, current)] : [...new Set(parseRanges(range, count).flat())];
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
+      return;
     }
+    saveOcrLangs(langs);
+    close();
+    // The dialog is closed by now: failures are shown as a toast.
+    await runOcr({ pageNumbers, dpi, lang: langs.join('+'), straighten, editable: output === 'searchable' ? undefined : { family: output } }).catch((e: unknown) =>
+      usePDFStore.getState().toast(e instanceof Error ? e.message : String(e), 'error'),
+    );
   };
 
   return (
@@ -585,6 +613,9 @@ export function OcrModal() {
       <Field label="Resolution" hint="300 DPI is best for typical scans; 400 for small print.">
         <Select value={String(dpi)} onChange={(v) => setDpi(Number(v))} ariaLabel="OCR resolution" options={[{ value: '200', label: '200 DPI (fast)' }, { value: '300', label: '300 DPI (recommended)' }, { value: '400', label: '400 DPI (small text)' }]} />
       </Field>
+      {output === 'searchable' ? (
+        <Checkbox checked={straighten} onChange={setStraighten} label="Straighten page orientation" />
+      ) : null}
       <Field label="Document languages" hint="Pick every language that appears in the scan. Fewer languages = faster and more accurate.">
         <div className="flex flex-wrap gap-1.5" data-testid="ocr-langs">
           {OCR_LANGUAGES.map((l) => (
@@ -725,6 +756,7 @@ export function AboutModal() {
         </tbody>
       </table>
       <UpdateInfo />
+      <SaveInfo />
       <LogsInfo />
       <p className="mt-4 text-[11px] text-muted">
         Built with pdf.js (Mozilla), pdf-lib, Konva, node-forge, Tesseract.js, libheif (LGPL-3.0), postal-mime, msgreader, dxf-parser, Noto fonts (SIL OFL) and Tauri.

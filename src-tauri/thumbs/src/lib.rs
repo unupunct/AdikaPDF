@@ -11,13 +11,12 @@ use std::ffi::c_void;
 use windows::core::{implement, Interface, Ref, Result, GUID, HRESULT, PCWSTR};
 use windows::Data::Pdf::{PdfDocument, PdfPageRenderOptions};
 use windows::Graphics::Imaging::{BitmapAlphaMode, BitmapDecoder, BitmapPixelFormat};
-use windows::Storage::Streams::{Buffer, DataReader, IRandomAccessStream, InMemoryRandomAccessStream};
+use windows::Storage::Streams::{Buffer, DataReader, DataWriter, IRandomAccessStream, InMemoryRandomAccessStream};
 use windows::Win32::Foundation::{CLASS_E_CLASSNOTAVAILABLE, CLASS_E_NOAGGREGATION, E_FAIL, E_POINTER, HMODULE, S_FALSE, S_OK};
 use windows::Win32::Graphics::Gdi::{CreateDIBSection, BITMAPINFO, BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS, HBITMAP};
-use windows::Win32::System::Com::{IClassFactory, IClassFactory_Impl, IStream};
+use windows::Win32::System::Com::{CoInitializeEx, CoUninitialize, IClassFactory, IClassFactory_Impl, IStream, COINIT_MULTITHREADED, STREAM_SEEK_SET};
 use windows::Win32::System::LibraryLoader::GetModuleFileNameW;
-use windows::Win32::System::Registry::{RegCreateKeyExW, RegDeleteTreeW, RegSetValueExW, HKEY, HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, KEY_WRITE, REG_OPTION_NON_VOLATILE, REG_SZ};
-use windows::Win32::System::WinRT::{CreateRandomAccessStreamOverStream, BSOS_DEFAULT};
+use windows::Win32::System::Registry::{RegCreateKeyExW, RegDeleteTreeW, RegGetValueW, RegSetValueExW, HKEY, HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, KEY_WRITE, REG_OPTION_NON_VOLATILE, REG_SZ, RRF_RT_REG_SZ};
 use windows::Win32::UI::Shell::PropertiesSystem::{IInitializeWithStream, IInitializeWithStream_Impl};
 use windows::Win32::UI::Shell::{IThumbnailProvider, IThumbnailProvider_Impl, WTSAT_ARGB, WTS_ALPHATYPE};
 
@@ -25,6 +24,10 @@ use windows::Win32::UI::Shell::{IThumbnailProvider, IThumbnailProvider_Impl, WTS
 pub const CLSID_ADIKA_THUMBS: GUID = GUID::from_u128(0x6a3b9e52_8c1f_4d27_9b5e_0a7d3c2f41b8);
 /// The shell's thumbnail handler category.
 const THUMBNAIL_HANDLER: &str = "{e357fccd-a995-4576-b01f-234630154e96}";
+/// Value of our CLSID key keeping the .pdf thumbnail handler that was registered before ours.
+const PREVIOUS_HANDLER: &str = "PreviousPdfThumbnailHandler";
+/// Larger files get no thumbnail (the whole file is read into memory).
+const MAX_PDF_BYTES: u64 = 512 * 1024 * 1024;
 
 static mut MODULE: HMODULE = HMODULE(std::ptr::null_mut());
 
@@ -56,6 +59,60 @@ pub fn render_first_page(stream: &IRandomAccessStream, size: u32) -> Result<(u32
     let mut px = vec![0u8; (bw * bh * 4) as usize];
     reader.ReadBytes(&mut px)?;
     Ok((bw, bh, px))
+}
+
+/// Renders page 1 of a PDF held in memory.
+pub fn render_bytes(bytes: &[u8], size: u32) -> Result<(u32, u32, Vec<u8>)> {
+    let stream = InMemoryRandomAccessStream::new()?;
+    let writer = DataWriter::CreateDataWriter(&stream)?;
+    writer.WriteBytes(bytes)?;
+    writer.StoreAsync()?.get()?;
+    writer.FlushAsync()?.get()?;
+    writer.DetachStream()?;
+    stream.Seek(0)?;
+    render_first_page(&stream.cast()?, size)
+}
+
+/// Renders on a multithreaded-apartment worker. Explorer calls the provider
+/// on a single-threaded apartment (ThreadingModel=Apartment) that does not
+/// pump messages while the WinRT calls block in `.get()`; nothing of the
+/// rendering may need that thread, so it runs elsewhere on plain bytes.
+fn render_on_worker(bytes: Vec<u8>, size: u32) -> Result<(u32, u32, Vec<u8>)> {
+    std::thread::spawn(move || {
+        let init = unsafe { CoInitializeEx(None, COINIT_MULTITHREADED) };
+        let res = render_bytes(&bytes, size);
+        if init.is_ok() {
+            unsafe { CoUninitialize() };
+        }
+        res
+    })
+    .join()
+    .map_err(|_| windows::core::Error::from(E_FAIL))?
+}
+
+/// The whole stream Explorer handed over.
+fn read_stream(stream: &IStream) -> Result<Vec<u8>> {
+    unsafe {
+        let _ = stream.Seek(0, STREAM_SEEK_SET, None);
+    }
+    let mut out = Vec::new();
+    let mut chunk = vec![0u8; 1 << 20];
+    loop {
+        let mut read = 0u32;
+        let hr = unsafe { stream.Read(chunk.as_mut_ptr() as *mut c_void, chunk.len() as u32, Some(&mut read)) };
+        hr.ok()?;
+        if read == 0 {
+            break;
+        }
+        out.extend_from_slice(&chunk[..read as usize]);
+        if out.len() as u64 > MAX_PDF_BYTES {
+            return Err(E_FAIL.into());
+        }
+        if hr == S_FALSE {
+            break;
+        }
+    }
+    Ok(out)
 }
 
 /// A 32-bit top-down DIB section with the pixels.
@@ -101,8 +158,8 @@ impl IThumbnailProvider_Impl for Provider_Impl {
             return Err(E_POINTER.into());
         }
         let stream = self.stream.borrow().clone().ok_or(windows::core::Error::from(E_FAIL))?;
-        let ras: IRandomAccessStream = unsafe { CreateRandomAccessStreamOverStream(&stream, BSOS_DEFAULT)? };
-        let (w, h, px) = render_first_page(&ras, cx.clamp(16, 2560))?;
+        let bytes = read_stream(&stream)?;
+        let (w, h, px) = render_on_worker(bytes, cx.clamp(16, 2560))?;
         let bmp = to_hbitmap(w, h, &px)?;
         unsafe {
             *phbmp = bmp;
@@ -176,21 +233,63 @@ fn clsid_string() -> String {
     format!("{{{:?}}}", CLSID_ADIKA_THUMBS).to_ascii_uppercase()
 }
 
-fn register(root: HKEY) -> Result<()> {
+/// A REG_SZ value (None: missing or not a string).
+fn get(root: HKEY, path: &str, name: Option<&str>) -> Option<String> {
+    let n = name.map(wide);
+    let name = n.as_ref().map(|x| PCWSTR(x.as_ptr())).unwrap_or(PCWSTR::null());
+    let mut buf = vec![0u16; 1024];
+    let mut len = (buf.len() * 2) as u32;
+    let err = unsafe { RegGetValueW(root, PCWSTR(wide(path).as_ptr()), name, RRF_RT_REG_SZ, None, Some(buf.as_mut_ptr() as *mut c_void), Some(&mut len)) };
+    err.is_ok().then(|| String::from_utf16_lossy(&buf[..(len as usize / 2).saturating_sub(1)]))
+}
+
+/// Where the registration goes (tests use a scratch key instead).
+const CLASSES: &str = "Software\\Classes";
+
+fn handler_key(classes: &str) -> String {
+    format!("{classes}\\SystemFileAssociations\\.pdf\\ShellEx\\{THUMBNAIL_HANDLER}")
+}
+
+fn register(root: HKEY, classes: &str) -> Result<()> {
     let mut path = [0u16; 1024];
     let n = unsafe { GetModuleFileNameW(Some(MODULE), &mut path) } as usize;
     let dll = String::from_utf16_lossy(&path[..n]);
     let clsid = clsid_string();
-    set(root, &format!("Software\\Classes\\CLSID\\{clsid}"), None, "Adika PDF Editor thumbnails")?;
-    set(root, &format!("Software\\Classes\\CLSID\\{clsid}\\InprocServer32"), None, &dll)?;
-    set(root, &format!("Software\\Classes\\CLSID\\{clsid}\\InprocServer32"), Some("ThreadingModel"), "Apartment")?;
-    set(root, &format!("Software\\Classes\\SystemFileAssociations\\.pdf\\ShellEx\\{THUMBNAIL_HANDLER}"), None, &clsid)
+    let key = format!("{classes}\\CLSID\\{clsid}");
+    set(root, &key, None, "Adika PDF Editor thumbnails")?;
+    set(root, &format!("{key}\\InprocServer32"), None, &dll)?;
+    set(root, &format!("{key}\\InprocServer32"), Some("ThreadingModel"), "Apartment")?;
+    // Another program's handler is kept, to be put back when Adika is removed.
+    if let Some(previous) = get(root, &handler_key(classes), None).filter(|p| !p.is_empty() && !p.eq_ignore_ascii_case(&clsid)) {
+        set(root, &key, Some(PREVIOUS_HANDLER), &previous)?;
+    }
+    set(root, &handler_key(classes), None, &clsid)
+}
+
+fn unregister(root: HKEY, classes: &str) {
+    let clsid = clsid_string();
+    let key = format!("{classes}\\CLSID\\{clsid}");
+    let previous = get(root, &key, Some(PREVIOUS_HANDLER)).filter(|p| !p.is_empty());
+    // Only our own entry is touched: a program installed after Adika keeps its handler.
+    if get(root, &handler_key(classes), None).is_some_and(|v| v.eq_ignore_ascii_case(&clsid)) {
+        match previous {
+            Some(p) => {
+                let _ = set(root, &handler_key(classes), None, &p);
+            }
+            None => unsafe {
+                let _ = RegDeleteTreeW(root, PCWSTR(wide(&handler_key(classes)).as_ptr()));
+            },
+        }
+    }
+    unsafe {
+        let _ = RegDeleteTreeW(root, PCWSTR(wide(&key).as_ptr()));
+    }
 }
 
 /// regsvr32: for every user when allowed, otherwise for the current user.
 #[no_mangle]
 extern "system" fn DllRegisterServer() -> HRESULT {
-    match register(HKEY_LOCAL_MACHINE).or_else(|_| register(HKEY_CURRENT_USER)) {
+    match register(HKEY_LOCAL_MACHINE, CLASSES).or_else(|_| register(HKEY_CURRENT_USER, CLASSES)) {
         Ok(()) => S_OK,
         Err(e) => e.code(),
     }
@@ -198,12 +297,8 @@ extern "system" fn DllRegisterServer() -> HRESULT {
 
 #[no_mangle]
 extern "system" fn DllUnregisterServer() -> HRESULT {
-    let clsid = clsid_string();
     for root in [HKEY_LOCAL_MACHINE, HKEY_CURRENT_USER] {
-        unsafe {
-            let _ = RegDeleteTreeW(root, PCWSTR(wide(&format!("Software\\Classes\\CLSID\\{clsid}")).as_ptr()));
-            let _ = RegDeleteTreeW(root, PCWSTR(wide(&format!("Software\\Classes\\SystemFileAssociations\\.pdf\\ShellEx\\{THUMBNAIL_HANDLER}")).as_ptr()));
-        }
+        unregister(root, CLASSES);
     }
     S_OK
 }
@@ -275,5 +370,58 @@ mod tests {
         assert!(provider.cast::<IInitializeWithStream>().is_ok());
         let other = GUID::from_u128(1);
         assert_eq!(DllGetClassObject(&other, &IClassFactory::IID, &mut ppv), CLASS_E_CLASSNOTAVAILABLE);
+    }
+
+    /// Explorer's case: the provider called on a single-threaded apartment.
+    #[test]
+    fn draws_on_a_single_threaded_apartment() {
+        std::thread::spawn(|| {
+            use windows::Win32::System::Com::COINIT_APARTMENTTHREADED;
+            unsafe { CoInitializeEx(None, COINIT_APARTMENTTHREADED).ok().unwrap() };
+            let path = std::env::temp_dir().join(format!("adika-thumb-sta-{}.pdf", std::process::id()));
+            std::fs::write(&path, sample()).unwrap();
+            let p = wide(path.to_str().unwrap());
+            let stream: IStream = unsafe { SHCreateStreamOnFileEx(PCWSTR(p.as_ptr()), STGM_READ.0, 0, false, None).unwrap() };
+            let provider: IThumbnailProvider = Provider::new().into();
+            unsafe { provider.cast::<IInitializeWithStream>().unwrap().Initialize(&stream, 0).unwrap() };
+            let mut bmp = HBITMAP::default();
+            let mut alpha = WTS_ALPHATYPE::default();
+            unsafe { provider.GetThumbnail(100, &mut bmp, &mut alpha).unwrap() };
+            assert!(!bmp.is_invalid());
+            unsafe {
+                let _ = DeleteObject(bmp.into());
+            }
+            drop(provider);
+            drop(stream);
+            let _ = std::fs::remove_file(&path);
+        })
+        .join()
+        .unwrap();
+    }
+
+    #[test]
+    fn keeps_and_restores_another_programs_handler() {
+        let classes = format!("Software\\AdikaThumbsTest{}\\Classes", std::process::id());
+        let root = HKEY_CURRENT_USER;
+        let clsid = clsid_string();
+        let other = "{11111111-2222-3333-4444-555555555555}";
+        set(root, &handler_key(&classes), None, other).unwrap();
+        register(root, &classes).unwrap();
+        assert_eq!(get(root, &handler_key(&classes), None).as_deref(), Some(clsid.as_str()));
+        // Registering again (an update) keeps the original, not our own CLSID.
+        register(root, &classes).unwrap();
+        unregister(root, &classes);
+        assert_eq!(get(root, &handler_key(&classes), None).as_deref(), Some(other));
+
+        // Someone else took over after us: unregistering leaves theirs alone.
+        register(root, &classes).unwrap();
+        let newer = "{99999999-2222-3333-4444-555555555555}";
+        set(root, &handler_key(&classes), None, newer).unwrap();
+        unregister(root, &classes);
+        assert_eq!(get(root, &handler_key(&classes), None).as_deref(), Some(newer));
+        assert!(get(root, &format!("{classes}\\CLSID\\{clsid}"), None).is_none());
+        unsafe {
+            let _ = RegDeleteTreeW(root, PCWSTR(wide(&format!("Software\\AdikaThumbsTest{}", std::process::id())).as_ptr()));
+        }
     }
 }

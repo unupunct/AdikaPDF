@@ -147,6 +147,7 @@ function Widget({ box, zoom, sourceId, field }: { box: Box; zoom: number; source
       maxLength={box.w.maxLen || undefined}
       disabled={disabled}
       name={field.name}
+      label={field.label ?? field.name}
       value={String(value ?? '')}
       shown={formatted && formatted.value === value ? formatted.text : displayValue(field.logic?.format, String(value ?? ''))}
       onCommit={commit}
@@ -164,6 +165,8 @@ function TextWidget(props: {
   maxLength?: number;
   disabled: boolean;
   name: string;
+  /** The field's tooltip (TU) or name, read by screen readers. */
+  label: string;
   value: string;
   shown: string;
   onCommit: (v: string) => void;
@@ -174,6 +177,16 @@ function TextWidget(props: {
   useEffect(() => {
     if (!editing) setText(props.value);
   }, [props.value, editing]);
+  // Scrolled far away while typing, the widget unmounts without a blur: keep what was typed.
+  const latest = useRef({ editing, text, value: props.value, onCommit: props.onCommit });
+  latest.current = { editing, text, value: props.value, onCommit: props.onCommit };
+  useEffect(
+    () => () => {
+      const l = latest.current;
+      if (l.editing && !cancelled.current && l.text !== l.value) l.onCommit(l.text);
+    },
+    [],
+  );
   const fontSize = (props.multiline ? 11 : Math.max(7, Math.min(16, props.height * 0.62))) * props.zoom;
   const commit = () => {
     setEditing(false);
@@ -181,7 +194,7 @@ function TextWidget(props: {
     else if (text !== props.value) props.onCommit(text);
   };
   const common = {
-    'aria-label': props.name,
+    'aria-label': props.label,
     'data-testid': 'page-field',
     'data-field': props.name,
     'data-no-translate': true,

@@ -223,7 +223,11 @@ export async function launchRequest(): Promise<import('@/actions/launch').Launch
 export async function onLaunch(handler: (req: import('@/actions/launch').LaunchRequest) => void): Promise<() => void> {
   if (!isDesktop) return () => undefined;
   const { listen } = await import('@tauri-apps/api/event');
-  return listen<import('@/actions/launch').LaunchRequest>('adika://launch', (e) => handler(e.payload));
+  const off = await listen<import('@/actions/launch').LaunchRequest>('adika://launch', (e) => handler(e.payload));
+  // Launches that arrived while this window was starting were kept for it.
+  const pending = await invoke<import('@/actions/launch').LaunchRequest[]>('take_pending_launches').catch(() => []);
+  for (const req of pending) handler(req);
+  return off;
 }
 
 /**

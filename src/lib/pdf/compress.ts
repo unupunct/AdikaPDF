@@ -19,6 +19,7 @@ import {
   decodePDFRawStream,
   type PDFObject,
 } from 'pdf-lib';
+import { decodeStreamWithPredictors } from './predictor';
 import { dropUnreachableObjects } from './prune';
 
 export interface CompressOptions {
@@ -365,6 +366,7 @@ export async function compressPdf(
   bytes: Uint8Array,
   opts: CompressOptions,
   onProgress?: (done: number, total: number) => void,
+  signal?: AbortSignal,
 ): Promise<CompressResult> {
   const before = bytes.length;
   const doc = await PDFDocument.load(bytes, { updateMetadata: false });
@@ -402,6 +404,7 @@ export async function compressPdf(
   let done = 0;
   onProgress?.(0, total);
   for (const { ref, stream } of images) {
+    signal?.throwIfAborted();
     try {
       if (canImage && !maskRefs.has(refKey(ref))) {
         const replaced = await recompressImage(doc, ref, stream, drawn.get(refKey(ref)), quality, maxDpi);
@@ -472,11 +475,12 @@ async function recompressImage(
   if (filters.length === 1 && filters[0] === 'DCTDecode') {
     const bpc = num(d, 'BitsPerComponent');
     if (!Number.isNaN(bpc) && bpc !== 8) return false;
-    bitmap = await createImageBitmap(new Blob([stream.contents as BlobPart], { type: 'image/jpeg' }));
+    // PDF viewers ignore EXIF orientation, so the browser must too.
+    bitmap = await createImageBitmap(new Blob([stream.contents as BlobPart], { type: 'image/jpeg' }), { imageOrientation: 'none' });
   } else if (filters.length === 1 && filters[0] === 'FlateDecode') {
     if (num(d, 'BitsPerComponent') !== 8) return false;
     if (w * h < 250_000 && orig < 100_000) return false; // only large images
-    const raw = decodePDFRawStream(stream).decode();
+    const raw = decodeStreamWithPredictors(stream);
     if (raw.length < w * h * cs.n) return false;
     bitmap = await createImageBitmap(rawToImageData(raw, w, h, cs.n));
   } else {

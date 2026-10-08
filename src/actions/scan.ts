@@ -7,7 +7,8 @@
 import { usePDFStore } from '@/store/usePDFStore';
 import { deliverPdf } from './convert';
 import { withBusy } from './document';
-import { fileStamp, isDesktop, pickFiles, pickFolder, saveBytes, wiaScan, writeFile } from '@/lib/platform';
+import { fileStamp, isDesktop, pickFiles, pickFolder, wiaScan, writeFile } from '@/lib/platform';
+import { saveFileQuiet } from '@/actions/saveGuard';
 import { imageFileToDataUrl } from '@/lib/objectFactory';
 import { binarize, cleanupPage, toGray, type CleanupOptions, type Img } from '@/lib/scan/cleanup';
 import { readCode128 } from '@/lib/barcode/code128';
@@ -231,7 +232,7 @@ export async function createScanPdfs(pages: ScanPageItem[], opts: CreateOptions)
     const JSZip = (await import('jszip')).default;
     const zip = new JSZip();
     docs.forEach((d, i) => zip.file(`${String(i + 1).padStart(2, '0')} ${safe(d.name)}.pdf`, d.bytes));
-    await saveBytes(await zip.generateAsync({ type: 'uint8array' }), 'Scans.zip', [{ name: 'ZIP archive', extensions: ['zip'] }]);
+    await saveFileQuiet(await zip.generateAsync({ type: 'uint8array' }), 'Scans.zip', [{ name: 'ZIP archive', extensions: ['zip'] }]);
   }
   return true;
 }
@@ -239,5 +240,5 @@ export async function createScanPdfs(pages: ScanPageItem[], opts: CreateOptions)
 /** Separator sheets to print: one per name (or one plain sheet). */
 export async function saveSeparatorSheets(names: string[]): Promise<void> {
   const bytes = await separatorSheet(names.length ? names : [null as unknown as string]);
-  await saveBytes(bytes, 'Adika separator sheets.pdf', [{ name: 'PDF document', extensions: ['pdf'] }]);
+  await saveFileQuiet(bytes, 'Adika separator sheets.pdf', [{ name: 'PDF document', extensions: ['pdf'] }]);
 }

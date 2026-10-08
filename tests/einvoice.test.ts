@@ -55,6 +55,34 @@ describe('electronic invoices', () => {
     expect(facturXLevel(FACTURX_CII)).toBe('EN 16931');
   });
 
+  it('checks each line: quantity × price per base quantity, with line allowances and charges', () => {
+    const lineIssues = (xml: string) => checkEInvoice(parseEInvoice(xml)).filter((m) => m.startsWith('Line '));
+    expect(lineIssues(EFACTURA_UBL.replace('<cbc:LineExtensionAmount currencyID="RON">600.00', '<cbc:LineExtensionAmount currencyID="RON">650.00'))).toEqual(['Line 2: 4 × 150 makes 600.00, the line says 650.00.']);
+    // 3 × (1000 per 2) - 100 discount = 1400.
+    const discounted = EFACTURA_UBL.replace('<cbc:LineExtensionAmount currencyID="RON">1500.00</cbc:LineExtensionAmount>', '<cbc:LineExtensionAmount currencyID="RON">1400.00</cbc:LineExtensionAmount><cac:AllowanceCharge><cbc:ChargeIndicator>false</cbc:ChargeIndicator><cbc:Amount currencyID="RON">100.00</cbc:Amount></cac:AllowanceCharge>').replace('<cbc:PriceAmount currencyID="RON">500.00</cbc:PriceAmount>', '<cbc:PriceAmount currencyID="RON">1000.00</cbc:PriceAmount><cbc:BaseQuantity unitCode="H87">2</cbc:BaseQuantity>');
+    expect(parseEInvoice(discounted).lines[0]).toMatchObject({ unitPrice: 500, allowances: 100, charges: 0, net: 1400 });
+    expect(lineIssues(discounted)).toEqual([]);
+  });
+
+  it('asks for an exemption reason on exempt VAT categories', () => {
+    const exempt = FACTURX_CII.replace('<ram:BasisAmount>90.00</ram:BasisAmount><ram:CategoryCode>S</ram:CategoryCode>', '<ram:BasisAmount>90.00</ram:BasisAmount><ram:CategoryCode>AE</ram:CategoryCode>');
+    expect(checkEInvoice(parseEInvoice(exempt))).toContain('VAT category AE needs an exemption reason.');
+    const withReason = exempt.replace('<ram:CategoryCode>AE</ram:CategoryCode>', '<ram:ExemptionReasonCode>VATEX-EU-AE</ram:ExemptionReasonCode><ram:CategoryCode>AE</ram:CategoryCode>');
+    expect(checkEInvoice(parseEInvoice(withReason))).not.toContain('VAT category AE needs an exemption reason.');
+  });
+
+  it('reads a CII credit note with negative amounts', () => {
+    const credit = FACTURX_CII.replace('<ram:TypeCode>380</ram:TypeCode>', '<ram:TypeCode>381</ram:TypeCode>')
+      .replace('unitCode="C62">20<', 'unitCode="C62">-20<')
+      .replace(/>90\.00</g, '>-90.00<')
+      .replace(/>17\.10</g, '>-17.10<')
+      .replace(/>107\.10</g, '>-107.10<');
+    const inv = parseEInvoice(credit);
+    expect(inv.kind).toBe('credit');
+    expect(inv.totals).toMatchObject({ tax: -17.1, payable: -107.1 });
+    expect(checkEInvoice(inv)).toEqual([]);
+  });
+
   it('finds sums that do not add up', () => {
     const inv = parseEInvoice(EFACTURA_UBL.replace('<cbc:PayableAmount currencyID="RON">2499.00', '<cbc:PayableAmount currencyID="RON">2500.00'));
     expect(checkEInvoice(inv)).toEqual(['The amount due should be 2499.00, the invoice says 2500.00.']);

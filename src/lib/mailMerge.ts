@@ -72,6 +72,16 @@ function columnIndex(ref: string): number {
   return n - 1;
 }
 
+/**
+ * A stored number as Excel shows it: with the format's decimals, else at 15
+ * significant digits (12.300000000000001 -> 12.3). Pure; exported for tests.
+ */
+export function excelNumber(n: number, decimals?: number): string {
+  if (!Number.isFinite(n)) return String(n);
+  if (decimals !== undefined) return n.toFixed(decimals);
+  return String(Number(n.toPrecision(15)));
+}
+
 /** Excel serial date -> dd.mm.yyyy. */
 function excelDate(serial: number): string {
   const d = new Date(Math.round((serial - 25569) * 86400e3));
@@ -96,9 +106,16 @@ export async function readXlsx(bytes: Uint8Array): Promise<string[][]> {
   const styles = (await read('xl/styles.xml')) ?? '';
   const customDates = new Set([...styles.matchAll(/<numFmt\b[^>]*numFmtId="(\d+)"[^>]*formatCode="([^"]*)"/g)].filter((m) => /[dy]/i.test(m[2].replace(/\[[^\]]*\]|"[^"]*"/g, ''))).map((m) => Number(m[1])));
   const xfs = /<cellXfs\b[^>]*>([\s\S]*?)<\/cellXfs>/.exec(styles)?.[1] ?? '';
-  const dateStyles = [...xfs.matchAll(/<xf\b[^>]*?(?:numFmtId="(\d+)")?[^>]*\/?>/g)].map((m) => {
-    const id = Number(/numFmtId="(\d+)"/.exec(m[0])?.[1] ?? 0);
-    return (id >= 14 && id <= 22) || customDates.has(id);
+  const xfIds = [...xfs.matchAll(/<xf\b[^>]*?(?:numFmtId="(\d+)")?[^>]*\/?>/g)].map((m) => Number(/numFmtId="(\d+)"/.exec(m[0])?.[1] ?? 0));
+  const dateStyles = xfIds.map((id) => (id >= 14 && id <= 22) || customDates.has(id));
+  // Fixed decimals of plain number formats ("0.00", "#,##0.000"), as Excel shows the value.
+  const customCodes = new Map([...styles.matchAll(/<numFmt\b[^>]*numFmtId="(\d+)"[^>]*formatCode="([^"]*)"/g)].map((m) => [Number(m[1]), m[2]]));
+  const decimalStyles = xfIds.map((id) => {
+    if (id === 1 || id === 3) return 0;
+    if (id === 2 || id === 4) return 2;
+    const code = customCodes.get(id)?.split(';')[0];
+    const m = code && /^[#,0]*0(?:\.(0+))?$/.exec(code);
+    return m ? (m[1]?.length ?? 0) : undefined;
   });
   const rows: string[][] = [];
   for (const r of sheet.matchAll(/<(?:\w+:)?row\b[^>]*>([\s\S]*?)<\/(?:\w+:)?row>/g)) {
@@ -114,7 +131,12 @@ export async function readXlsx(bytes: Uint8Array): Promise<string[][]> {
       if (type === 's') text = shared[Number(v)] ?? '';
       else if (type === 'inlineStr') text = runsText(inner);
       else if (type === 'b') text = v === '1' ? 'TRUE' : 'FALSE';
-      else if (v !== undefined) text = type !== 'str' && dateStyles[style] && /^\d+(\.\d+)?$/.test(v) ? excelDate(Number(v)) : xmlText(v);
+      else if (v !== undefined) {
+        const numeric = (type === undefined || type === 'n') && /^-?\d+(\.\d+)?(E[+-]?\d+)?$/i.test(v);
+        if (numeric && dateStyles[style] && Number(v) >= 0) text = excelDate(Number(v));
+        else if (numeric) text = excelNumber(Number(v), decimalStyles[style]);
+        else text = xmlText(v);
+      }
       row[ref ? columnIndex(ref) : row.length] = text;
     }
     rows.push(Array.from(row, (x) => x ?? ''));

@@ -19,7 +19,7 @@ export async function ocrBytes(bytes: Uint8Array, lang: string): Promise<Uint8Ar
   const pdf = await openPdf(bytes.slice());
   try {
     const pageNumbers = Array.from({ length: pdf.numPages }, (_, i) => i + 1);
-    const results = await ocrPages(pdf, { pageNumbers, dpi: 300, lang });
+    const results = await ocrPages(pdf, { pageNumbers, dpi: 300, lang, straighten: true });
     return await makeSearchable(bytes, results);
   } finally {
     await pdf.loadingTask.destroy();

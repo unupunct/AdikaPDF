@@ -94,7 +94,7 @@ export async function convertCurrentColors(target: 'gray' | 'cmyk'): Promise<str
     return convertColors(await exportCurrentPdf({}, progress), target, colorHooks);
   });
   if (!out) return undefined;
-  await saveDerived(out.bytes, target === 'gray' ? '-grayscale' : '-cmyk', true);
+  if (!(await saveDerived(out.bytes, target === 'gray' ? '-grayscale' : '-cmyk', true))) return undefined;
   usePDFStore
     .getState()
     .toast(`Converted: ${out.report.images} image${out.report.images === 1 ? '' : 's'}, ${out.report.shadings} gradient${out.report.shadings === 1 ? '' : 's'}.${out.report.kept.length ? ` Kept: ${out.report.kept.join('; ')}.` : ''}`, out.report.kept.length ? 'info' : 'success');

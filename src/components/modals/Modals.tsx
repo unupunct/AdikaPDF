@@ -24,6 +24,7 @@ import { CertEncryptModal, CertKeyDialog } from './CertEncryptModals';
 import { RecoverModal } from './RecoverModal';
 import { PrintModal } from './PrintModal';
 import { ReplacePagesModal } from './ReplacePagesModal';
+import { HiddenInfoModal } from './HiddenInfoModal';
 
 export function Modals() {
   return (
@@ -65,6 +66,7 @@ export function Modals() {
       <RecoverModal />
       <PrintModal />
       <ReplacePagesModal />
+      <HiddenInfoModal />
       <PasswordPrompt />
       <ConfirmPrompt />
     </>
@@ -95,7 +97,14 @@ function PasswordPrompt() {
       testId="password-prompt"
       footer={
         <>
-          <Button onClick={() => prompt.resolve(null)}>Cancel</Button>
+          <Button
+            onClick={() => {
+              setValue('');
+              prompt.resolve(null);
+            }}
+          >
+            Cancel
+          </Button>
           <Button variant="primary" onClick={submit} data-testid="password-submit">
             Open
           </Button>
@@ -123,6 +132,11 @@ function ConfirmPrompt() {
       footer={
         <>
           {c.messageOnly ? null : <Button onClick={() => c.resolve(false)}>Cancel</Button>}
+          {c.altLabel ? (
+            <Button onClick={() => c.resolve('alt')} data-testid="confirm-alt">
+              {c.altLabel}
+            </Button>
+          ) : null}
           <Button variant={c.danger ? 'danger' : 'primary'} onClick={() => c.resolve(true)} data-testid="confirm-ok">
             {c.confirmLabel}
           </Button>

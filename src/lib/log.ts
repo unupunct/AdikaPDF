@@ -50,12 +50,28 @@ export function installGlobalErrorLogging(): void {
   window.addEventListener('error', (e) => {
     // Resource load errors have no message; skip them.
     if (!e.message) return;
+    if (e.error instanceof Error && e.error.name === 'AbortError') return;
     log('error', `Uncaught ${e.message} at ${e.filename}:${e.lineno}:${e.colno}${e.error?.stack ? `\n${e.error.stack}` : ''}`);
   });
   window.addEventListener('unhandledrejection', (e) => {
     const reason = e.reason as unknown;
     // Late work for a closed document is expected; don't log it as an error.
     if (reason instanceof Error && reason.name === 'SourceClosedError') return;
+    // A cancelled operation is not a failure.
+    if ((reason instanceof Error || reason instanceof DOMException) && reason.name === 'AbortError') return;
     log('error', `Unhandled promise rejection: ${errorText(reason)}`);
+    notifyFailure(reason);
   });
+}
+
+let lastNotice = 0;
+
+/** Shows an error toast for a failure nothing else reported (at most one every few seconds). */
+function notifyFailure(reason: unknown): void {
+  const now = Date.now();
+  if (now - lastNotice < 5000) return;
+  lastNotice = now;
+  const text = reason instanceof Error ? reason.message : typeof reason === 'string' ? reason : '';
+  const message = text ? `Something went wrong: ${text.slice(0, 300)}` : 'Something went wrong.';
+  void import('../store/usePDFStore').then((m) => m.usePDFStore.getState().toast(message, 'error')).catch(() => undefined);
 }

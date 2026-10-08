@@ -6,7 +6,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { ArrowDown, ArrowUp, Keyboard, Plus, Trash2 } from 'lucide-react';
 import { usePDFStore } from '@/store/usePDFStore';
-import { BUILT_IN, comboOf, usableCombo, useCustomize, type CommandRef } from '@/store/customize';
+import { BUILT_IN_SHORTCUTS, builtInFor, comboOf, usableCombo, useCustomize, type CommandRef } from '@/store/customize';
 import { RIBBON_TABS, TabContent } from '@/components/ribbon/Ribbon';
 import { originalAttr, translate } from '@/lib/i18n';
 import { normalizeForSearch } from '@/lib/search';
@@ -69,7 +69,16 @@ export function CustomizeModal() {
         setWarning(translate('Use Ctrl or Alt with a key, or a function key (F1–F12).'));
         return;
       }
-      setWarning(BUILT_IN.includes(combo) ? translate('{0} was a built-in shortcut: it now runs this command.').replace('{0}', combo) : null);
+      // Keys already taken: by another command of yours, or by a built-in shortcut.
+      const taken = shortcuts.find((s) => s.combo === combo && !same(s, capture));
+      const builtIn = builtInFor(combo);
+      setWarning(
+        taken
+          ? translate('{0} ran “{1}”: it now runs this command.').replace('{0}', combo).replace('{1}', labelOf(taken))
+          : builtIn
+            ? translate('{0} was a built-in shortcut: it now runs this command.').replace('{0}', combo)
+            : null,
+      );
       setShortcuts([...shortcuts.filter((s) => s.combo !== combo && !same(s, capture)), { tab: capture.tab, en: capture.en, combo }]);
       setCapture(null);
     };
@@ -154,7 +163,7 @@ export function CustomizeModal() {
                 </Callout>
               ) : null}
               {warning ? <Callout kind="warn">{warning}</Callout> : null}
-              <div className="mt-2 h-[260px] overflow-auto rounded-md border border-app" data-testid="customize-keys">
+              <div className="mt-2 h-[120px] overflow-auto rounded-md border border-app" data-testid="customize-keys">
                 {shortcuts.length === 0 ? <p className="p-3 text-xs text-muted">No shortcuts of your own yet.</p> : null}
                 {shortcuts.map((k) => (
                   <div key={k.combo} className="flex items-center gap-2 border-b border-app px-2 py-1 text-[12.5px] last:border-0">
@@ -169,6 +178,25 @@ export function CustomizeModal() {
                     </button>
                   </div>
                 ))}
+              </div>
+              <div className="mb-1 mt-3 text-[11px] font-semibold uppercase tracking-wide text-muted">Built-in shortcuts</div>
+              <div className="h-[130px] overflow-auto rounded-md border border-app" data-testid="customize-builtin">
+                {BUILT_IN_SHORTCUTS.map((b) => {
+                  const mine = shortcuts.find((k) => k.combo === b.combo || b.aliases?.includes(k.combo));
+                  return (
+                    <div key={b.combo} className="flex items-center gap-2 border-b border-app px-2 py-0.5 text-[12px] last:border-0">
+                      <kbd className={`shrink-0 rounded border border-app bg-panel-2 px-1.5 text-[11px] ${mine ? 'line-through opacity-60' : ''}`} data-no-translate>
+                        {b.combo}
+                      </kbd>
+                      <span className={`min-w-0 flex-1 truncate ${mine ? 'text-muted' : ''}`}>{b.label}</span>
+                      {mine ? (
+                        <span className="shrink-0 text-[10.5px] text-muted" data-no-translate>
+                          {translate('Replaced by “{0}”').replace('{0}', labelOf(mine))}
+                        </span>
+                      ) : null}
+                    </div>
+                  );
+                })}
               </div>
             </>
           )}

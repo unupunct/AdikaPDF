@@ -67,6 +67,9 @@ describe('batch operations', () => {
 
     const a = await runBatchOp(src, { kind: 'pdfa' }, ctx);
     expect(Buffer.from(a.bytes).toString('latin1')).toContain('pdfaid:part');
+    // What the conversion changed and could not fix reaches the batch results.
+    expect(a.note).toMatch(/not embedded/);
+    expect(a.note).not.toMatch(/veraPDF/);
   });
 
   it('skips password-protected files and files that cannot be made smaller', async () => {

@@ -43,6 +43,13 @@ const SplitPage = memo(function SplitPage({ page, index, zoom, objects, root }: 
     h.promise.catch(() => undefined);
     return () => h.cancel();
   }, [near, page, zoom]);
+  // Free bitmap memory for pages scrolled far away (as the main view does).
+  useEffect(() => {
+    const c = canvas.current;
+    if (near || !c) return;
+    c.width = 0;
+    c.height = 0;
+  }, [near]);
   return (
     <div ref={wrap} className="relative mx-auto mb-3 bg-white shadow" style={{ width: size.width * zoom, height: size.height * zoom }} data-testid={`split-page-${index + 1}`}>
       <canvas ref={canvas} className="absolute inset-0 h-full w-full" />

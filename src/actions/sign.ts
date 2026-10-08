@@ -11,6 +11,7 @@ import {
   signPdf,
   addDocumentTimestamp,
   addValidationData,
+  certIssuedBy,
   signerFromIdentity,
   verifyPdfSignatures,
   type ExternalSigner,
@@ -236,7 +237,7 @@ export async function addArchiveTimestamp(tsaUrl: string): Promise<void> {
     return { ...ltv, bytes: await addDocumentTimestamp(ltv.bytes, { tsaUrl, fetchImpl: isDesktop ? nativeFetch : undefined }) };
   });
   if (!res) return;
-  await saveDerived(res.bytes, '-lta', true);
+  if (!(await saveDerived(res.bytes, '-lta', true))) return;
   await refreshSignatureStatus();
   await verifyCurrentSignatures(false);
   usePDFStore.getState().toast(res.complete ? 'Archive timestamp added (PAdES B-LTA).' : `Archive timestamp added, but the validation data is incomplete: ${res.notes.join(' ')}`, res.complete ? 'success' : 'info');
@@ -255,7 +256,7 @@ export async function addLongTermValidation(): Promise<void> {
     addValidationData(bytes, { trustedRoots: await trustedRoots(), httpGet: isDesktop ? httpGet : undefined, httpPost: isDesktop ? httpPost : undefined }),
   );
   if (!res) return;
-  await saveDerived(res.bytes, '-ltv', true);
+  if (!(await saveDerived(res.bytes, '-ltv', true))) return;
   await refreshSignatureStatus();
   usePDFStore.getState().toast(res.complete ? 'Long-term validation data added: the signatures can be verified offline, years from now.' : `Validation data added, but incomplete: ${res.notes.join(' ')}`, res.complete ? 'success' : 'info');
 }
@@ -319,16 +320,16 @@ async function issuerChain(leaf: forge.pki.Certificate): Promise<forge.pki.Certi
       /* skip */
     }
   }
-  const issued = (issuer: forge.pki.Certificate, cert: forge.pki.Certificate) => {
-    try {
-      return issuer.verify(cert);
-    } catch {
-      return false; // e.g. an ECDSA issuer, which forge cannot check
-    }
-  };
   const chain: forge.pki.Certificate[] = [];
   for (let cur = leaf; chain.length < 5; ) {
-    const next = pool.find((c) => !chain.includes(c) && c.subject.hash === cur.issuer.hash && issued(c, cur));
+    let next: forge.pki.Certificate | null = null;
+    // The same strict verifier as verification (RSA and ECDSA issuers).
+    for (const c of pool) {
+      if (!chain.includes(c) && (await certIssuedBy(cur, c))) {
+        next = c;
+        break;
+      }
+    }
     if (!next || next.subject.hash === next.issuer.hash) break;
     chain.push(next);
     cur = next;

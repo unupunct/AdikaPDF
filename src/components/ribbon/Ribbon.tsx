@@ -2,7 +2,7 @@
  * Top ribbon: Home, Edit, Sign, Organize, Forms, Security, Convert. Every
  * button maps to a store action or an operation in src/actions.
  */
-import type { ReactNode } from 'react';
+import { useEffect, useRef, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react';
 import {
   ArrowUpRight,
   Scaling,
@@ -78,9 +78,11 @@ import {
   Printer,
   MousePointerClick,
   QrCode,
+  EyeOff,
 } from 'lucide-react';
 import { useXfa } from '@/actions/xfaForms';
 import { usePDFStore } from '@/store/usePDFStore';
+import { useStorePick, type StoreState } from '@/hooks/useStorePick';
 import type { RibbonTab, ToolId } from '@/types';
 import { Tooltip, DropdownMenu, DropdownTrigger, DropdownContent, DropdownItem } from '@/components/ui/primitives';
 import { cn } from '@/lib/cn';
@@ -137,9 +139,50 @@ export function Ribbon() {
   const tab = usePDFStore((s) => s.ribbonTab);
   const setTab = usePDFStore((s) => s.setRibbonTab);
   const hasDoc = usePDFStore((s) => s.pages.length > 0);
+  const listRef = useRef<HTMLDivElement>(null);
+  const focusTab = (id: RibbonTab) => listRef.current?.querySelector<HTMLButtonElement>(`[data-testid="tab-${id}"]`)?.focus();
+
+  // Pressing and releasing Alt on its own moves the focus to the ribbon tabs (as in Office).
+  useEffect(() => {
+    let armed = false;
+    const down = (e: KeyboardEvent) => {
+      armed = e.key === 'Alt' && !e.ctrlKey && !e.shiftKey && !e.metaKey && !e.repeat;
+    };
+    const up = (e: KeyboardEvent) => {
+      if (e.key !== 'Alt' || !armed) return;
+      armed = false;
+      const st = usePDFStore.getState();
+      if (st.modal || st.busy || st.presentation) return;
+      e.preventDefault();
+      focusTab(st.ribbonTab);
+    };
+    const reset = () => (armed = false);
+    window.addEventListener('keydown', down, true);
+    window.addEventListener('keyup', up, true);
+    window.addEventListener('mousedown', reset, true);
+    window.addEventListener('blur', reset);
+    return () => {
+      window.removeEventListener('keydown', down, true);
+      window.removeEventListener('keyup', up, true);
+      window.removeEventListener('mousedown', reset, true);
+      window.removeEventListener('blur', reset);
+    };
+  }, []);
+
+  // Arrow keys move between the tabs (one tab stop for the whole list).
+  const onTabKey = (e: ReactKeyboardEvent) => {
+    const i = RIBBON_TABS.findIndex((t) => t.id === tab);
+    const n = RIBBON_TABS.length;
+    const next = e.key === 'ArrowRight' ? (i + 1) % n : e.key === 'ArrowLeft' ? (i - 1 + n) % n : e.key === 'Home' ? 0 : e.key === 'End' ? n - 1 : -1;
+    if (next < 0) return;
+    e.preventDefault();
+    setTab(RIBBON_TABS[next].id);
+    focusTab(RIBBON_TABS[next].id);
+  };
+
   return (
     <div className="shrink-0 border-b border-app bg-panel">
-      <div role="tablist" aria-label="Ribbon" className="flex h-8 items-end gap-0.5 px-2">
+      <div ref={listRef} role="tablist" aria-label="Ribbon" className="flex h-8 items-end gap-0.5 px-2" onKeyDown={onTabKey}>
         {RIBBON_TABS.map((t) => (
           <button
             key={t.id}
@@ -147,6 +190,7 @@ export function Ribbon() {
             type="button"
             data-testid={`tab-${t.id}`}
             aria-selected={tab === t.id}
+            tabIndex={tab === t.id ? 0 : -1}
             onClick={() => setTab(t.id)}
             className={cn(
               'relative h-7 rounded-t-md px-3 text-[13px] font-medium',
@@ -158,7 +202,7 @@ export function Ribbon() {
           </button>
         ))}
       </div>
-      <div data-testid="ribbon" className={cn('flex h-[84px] items-stretch gap-0 overflow-x-auto border-t border-app px-1.5 py-1.5', !hasDoc && tab !== 'home' && tab !== 'convert' && tab !== 'view' && 'opacity-60')}>
+      <div data-testid="ribbon" role="tabpanel" className={cn('flex h-[84px] items-stretch gap-0 overflow-x-auto border-t border-app px-1.5 py-1.5', !hasDoc && tab !== 'home' && tab !== 'convert' && tab !== 'view' && 'opacity-60')}>
         <TabContent tab={tab} />
       </div>
     </div>
@@ -244,9 +288,11 @@ function ToolBtn({ tool, icon, label, tip, big = true }: { tool: ToolId; icon: R
   return <B icon={icon} label={label} tip={tip} active={active} disabled={!hasDoc} onClick={() => setTool(active ? 'select' : tool)} testId={`tool-${tool}`} />;
 }
 
-function useDoc() {
-  const s = usePDFStore();
-  return { hasDoc: s.pages.length > 0, editable: s.pages.length > 0 && !s.readOnlyReason, s };
+/** Document state for a ribbon tab; `s` holds only the named store fields, so the tab re-renders only when they change. */
+function useDoc<K extends keyof StoreState>(...keys: K[]) {
+  const hasDoc = usePDFStore((st) => st.pages.length > 0);
+  const editable = usePDFStore((st) => st.pages.length > 0 && !st.readOnlyReason);
+  return { hasDoc, editable, s: useStorePick(...keys) };
 }
 
 const I = 22;
@@ -280,7 +326,7 @@ function StyleQuick() {
 }
 
 function EditTab() {
-  const { editable, s } = useDoc();
+  const { editable, s } = useDoc('deleteObjects', 'duplicateObjects', 'reorderObject', 'selectedIds', 'setPendingImage', 'toast', 'tool');
   const sel = s.selectedIds;
   const pickImage = async () => {
     const imgs = await pickImagesAsDataUrls();
@@ -339,7 +385,7 @@ function EditTab() {
 }
 
 function SignTab() {
-  const { hasDoc, editable, s } = useDoc();
+  const { hasDoc, editable, s } = useDoc('openModal');
   return (
     <>
       <Group label="Electronic signature">
@@ -393,7 +439,7 @@ function SavedSignaturesMenu() {
 }
 
 function OrganizeTab() {
-  const { editable, s } = useDoc();
+  const { editable, s } = useDoc('currentPageId', 'deletePages', 'duplicatePages', 'insertBlankPage', 'openModal', 'pages', 'rotatePages');
   const current = s.currentPageId;
   const idx = s.pages.findIndex((p) => p.id === current);
   return (
@@ -445,7 +491,7 @@ function OrganizeTab() {
 }
 
 function FormsTab() {
-  const { hasDoc, s } = useDoc();
+  const { hasDoc, s } = useDoc('openModal', 'pages');
   const xfa = useXfa((x) => s.pages.some((p) => p.sourceId && x.kinds[p.sourceId]));
   return (
     <>
@@ -478,7 +524,8 @@ function FormsTab() {
 }
 
 function SecurityTab() {
-  const { hasDoc, s } = useDoc();
+  const { hasDoc, s } = useDoc('openModal');
+  const hasRedactions = usePDFStore((st) => st.objects.some((o) => o.type === 'redact'));
   return (
     <>
       <Group label="Redaction">
@@ -487,7 +534,7 @@ function SecurityTab() {
         <Big
           icon={<ScanLine size={I} />}
           label="Apply & save"
-          disabled={!hasDoc || !s.objects.some((o) => o.type === 'redact')}
+          disabled={!hasDoc || !hasRedactions}
           onClick={() => void saveDocument(true)}
           tip="Save a copy with marked content destroyed (pixels and text)"
           testId="btn-apply-redactions"
@@ -497,6 +544,7 @@ function SecurityTab() {
         <Big icon={<Lock size={I} />} label="Password" disabled={!hasDoc} onClick={() => s.openModal('password')} tip="AES-256 encryption and permissions" testId="btn-protect" />
         <Big icon={<KeyRound size={I} />} label="Certificate" disabled={!hasDoc} onClick={() => s.openModal('certencrypt')} tip="Encrypt for chosen people's certificates: no shared password" testId="btn-certencrypt" />
         <Big icon={<ShieldOff size={I} />} label="Sanitize" disabled={!hasDoc} onClick={() => void import('@/actions/security').then((m) => m.sanitizeDocument())} tip="Remove metadata, XMP and hidden info" />
+        <Big icon={<EyeOff size={I} />} label="Hidden info" disabled={!hasDoc} onClick={() => s.openModal('hiddenInfo')} tip="Find and remove hidden information: metadata, scripts, attachments, comments, form data, hidden layers and text, earlier versions" testId="btn-hidden-info" />
       </Group>
       <Group label="Accessibility">
         <Big icon={<Accessibility size={I} />} label="Accessibility" disabled={!hasDoc} onClick={() => s.openModal('accessibility')} tip="Check and fix what screen readers need: tags, reading order, title, language, picture descriptions (PDF/UA)" testId="btn-accessibility" />
@@ -509,7 +557,7 @@ function SecurityTab() {
 }
 
 function ConvertTab() {
-  const { hasDoc, s } = useDoc();
+  const { hasDoc, s } = useDoc('openModal');
   const openExport = (exportFormat: ExportFormat) => {
     useModalArgs.setState({ exportFormat });
     s.openModal('export');

@@ -2,7 +2,7 @@
 // (single-instance forwarding), which is also how virtual-printer jobs arrive.
 import { spawnSync } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { PDFDocument, StandardFonts } from 'pdf-lib';
 import { EXE, launchApp, tempDir } from './harness.mjs';
 
@@ -44,6 +44,12 @@ try {
   spawnSync(exe, ['--convert', png], { timeout: 20000 });
   await app.page.waitForFunction(() => /poza/.test(window.__adika.store.getState().fileName ?? ''), null, { timeout: 20000 });
   console.log('✓ converted a picture from a second launch');
+
+  // A relative name is resolved in the folder the second instance was started in, not the running window's.
+  const rel = await makePdf('relative-name.pdf', 'Relative');
+  spawnSync(exe, ['relative-name.pdf'], { timeout: 20000, cwd: dirname(rel) });
+  await app.page.waitForFunction(() => window.__adika.store.getState().fileName === 'relative-name.pdf', null, { timeout: 15000 });
+  console.log('✓ relative path taken from the second instance\'s folder');
 } finally {
   await app.close();
 }

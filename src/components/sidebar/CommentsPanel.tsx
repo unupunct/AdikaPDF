@@ -1,6 +1,6 @@
 /** All comments of the document: new ones (editable) and those already in the file. */
 import { useEffect, useMemo, useState } from 'react';
-import { GitMerge, Highlighter, Keyboard, MessageSquare, PenLine, Search, StickyNote, Strikethrough, Underline, Waves } from 'lucide-react';
+import { GitMerge, Highlighter, Keyboard, MessageSquare, PenLine, Pencil, Search, StickyNote, Strikethrough, Trash2, Underline, Waves } from 'lucide-react';
 import { usePDFStore } from '@/store/usePDFStore';
 import { getAnnotations, getPdfPage, type PageAnnotation } from '@/lib/pdf/pdfService';
 import { totalRotation } from '@/lib/geometry';
@@ -8,6 +8,9 @@ import { usePageLabels } from '@/hooks/usePageLabels';
 import { cn } from '@/lib/cn';
 import { measureValue } from '@/lib/measure';
 import type { ReviewState } from '@/lib/pdf/review';
+import { isUntouched } from '@/lib/pdf/fileAnnots';
+import { deleteFileAnnot, takeOverAnnot } from '@/actions/fileComments';
+import type { EditorObject, PageRef } from '@/types';
 
 const STATE_STYLE: Record<string, string> = {
   Accepted: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200',
@@ -32,6 +35,35 @@ interface Row {
   status?: { state: ReviewState; by: string } | null;
   /** Comments in the file: how to find them again when setting the status. */
   match?: { subtype: string; rect: number[]; contents: string };
+  /** Comments in the file: pdf.js id and the comment it answers. */
+  file?: { id: string; inReplyTo: string | null };
+  /** Objects taken over from the file: changed since. */
+  edited?: boolean;
+}
+
+/** Comments of the file that can be taken over for editing (the others can only be deleted). */
+const EDITABLE = new Set(['Text', 'FreeText', 'Highlight', 'Underline', 'StrikeOut', 'Squiggly', 'Ink', 'Square', 'Circle', 'Line', 'Polygon', 'PolyLine', 'Stamp']);
+
+/** Rows of the file hidden by the editor: taken over, or a reply to a deleted comment. */
+function hiddenFileRows(pages: PageRef[], objects: EditorObject[], rows: Row[]): Set<string> {
+  const out = new Set<string>();
+  for (const p of pages) {
+    if (!p.takenAnnots?.length) continue;
+    const taken = new Set(p.takenAnnots);
+    const gone = new Set(p.takenAnnots.filter((id) => !objects.some((o) => o.pageId === p.id && o.fileAnnot?.ref === id)));
+    const mine = rows.filter((r) => r.pageId === p.id && r.file);
+    for (let grew = true; grew; ) {
+      grew = false;
+      for (const r of mine) {
+        if (r.file!.inReplyTo && gone.has(r.file!.inReplyTo) && !gone.has(r.file!.id)) {
+          gone.add(r.file!.id);
+          grew = true;
+        }
+      }
+    }
+    for (const r of mine) if (taken.has(r.file!.id) || gone.has(r.file!.id)) out.add(r.key);
+  }
+  return out;
 }
 
 const KIND_LABEL: Record<string, string> = {
@@ -50,6 +82,7 @@ const KIND_LABEL: Record<string, string> = {
   Stamp: 'Stamp',
   Caret: 'Insert text',
   FileAttachment: 'Attachment',
+  Link: 'Link',
   Callout: 'Callout',
   TextBox: 'Text box',
   Cloud: 'Cloud',
@@ -122,6 +155,7 @@ export function CommentsPanel() {
             objectId: null,
             status: a.id && states.get(a.id) && states.get(a.id)!.state !== 'None' ? { state: states.get(a.id)!.state, by: states.get(a.id)!.by } : null,
             match: { subtype: a.subtype, rect: a.rect, contents: a.contentsObj?.str ?? '' },
+            file: a.id ? { id: a.id, inReplyTo: a.inReplyTo ?? null } : undefined,
           });
         }
       }
@@ -143,17 +177,22 @@ export function CommentsPanel() {
         if (o.type === 'poly') return [{ key: o.id, pageId: o.pageId, y: o.y, kind: o.kind === 'cloud' ? 'Cloud' : o.kind === 'polygon' ? 'Polygon' : 'PolyLine', author: o.author, date: o.modifiedAt, text: o.text, objectId: o.id }];
         if (o.type === 'measure') return [{ key: o.id, pageId: o.pageId, y: o.y, kind: o.kind === 'distance' ? 'Distance' : o.kind === 'perimeter' ? 'Perimeter' : 'Area', author: o.author, date: o.modifiedAt, text: [measureValue(o.kind, o.points, o.scale).label, o.text].filter(Boolean).join(' · '), objectId: o.id }];
         if (o.type === 'attachment') return [{ key: o.id, pageId: o.pageId, y: o.y, kind: 'FileAttachment', author: o.author, date: o.modifiedAt, text: o.text || o.fileName, objectId: o.id }];
+        // Shapes, lines, ink and links taken over from the file.
+        if (o.fileAnnot) return [{ key: o.id, pageId: o.pageId, y: o.y, kind: o.fileAnnot.subtype, author: '', date: null, text: '', objectId: o.id }];
         return [];
       }).map((r) => {
-        const o = objects.find((x) => x.id === r.objectId) as { reviewStatus?: ReviewState; author?: string } | undefined;
-        return o?.reviewStatus && o.reviewStatus !== 'None' ? { ...r, status: { state: o.reviewStatus, by: o.author ?? '' } } : r;
+        const obj = objects.find((x) => x.id === r.objectId);
+        const row = obj?.fileAnnot ? { ...r, edited: !isUntouched(obj) } : r;
+        const o = obj as { reviewStatus?: ReviewState; author?: string } | undefined;
+        return o?.reviewStatus && o.reviewStatus !== 'None' ? { ...row, status: { state: o.reviewStatus, by: o.author ?? '' } } : row;
       }),
     [objects],
   );
 
   const pageOrder = new Map(pages.map((p, i) => [p.id, i]));
   const q = filter.trim().toLowerCase();
-  const rows = [...mine, ...(existing ?? [])]
+  const hiddenRows = hiddenFileRows(pages, objects, existing ?? []);
+  const rows = [...mine, ...(existing ?? []).filter((r) => !hiddenRows.has(r.key))]
     .filter((r) => !q || `${r.text} ${r.author} ${KIND_LABEL[r.kind] ?? r.kind}`.toLowerCase().includes(q))
     .filter((r) => statusFilter === 'all' || (statusFilter === 'open' ? !r.status : r.status?.state === statusFilter))
     .sort((a, b) => (pageOrder.get(a.pageId) ?? 0) - (pageOrder.get(b.pageId) ?? 0) || a.y - b.y);
@@ -241,7 +280,38 @@ export function CommentsPanel() {
                   <span className="min-w-0 flex-1 truncate text-muted" data-no-translate>
                     {r.author}
                   </span>
-                  {r.objectId ? <span className="rounded bg-brand-100 px-1 text-[9.5px] text-brand-700 dark:bg-brand-900/50 dark:text-brand-200">new</span> : null}
+                  {r.objectId && r.edited !== false ? <span className="rounded bg-brand-100 px-1 text-[9.5px] text-brand-700 dark:bg-brand-900/50 dark:text-brand-200">{r.edited ? 'edited' : 'new'}</span> : null}
+                  {r.file && EDITABLE.has(r.kind) ? (
+                    <button
+                      type="button"
+                      aria-label="Edit comment"
+                      title="Edit this comment: move it, change its colour or text"
+                      className="rounded p-0.5 text-muted hover-app"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        void takeOverAnnot(r.pageId, r.file!.id);
+                      }}
+                      data-testid="comment-edit"
+                    >
+                      <Pencil size={12} />
+                    </button>
+                  ) : null}
+                  {r.file || r.objectId ? (
+                    <button
+                      type="button"
+                      aria-label="Delete comment"
+                      title="Delete this comment (with its replies)"
+                      className="rounded p-0.5 text-muted hover-app hover:text-rose-600"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (r.file) void deleteFileAnnot(r.pageId, r.file.id);
+                        else if (r.objectId) usePDFStore.getState().deleteObjects([r.objectId]);
+                      }}
+                      data-testid="comment-delete"
+                    >
+                      <Trash2 size={12} />
+                    </button>
+                  ) : null}
                 </div>
                 {r.text ? (
                   <div className="mt-0.5 line-clamp-3 break-words text-[12px]" data-no-translate>

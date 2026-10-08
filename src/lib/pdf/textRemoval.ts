@@ -261,6 +261,8 @@ export interface FontInfo {
   /** Measurable: widths known and horizontal writing. */
   ok: boolean;
   baseName: string;
+  /** Type3: the glyph's box in text space per unit font size [x0, y0, x1, y1] (others use a fixed em band). */
+  glyphBox?: (code: number) => [number, number, number, number] | null;
 }
 
 let stdMaps: { codeToName: Map<number, string>; codeToUni: Map<number, string>; nameToUni: Map<string, string> } | null = null;
@@ -420,10 +422,13 @@ function loadFont(doc: PDFDocument, fontObj: unknown): FontInfo {
   // Simple fonts: Type1, MMType1, TrueType, Type3.
   const isType3 = subtype === PDFName.of('Type3');
   let scale = 0.001;
+  let glyphBox: FontInfo['glyphBox'];
   if (isType3) {
-    const fm = d.lookup(PDFName.of('FontMatrix'));
-    if (!(fm instanceof PDFArray)) return { ...bad, baseName };
-    scale = num(fm.lookup(0));
+    const fmArr = d.lookup(PDFName.of('FontMatrix'));
+    if (!(fmArr instanceof PDFArray) || fmArr.size() < 6) return { ...bad, baseName };
+    const fm = Array.from({ length: 6 }, (_, k) => num(fmArr.lookup(k))) as M;
+    scale = fm[0];
+    glyphBox = type3GlyphBoxes(doc, d, fm);
   }
   const first = num(d.lookup(PDFName.of('FirstChar')));
   const widthsArr = d.lookup(PDFName.of('Widths'));
@@ -456,7 +461,7 @@ function loadFont(doc: PDFDocument, fontObj: unknown): FontInfo {
   if (widthsArr instanceof PDFArray) {
     const ws: number[] = [];
     for (let k = 0; k < widthsArr.size(); k++) ws.push(num(widthsArr.lookup(k), missing));
-    return { twoByte: false, width: (c) => (ws[c - first] ?? missing) * scale, unicode, ok: true, baseName };
+    return { twoByte: false, width: (c) => (ws[c - first] ?? missing) * scale, unicode, ok: true, baseName, glyphBox };
   }
   const std = STD_ALIASES[baseName.toLowerCase().replace(/\s+/g, '')];
   if (std && !isType3) {
@@ -474,6 +479,54 @@ function loadFont(doc: PDFDocument, fontObj: unknown): FontInfo {
     };
   }
   return { ...bad, unicode, baseName };
+}
+
+/**
+ * Glyph boxes of a Type3 font in text space: the FontBBox through the full
+ * FontMatrix, or each glyph's own d1 box when the FontBBox is all zeros.
+ */
+function type3GlyphBoxes(doc: PDFDocument, d: PDFDict, fm: M): FontInfo['glyphBox'] {
+  const box = (x0: number, y0: number, x1: number, y1: number): [number, number, number, number] => {
+    const b = boxOf(fm, x0, y0, x1, y1);
+    return [b.x0, b.y0, b.x1, b.y1];
+  };
+  const bb = d.lookup(PDFName.of('FontBBox'));
+  const fb = bb instanceof PDFArray && bb.size() === 4 ? Array.from({ length: 4 }, (_, k) => num(bb.lookup(k))) : null;
+  if (fb && fb[2] - fb[0] > 0 && fb[3] - fb[1] > 0) {
+    const whole = box(fb[0], fb[1], fb[2], fb[3]);
+    return () => whole;
+  }
+  // Code -> glyph name (Differences) -> CharProcs stream -> "wx wy llx lly urx ury d1".
+  const names = new Map<number, string>();
+  const enc = d.lookup(PDFName.of('Encoding'));
+  const diffs = enc instanceof PDFDict ? enc.lookup(PDFName.of('Differences')) : undefined;
+  if (diffs instanceof PDFArray) {
+    let c = 0;
+    for (let k = 0; k < diffs.size(); k++) {
+      const v = diffs.lookup(k);
+      if (v instanceof PDFNumber) c = v.asNumber();
+      else if (v instanceof PDFName) names.set(c++, v.decodeText());
+    }
+  }
+  const procs = d.lookup(PDFName.of('CharProcs'));
+  const cache = new Map<number, [number, number, number, number] | null>();
+  return (code) => {
+    if (cache.has(code)) return cache.get(code)!;
+    let out: [number, number, number, number] | null = null;
+    const name = names.get(code);
+    const bytes = name && procs instanceof PDFDict ? streamBytes(doc, procs.get(PDFName.of(name))) : null;
+    if (bytes) {
+      try {
+        const d1 = parseContent(bytes).find((i) => i.op === 'd1' || i.op === 'd0');
+        const v = d1?.args.map((a) => (a.k === 'n' ? a.v : 0)) ?? [];
+        if (d1?.op === 'd1' && v.length === 6 && v[4] > v[2] && v[5] > v[3]) out = box(v[2], v[3], v[4], v[5]);
+      } catch {
+        /* unreadable glyph procedure: fixed band */
+      }
+    }
+    cache.set(code, out);
+    return out;
+  };
 }
 
 // ------------------------------------------------------------------ interpreter
@@ -498,6 +551,8 @@ export interface Glyph {
   k: number;
   /** Text state at this glyph, used to write replacement text in the same font. */
   run: GlyphRun;
+  /** Text rendering mode (3 = invisible, e.g. the text layer of a scan). */
+  mode?: number;
 }
 
 export interface GlyphRun {
@@ -538,9 +593,21 @@ interface Region {
   box: Box | null;
 }
 
+/** A marked-content sequence (BMC / BDC … EMC). */
+interface Mark {
+  instr: number;
+  tag: string;
+  mcid: number | null;
+  /** Its properties carry text of their own (/ActualText, /Alt, /E). */
+  text: boolean;
+}
+
 interface Interpretation {
   instrs: Instr[];
   glyphs: Glyph[];
+  /** Per glyph: the marked-content sequences it is drawn in (indexes into `marks`). */
+  glyphMarks: number[][];
+  marks: Mark[];
   shows: Show[];
   regions: Region[];
   src: Uint8Array;
@@ -587,10 +654,16 @@ function interpret(doc: PDFDocument, page: PDFPage): Interpretation {
   const res = resourcesOf(page);
   const fontDict = res?.lookup(PDFName.of('Font'));
   const xobjDict = res?.lookup(PDFName.of('XObject'));
+  const propsDict = res?.lookup(PDFName.of('Properties'));
   const fontCache = new Map<string, FontInfo>();
   const glyphs: Glyph[] = [];
+  const glyphMarks: number[][] = [];
+  const marks: Mark[] = [];
+  const openMarks: number[] = [];
   const shows: Show[] = [];
   const regions: Region[] = [];
+  const latin1 = new TextDecoder('latin1');
+  const TEXT_KEYS = /\/(?:ActualText|Alt|E)(?![A-Za-z0-9])/;
 
   interface GS {
     ctm: M;
@@ -603,8 +676,9 @@ function interpret(doc: PDFDocument, page: PDFPage): Interpretation {
     TL: number;
     Ts: number;
     fill: string;
+    Tr: number;
   }
-  let gs: GS = { ctm: I, font: null, fontKey: '', fs: 0, Tc: 0, Tw: 0, Th: 1, TL: 0, Ts: 0, fill: '#000000' };
+  let gs: GS = { ctm: I, font: null, fontKey: '', fs: 0, Tc: 0, Tw: 0, Th: 1, TL: 0, Ts: 0, fill: '#000000', Tr: 0 };
   const stack: GS[] = [];
   let Tm: M = I;
   // Current path: user-space points and whether it is more than lines / rectangles.
@@ -651,7 +725,8 @@ function interpret(doc: PDFDocument, page: PDFPage): Interpretation {
         const w0 = f.width(code);
         const isSpace = !f.twoByte && code === 32;
         const trm = mul(mul([gs.fs * gs.Th, 0, 0, gs.fs, 0, gs.Ts], Tm), gs.ctm);
-        const [cx, cy] = apply(trm, w0 / 2, 0.3);
+        const gb = f.glyphBox?.(code) ?? null;
+        const [cx, cy] = gb ? apply(trm, (gb[0] + gb[2]) / 2, (gb[1] + gb[3]) / 2) : apply(trm, w0 / 2, 0.3);
         const o = apply(trm, 0, 0);
         const e = apply(trm, 1, 0);
         const len = Math.hypot(e[0] - o[0], e[1] - o[1]) || 1;
@@ -659,7 +734,8 @@ function interpret(doc: PDFDocument, page: PDFPage): Interpretation {
         const advance = (w0 * gs.fs + gs.Tc + (isSpace ? gs.Tw : 0)) * gs.Th;
         glyphs.push({
           text: f.unicode(code),
-          box: boxOf(trm, 0, -0.2, Math.max(w0, 0.001), 0.8),
+          box: gb ? boxOf(trm, gb[0], gb[1], gb[2], gb[3]) : boxOf(trm, 0, -0.2, Math.max(w0, 0.001), 0.8),
+
           cx,
           cy,
           origin: o,
@@ -668,9 +744,11 @@ function interpret(doc: PDFDocument, page: PDFPage): Interpretation {
           advance: advance * Math.hypot(mul(Tm, gs.ctm)[0], mul(Tm, gs.ctm)[1]),
           font: f.baseName,
           color: gs.fill,
+          mode: gs.Tr,
           k: 1000 / (gs.fs * gs.Th * (Math.hypot(mul(Tm, gs.ctm)[0], mul(Tm, gs.ctm)[1]) || 1)),
           run: { key: gs.fontKey, font: f, bytes: Array.from(bytes.subarray(k, k + step)), fs: gs.fs, Tc: gs.Tc, Tw: gs.Tw, Th: gs.Th, s: Math.hypot(mul(Tm, gs.ctm)[0], mul(Tm, gs.ctm)[1]) || 1, show: shows.length },
         });
+        glyphMarks.push(openMarks.slice());
         s.pieces.push({
           kind: 'glyph',
           bytes: Array.from(bytes.subarray(k, k + step)),
@@ -740,6 +818,9 @@ function interpret(doc: PDFDocument, page: PDFPage): Interpretation {
         break;
       case 'TL':
         gs.TL = nums(a)[0] ?? 0;
+        break;
+      case 'Tr':
+        gs.Tr = nums(a)[0] ?? 0;
         break;
       case 'Ts':
         gs.Ts = nums(a)[0] ?? 0;
@@ -846,9 +927,37 @@ function interpret(doc: PDFDocument, page: PDFPage): Interpretation {
       case 'sh':
         regions.push({ kind: 'shading', box: null });
         break;
+      case 'BMC':
+      case 'BDC': {
+        const tag = a[0]?.k === 'name' ? a[0].v : '';
+        let mcid: number | null = null;
+        let text = false;
+        if (ins.op === 'BDC') {
+          if (a[1]?.k === 'name') {
+            // Named properties from the page resources (/OC layers are left alone).
+            const p = propsDict instanceof PDFDict ? propsDict.lookup(PDFName.of(a[1].v)) : undefined;
+            if (p instanceof PDFDict && tag !== 'OC') {
+              const id = p.lookup(PDFName.of('MCID'));
+              mcid = id instanceof PDFNumber ? id.asNumber() : null;
+              text = ['ActualText', 'Alt', 'E'].some((k) => p.has(PDFName.of(k)));
+            }
+          } else {
+            const raw = latin1.decode(src.subarray(ins.start, ins.end));
+            const m = /\/MCID\s+(\d+)/.exec(raw);
+            mcid = m ? Number(m[1]) : null;
+            text = TEXT_KEYS.test(raw);
+          }
+        }
+        marks.push({ instr: idx, tag, mcid, text });
+        openMarks.push(marks.length - 1);
+        break;
+      }
+      case 'EMC':
+        openMarks.pop();
+        break;
     }
   });
-  return { instrs, glyphs, shows, regions, src };
+  return { instrs, glyphs, glyphMarks, marks, shows, regions, src };
 }
 
 function fmtNum(v: number): string {
@@ -917,6 +1026,10 @@ export interface RemovalResult {
   editScales: number[];
   /** Per edit: the new text was written into the page in the document's own font (do not draw it again). */
   editNative: boolean[];
+  /** Marked-content ids of the removed letters (their structure elements' alternate text must go too). */
+  mcids: number[];
+  /** Annotations taken off the page (with their popups). */
+  removedAnnotRefs: string[];
 }
 
 /** A replacement of the letters in `boxes` by text `newWidth` points wide: the rest of the line makes room. */
@@ -939,8 +1052,8 @@ export interface LineEdit {
  * and reports what it could not.
  */
 export function removeGlyphs(doc: PDFDocument, page: PDFPage, boxes: Box[], mode: 'redact' | 'replace', edits: LineEdit[] = []): RemovalResult {
-  const fail = (reason: string): RemovalResult => ({ ok: false, reason, removedGlyphs: 0, removedAnnots: 0, coversImage: false, editShifts: edits.map(() => 0), editScales: edits.map(() => 1), editNative: edits.map(() => false) });
-  if (!boxes.length) return { ok: true, removedGlyphs: 0, removedAnnots: 0, coversImage: false, editShifts: edits.map(() => 0), editScales: edits.map(() => 1), editNative: edits.map(() => false) };
+  const fail = (reason: string): RemovalResult => ({ ok: false, reason, removedGlyphs: 0, removedAnnots: 0, coversImage: false, editShifts: edits.map(() => 0), editScales: edits.map(() => 1), editNative: edits.map(() => false), mcids: [], removedAnnotRefs: [] });
+  if (!boxes.length) return { ...fail(''), ok: true, reason: undefined };
   let it: Interpretation;
   try {
     it = interpret(doc, page);
@@ -995,6 +1108,7 @@ export function removeGlyphs(doc: PDFDocument, page: PDFPage, boxes: Box[], mode
 
   // Annotations over the area (redaction only).
   let removedAnnots = 0;
+  const removedAnnotRefs: string[] = [];
   if (mode === 'redact') {
     const annots = page.node.lookup(PDFName.of('Annots'));
     if (annots instanceof PDFArray) {
@@ -1023,14 +1137,30 @@ export function removeGlyphs(doc: PDFDocument, page: PDFPage, boxes: Box[], mode
           const parent: unknown = a instanceof PDFDict ? a.get(PDFName.of('Parent')) : undefined;
           return !(parent && dropped.has(String(parent)));
         });
+        for (const ref of keep) if (!final.includes(ref)) dropped.add(String(ref));
         page.node.set(PDFName.of('Annots'), doc.context.obj(final as never[]));
+        removedAnnotRefs.push(...dropped);
       }
     }
   }
 
-  if (remove.size) {
+  // Marked content holding removed letters: its /ActualText, /Alt and /E would still tell them.
+  const hitMarks = new Set<number>();
+  for (const i of remove) for (const m of it.glyphMarks[i]) hitMarks.add(m);
+  const mcids = [...new Set([...hitMarks].map((m) => it.marks[m].mcid).filter((v): v is number => v !== null))];
+  const byInstr = new Map<number, string>();
+  for (const m of hitMarks) {
+    const mark = it.marks[m];
+    if (mark.text) byInstr.set(mark.instr, mark.mcid !== null ? `${pdfName(mark.tag)} <</MCID ${mark.mcid}>> BDC` : `${pdfName(mark.tag)} BMC`);
+  }
+  if (mode === 'redact' && (remove.size || removedAnnots)) {
+    // The page's thumbnail and private application data still show the old page.
+    page.node.delete(PDFName.of('Thumb'));
+    page.node.delete(PDFName.of('PieceInfo'));
+  }
+
+  if (remove.size || byInstr.size) {
     // Walk the text flow: `acc` is how far the current text position has been moved.
-    const byInstr = new Map<number, string>();
     let acc = 0;
     for (const s of it.shows) {
       if (s.positioned) acc = 0;
@@ -1064,8 +1194,61 @@ export function removeGlyphs(doc: PDFDocument, page: PDFPage, boxes: Box[], mode
     const stream = doc.context.flateStream(out);
     page.node.set(PDFName.of('Contents'), doc.context.register(stream));
   }
-  return { ok: true, removedGlyphs: remove.size, removedAnnots, coversImage, editShifts, editScales, editNative };
+  return { ok: true, removedGlyphs: remove.size, removedAnnots, coversImage, editShifts, editScales, editNative, mcids, removedAnnotRefs };
 }
+
+/**
+ * Deletes the glyphs `pick` selects (wherever they are), keeping the rest of
+ * the text in place. Returns how many were removed; -1 when the page content
+ * could not be read.
+ */
+export function removeGlyphsWhere(doc: PDFDocument, page: PDFPage, pick: (g: Glyph) => boolean): number {
+  let it: Interpretation;
+  try {
+    it = interpret(doc, page);
+  } catch {
+    return -1;
+  }
+  const remove = new Set<number>();
+  it.glyphs.forEach((g, i) => pick(g) && remove.add(i));
+  if (!remove.size) return 0;
+  const byInstr = new Map<number, string>();
+  let acc = 0;
+  for (const s of it.shows) {
+    if (s.positioned) acc = 0;
+    const r = rewriteShow(s, remove, new Map(), it.glyphs, acc, new Map());
+    acc = r.acc;
+    if (r.changed) byInstr.set(s.instr, r.text);
+  }
+  writeContent(doc, page, it, byInstr);
+  return remove.size;
+}
+
+function writeContent(doc: PDFDocument, page: PDFPage, it: Interpretation, byInstr: Map<number, string>): void {
+  const chunks: Uint8Array[] = [];
+  let last = 0;
+  it.instrs.forEach((ins, idx) => {
+    const s = byInstr.get(idx);
+    if (!s) return;
+    chunks.push(it.src.subarray(last, ins.start), new TextEncoder().encode(s));
+    last = ins.end;
+  });
+  chunks.push(it.src.subarray(last));
+  const out = new Uint8Array(chunks.reduce((n, c) => n + c.length, 0));
+  let o = 0;
+  for (const c of chunks) {
+    out.set(c, o);
+    o += c.length;
+  }
+  page.node.set(PDFName.of('Contents'), doc.context.register(doc.context.flateStream(out)));
+}
+
+/** A name as written in a content stream. */
+
+function pdfName(name: string): string {
+  return `/${(name || 'Span').replace(/[^!-~]|[()<>[\]{}/%#]/g, (c) => `#${c.charCodeAt(0).toString(16).padStart(2, '0')}`)}`;
+}
+
 
 /**
  * How far each glyph after a replacement must move so the new text fits:

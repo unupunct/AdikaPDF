@@ -4,6 +4,7 @@
  * viewer, thumbnails, redaction and the export engines.
  */
 import * as pdfjs from 'pdfjs-dist';
+import { cappedPixelRatio } from './canvasLimits';
 import type { PDFDocumentProxy, PDFPageProxy } from 'pdfjs-dist';
 import type { TextContent, TextItem } from 'pdfjs-dist/types/src/display/api';
 import type { OptionalContentConfig } from 'pdfjs-dist/types/src/display/optional_content_config';
@@ -86,6 +87,7 @@ export async function releaseSource(sourceId: string): Promise<void> {
   for (const key of [...textContents.keys()]) if (key.startsWith(`${sourceId}:`)) textContents.delete(key);
   for (const key of [...annotations.keys()]) if (key.startsWith(`${sourceId}:`)) annotations.delete(key);
   layerConfigs.delete(sourceId);
+  for (const key of [...hiddenSets.keys()]) if (key.startsWith(`${sourceId}:`)) hiddenSets.delete(key);
   if (d) await (await d).loadingTask.destroy().catch(() => undefined);
 }
 
@@ -124,6 +126,8 @@ export function getTextContent(sourceId: string, index: number): Promise<TextCon
 
 /** Subset of pdf.js annotation data the reader uses (links, attachments). */
 export interface PageAnnotation {
+  /** pdf.js id ("12R"). */
+  id?: string;
   subtype: string;
   rect: [number, number, number, number];
   url?: string;
@@ -225,43 +229,80 @@ export async function pageViewport(page: PageRef, scale: number) {
   return p.getViewport({ scale, rotation: totalRotation(page) });
 }
 
+type HiddenAnnots = (page: PageRef) => Promise<string[]>;
+let hiddenAnnots: HiddenAnnots | null = null;
+const hiddenSets = new Map<string, Set<string>>();
+
+/** Annotations of a page that pdf.js must not draw (comments taken over by the editor). */
+export function setHiddenAnnotations(fn: HiddenAnnots): void {
+  hiddenAnnots = fn;
+}
+
+/** Marks the page's hidden annotations in pdf.js' storage (noView); called right before rendering. */
+function applyHidden(doc: PDFDocumentProxy, key: string, ids: string[]): void {
+  const before = hiddenSets.get(key);
+  if (!before?.size && !ids.length) return;
+  for (const id of before ?? []) if (!ids.includes(id)) doc.annotationStorage.remove(id);
+  for (const id of ids) doc.annotationStorage.setValue(id, { noView: true });
+  hiddenSets.set(key, new Set(ids));
+}
+
 export interface RenderHandle {
   promise: Promise<void>;
   cancel: () => void;
 }
 
-/** Renders a page into `canvas` at `scale` (CSS px per point) × devicePixelRatio. */
-export function renderPageToCanvas(
-  page: PageRef,
-  canvas: HTMLCanvasElement,
-  scale: number,
-  pixelRatio = window.devicePixelRatio || 1,
-): RenderHandle {
+/** The thrown error when a render was cancelled before it was drawn. */
+export class RenderCancelledError extends Error {
+  constructor() {
+    super('Rendering cancelled');
+    this.name = 'RenderingCancelledException';
+  }
+}
+
+export function isRenderCancelled(e: unknown): boolean {
+  return e instanceof Error && e.name === 'RenderingCancelledException';
+}
+
+/**
+ * Renders a page into `canvas` at `scale` (CSS px per point) × devicePixelRatio.
+ * Without an explicit `pixelRatio` (on-screen pages) the bitmap is kept within
+ * the canvas limits and stretched by CSS at very high zoom. A cancelled render
+ * rejects with RenderCancelledError.
+ */
+export function renderPageToCanvas(page: PageRef, canvas: HTMLCanvasElement, scale: number, pixelRatio?: number): RenderHandle {
   let cancelled = false;
   let task: ReturnType<PDFPageProxy['render']> | null = null;
   const promise = (async () => {
     const ctx = canvas.getContext('2d');
     if (!ctx) throw new Error('Canvas unavailable');
+    const turned = totalRotation(page) % 180 !== 0;
+    const cssW = (turned ? page.height : page.width) * scale;
+    const cssH = (turned ? page.width : page.height) * scale;
+    const ratio = pixelRatio ?? cappedPixelRatio(cssW, cssH, window.devicePixelRatio || 1);
     if (page.kind === 'blank' || !page.sourceId) {
-      const w = (totalRotation(page) % 180 === 0 ? page.width : page.height) * scale;
-      const h = (totalRotation(page) % 180 === 0 ? page.height : page.width) * scale;
-      canvas.width = Math.round(w * pixelRatio);
-      canvas.height = Math.round(h * pixelRatio);
+      canvas.width = Math.round(cssW * ratio);
+      canvas.height = Math.round(cssH * ratio);
       ctx.fillStyle = '#ffffff';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
       return;
     }
     const p = await getPdfPage(page.sourceId, page.sourceIndex);
-    if (cancelled) return;
-    const viewport = p.getViewport({ scale: scale * pixelRatio, rotation: totalRotation(page) });
-    // Render off-screen first so the visible canvas never flashes blank.
-    const off = document.createElement('canvas');
+    const doc = await getSourceDoc(page.sourceId);
+    const hidden = hiddenAnnots ? await hiddenAnnots(page).catch(() => []) : [];
+    if (cancelled) throw new RenderCancelledError();
+    const viewport = p.getViewport({ scale: scale * ratio, rotation: totalRotation(page) });
+    // A canvas showing an earlier rendering is redrawn off-screen first so it
+    // never flashes blank; an empty one is drawn directly (no second bitmap).
+    const direct = canvas.width === 0 || canvas.height === 0;
+    const off = direct ? canvas : document.createElement('canvas');
     off.width = Math.round(viewport.width);
     off.height = Math.round(viewport.height);
-    const offCtx = off.getContext('2d');
+    const offCtx = direct ? ctx : off.getContext('2d');
     if (!offCtx) throw new Error('Canvas unavailable');
     offCtx.fillStyle = '#ffffff';
     offCtx.fillRect(0, 0, off.width, off.height);
+    applyHidden(doc, `${page.sourceId}:${page.sourceIndex}`, hidden);
     task = p.render({
       canvas: off,
       canvasContext: offCtx,
@@ -272,13 +313,22 @@ export function renderPageToCanvas(
     try {
       await task.promise;
     } catch (e) {
-      if (e instanceof Error && e.name === 'RenderingCancelledException') return;
+      if (!direct) off.width = off.height = 0;
+      if (isRenderCancelled(e)) throw new RenderCancelledError();
       throw e;
     }
-    if (cancelled) return;
+    if (direct) {
+      if (cancelled) throw new RenderCancelledError();
+      return;
+    }
+    if (cancelled) {
+      off.width = off.height = 0;
+      throw new RenderCancelledError();
+    }
     canvas.width = off.width;
     canvas.height = off.height;
     ctx.drawImage(off, 0, 0);
+    off.width = off.height = 0;
   })();
   return {
     promise,

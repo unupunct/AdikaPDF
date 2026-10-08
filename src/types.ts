@@ -65,6 +65,10 @@ export interface SourceDoc {
   name: string;
   bytes: Uint8Array;
   pageCount: number;
+  /** The password it was opened with (memory only: handed to another window, never written to disk). */
+  password?: string;
+  /** The bytes are the file as opened from disk (not rewritten), so an incremental update can be appended. */
+  original?: boolean;
 }
 
 /** One page of the working document, pointing at a page of a source (or blank). */
@@ -82,6 +86,12 @@ export interface PageRef {
   /** Unrotated page size in points (CropBox). */
   width: number;
   height: number;
+  /**
+   * Annotations of the source page (pdf.js ids, "12R") that Adika has taken
+   * over: edited through an object whose `fileAnnot` points at it, or deleted
+   * when no object does. pdf.js no longer draws them.
+   */
+  takenAnnots?: string[];
 }
 
 interface BaseObject {
@@ -95,6 +105,18 @@ interface BaseObject {
   locked?: boolean;
   /** Layer (optional content group) the object is drawn in when saved; page content objects only. */
   layer?: string;
+  /** A comment that was already in the file: saved back into that annotation. */
+  fileAnnot?: FileAnnotLink;
+}
+
+/** Link from an editor object to the annotation of the file it was made from. */
+export interface FileAnnotLink {
+  /** pdf.js id of the annotation ("12R"). */
+  ref: string;
+  /** Its /Subtype. */
+  subtype: string;
+  /** The object as it was taken over (JSON, without id, page and this link): unchanged objects leave the file alone. */
+  base: string;
 }
 
 export interface TextObject extends BaseObject {
@@ -453,7 +475,11 @@ export interface SignatureValidation {
   /** This signature certifies the document: 1 no changes, 2 form filling and signing, 3 also comments. */
   certified?: 1 | 2 | 3 | null;
   /** What later revisions changed (when the signature does not cover the whole file). */
-  laterChanges?: { ltv: boolean; signatures: boolean; form: boolean; other: boolean } | null;
+  laterChanges?: { ltv: boolean; signatures: boolean; form: boolean; annotations?: boolean; other: boolean; reasons?: string[] } | null;
+  /** The signature timestamp (or document timestamp) verified: signed by a trusted timestamping authority, over this signature. */
+  timestampVerified?: boolean;
+  /** Weak algorithms or keys, unsuitable certificates: valid, but not to be shown as fully good. */
+  warnings?: string[];
   /** e.g. "RSA-2048 / SHA-256". */
   algorithm?: string;
   /** A document timestamp (ETSI.RFC3161), not a person's signature. */

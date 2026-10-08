@@ -47,6 +47,16 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: src-tauri
+          workspaces: |
+            src-tauri
+            src-tauri/thumbs
+      # The installer bundles the thumbnail DLL, and tauri-build checks that the resource exists.
+      - run: cargo build --release --locked
+        working-directory: src-tauri/thumbs
       - run: cargo check --locked
         working-directory: src-tauri
+      - run: cargo test --locked
+        working-directory: src-tauri
+      # Renders a PDF with Windows.Data.Pdf, also on a single-threaded apartment like Explorer.
+      - run: cargo test --locked
+        working-directory: src-tauri/thumbs

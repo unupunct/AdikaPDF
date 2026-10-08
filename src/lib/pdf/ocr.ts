@@ -10,6 +10,7 @@ import {
   PDFDocument,
   TextRenderingMode,
   beginText,
+  degrees,
   endText,
   popGraphicsState,
   pushGraphicsState,
@@ -71,7 +72,65 @@ export interface OcrPageResult {
   /** Unrotated (CropBox) page size in points. */
   widthPt: number;
   heightPt: number;
+  /** Word boxes in unrotated page space; the text reads along the page turned clockwise by `rotation`. */
   words: OcrWord[];
+  /** Clockwise turn (0/90/180/270) at which the words were read: the page's /Rotate, or the corrected one. Default 0. */
+  rotation?: number;
+  /** New /Rotate for a page that was scanned sideways or upside down (set by makeSearchable). */
+  straighten?: number;
+}
+
+type Box = { x: number; y: number; width: number; height: number };
+
+/**
+ * A box on the page as shown turned clockwise by `rotation` -> the same box
+ * in unrotated page space (W x H, top-left origin). Pure.
+ */
+export function displayToPage(b: Box, rotation: number, W: number, H: number): Box {
+  const r = ((rotation % 360) + 360) % 360;
+  const map = (X: number, Y: number): [number, number] => (r === 90 ? [Y, H - X] : r === 180 ? [W - X, H - Y] : r === 270 ? [W - Y, X] : [X, Y]);
+  const [u0, v0] = map(b.x, b.y);
+  const [u1, v1] = map(b.x + b.width, b.y + b.height);
+  return { x: Math.min(u0, u1), y: Math.min(v0, v1), width: Math.abs(u1 - u0), height: Math.abs(v1 - v0) };
+}
+
+/** The inverse of displayToPage. Pure. */
+export function pageToDisplay(b: Box, rotation: number, W: number, H: number): Box {
+  const r = ((rotation % 360) + 360) % 360;
+  // Displayed size: W x H, or H x W when turned a quarter.
+  const [dw, dh] = r === 90 || r === 270 ? [H, W] : [W, H];
+  return displayToPage(b, (360 - r) % 360, dw, dh);
+}
+
+/** How much a reading looks like real text: confident words of two letters or more. Pure. */
+export function orientationScore(words: Array<{ text: string; confidence: number }>): number {
+  let s = 0;
+  for (const w of words) if (w.confidence >= 60 && /\p{L}{2,}/u.test(w.text)) s += w.text.length;
+  return s;
+}
+
+/** Below this score at the page's own rotation, the other three are tried. */
+const ORIENTATION_DOUBT = 40;
+
+/**
+ * Picks the clockwise turn that reads best. `read` recognises the page turned
+ * by a given angle (on a small render) and returns its words. The page's own
+ * rotation wins unless another reads clearly better. Pure apart from `read`.
+ */
+export async function bestOrientation(base: number, baseScore: number, read: (rotation: number) => Promise<Array<{ text: string; confidence: number }>>): Promise<number> {
+  if (baseScore >= ORIENTATION_DOUBT) return base;
+  let best = base;
+  let bestScore = orientationScore(await read(base));
+  const own = bestScore;
+  for (const turn of [90, 180, 270]) {
+    const r = (base + turn) % 360;
+    const s = orientationScore(await read(r));
+    if (s > bestScore) {
+      best = r;
+      bestScore = s;
+    }
+  }
+  return best !== base && bestScore >= 12 && bestScore >= own * 2 ? best : base;
 }
 
 interface TessBbox {
@@ -128,6 +187,10 @@ export async function ocrPages(
     sample?: (result: OcrPageResult, pixels: { data: Uint8ClampedArray; width: number; height: number; scale: number }) => void;
     /** Paint table lines white before recognising: letters touching ruling lines read much better. */
     eraseLines?: boolean;
+    /** Detect pages scanned sideways or upside down and read them upright (see makeSearchable for /Rotate). */
+    straighten?: boolean;
+    /** Stops between pages when aborted. */
+    signal?: AbortSignal;
   },
   onProgress?: (msg: string, fraction: number) => void,
 ): Promise<OcrPageResult[]> {
@@ -155,36 +218,58 @@ export async function ocrPages(
     },
   });
 
+  // Renders the page turned clockwise by `rotation` and reads it; word boxes in that turned space.
+  const read = async (n: number, rotation: number, atDpi: number, keepPixels: boolean) => {
+    const { canvas, scale } = await renderPageToCanvas(pdf, n, atDpi, rotation);
+    if (opts.eraseLines) {
+      const ctx = canvas.getContext('2d') as CanvasRenderingContext2D;
+      const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const { rasterRules } = await import('@/lib/scan/rasterRules');
+      ctx.fillStyle = '#ffffff';
+      for (const r of rasterRules(img.data, img.width, img.height, scale)) ctx.fillRect(r.x0 * scale - 2, r.y0 * scale - 2, (r.x1 - r.x0) * scale + 4, (r.y1 - r.y0) * scale + 4);
+    }
+    const png = await canvasToBlob(canvas, 'image/png');
+    const pixels = keepPixels ? (canvas.getContext('2d') as CanvasRenderingContext2D).getImageData(0, 0, canvas.width, canvas.height) : null;
+    canvas.width = canvas.height = 0;
+    const { data } = await worker.recognize(png, {}, { blocks: true, text: false });
+    return { words: blocksToWords(data.blocks as unknown as TessBlock[], scale), pixels, scale };
+  };
+
   const results: OcrPageResult[] = [];
   try {
     for (current = 0; current < pages.length; current++) {
+      opts.signal?.throwIfAborted();
       const n = pages[current];
       report(`Rendering page ${n}`, 0);
-      // Rotation 0: boxes come out in unrotated page space.
-      const { canvas, scale } = await renderPageToCanvas(pdf, n, dpi, 0);
-      if (opts.eraseLines) {
-        const ctx = canvas.getContext('2d') as CanvasRenderingContext2D;
-        const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
-        const { rasterRules } = await import('@/lib/scan/rasterRules');
-        ctx.fillStyle = '#ffffff';
-        for (const r of rasterRules(img.data, img.width, img.height, scale)) ctx.fillRect(r.x0 * scale - 2, r.y0 * scale - 2, (r.x1 - r.x0) * scale + 4, (r.y1 - r.y0) * scale + 4);
-      }
-      const png = await canvasToBlob(canvas, 'image/png');
-      const widthPt = canvas.width / scale;
-      const heightPt = canvas.height / scale;
-      const pixels = opts.sample ? (canvas.getContext('2d') as CanvasRenderingContext2D).getImageData(0, 0, canvas.width, canvas.height) : null;
-      canvas.width = canvas.height = 0;
       const page = await pdf.getPage(n);
       const vp = page.getViewport({ scale: 1, rotation: 0 });
-      const { data } = await worker.recognize(png, {}, { blocks: true, text: false });
+      const own = ((page.rotate % 360) + 360) % 360;
+      // The page as it is shown (its /Rotate), so text stored sideways under a rotation reads upright.
+      // Editable text (sample) is laid out in unrotated space: it reads the page unturned, as before.
+      let rotation = opts.sample ? 0 : own;
+      let r = await read(n, rotation, dpi, !!opts.sample);
+      if (opts.straighten && !opts.sample) {
+        const score = orientationScore(r.words);
+        // Other turns are tried on a small render, only when the page reads poorly.
+        const best = await bestOrientation(own, score, async (rot) => (await read(n, rot, Math.min(dpi, 150), false)).words);
+        if (best !== own) {
+          report(`Straightening page ${n}`, 0.5);
+          rotation = best;
+          r = await read(n, rotation, dpi, !!opts.sample);
+        }
+      }
       const result: OcrPageResult = {
         pageNumber: n,
-        widthPt: vp.width || widthPt,
-        heightPt: vp.height || heightPt,
-        words: blocksToWords(data.blocks as unknown as TessBlock[], scale),
+        widthPt: vp.width,
+        heightPt: vp.height,
+        words: r.words.map((w) => ({ ...w, ...displayToPage(w, rotation, vp.width, vp.height) })),
+        rotation,
+        straighten: !opts.sample && rotation !== own ? rotation : undefined,
       };
       results.push(result);
-      if (pixels && opts.sample) opts.sample(result, { data: pixels.data, width: pixels.width, height: pixels.height, scale });
+      if (r.pixels && opts.sample) opts.sample(result, { data: r.pixels.data, width: r.pixels.width, height: r.pixels.height, scale: r.scale });
+      // Frees the page's decoded images and fonts: long documents stay within memory.
+      page.cleanup();
     }
     onProgress?.('OCR complete', 1);
   } finally {
@@ -244,27 +329,35 @@ export async function makeSearchable(
     const fontKey = page.node.newFontDictionary('FOCR', font.ref);
 
     const ops = [pushGraphicsState(), beginText(), setTextRenderingMode(TextRenderingMode.Invisible)];
+    // Text runs along the page as it was read (turned clockwise by `rot`): counter-clockwise in PDF space.
+    const rot = ((r.rotation ?? 0) % 360 + 360) % 360;
+    const quarter = rot === 90 || rot === 270;
+    const [cos, sin] = rot === 90 ? [0, 1] : rot === 180 ? [-1, 0] : rot === 270 ? [0, -1] : [1, 0];
     for (const w of r.words) {
       // Characters missing from the font are dropped rather than faked.
       const text = sanitizeForFont(w.text, supported, '').trim();
       if (!text) continue;
-      const width = w.width * sx;
-      const height = w.height * sy;
+      const d = pageToDisplay(w, rot, r.widthPt, r.heightPt);
+      const width = d.width * (quarter ? sy : sx);
+      const height = d.height * (quarter ? sx : sy);
       if (!(width > 0 && height > 0)) continue;
       const size = Math.max(1, height);
       const natural = font.widthOfTextAtSize(text, size);
       const squeeze = natural > 0 ? Math.min(1000, Math.max(1, (width / natural) * 100)) : 100;
-      const x = crop.x + w.x * sx;
-      const y = crop.y + crop.height - w.y * sy - height * 0.8;
+      // Baseline start, 80% down the word as read.
+      const p = displayToPage({ x: d.x, y: d.y + d.height * 0.8, width: 0, height: 0 }, rot, r.widthPt, r.heightPt);
+      const x = crop.x + p.x * sx;
+      const y = crop.y + crop.height - p.y * sy;
       ops.push(
         setFontAndSize(fontKey, size),
         setCharacterSqueeze(+squeeze.toFixed(2)),
-        setTextMatrix(1, 0, 0, 1, +x.toFixed(3), +y.toFixed(3)),
+        setTextMatrix(cos, sin, -sin, cos, +x.toFixed(3), +y.toFixed(3)),
         showText(font.encodeText(text + ' ')),
       );
     }
     ops.push(endText(), popGraphicsState());
     page.pushOperators(...ops);
+    if (r.straighten !== undefined) page.setRotation(degrees(r.straighten));
   }
   return doc.save({ useObjectStreams: true });
 }

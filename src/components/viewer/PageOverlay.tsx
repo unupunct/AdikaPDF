@@ -7,6 +7,7 @@
  * Stage is scaled by the zoom factor.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { isTypingTarget } from '@/hooks/shortcutKeys';
 import { Circle, Group, Layer, Line, Rect, Stage, Transformer } from 'react-konva';
 import type Konva from 'konva';
 import type { EditorObject, FieldKind, LineObject, NoteObject, PageRef, TextObject, ToolId } from '@/types';
@@ -42,6 +43,8 @@ import { captureSnapshot } from '@/actions/readingAids';
 import { measureValue, useMeasureScale } from '@/lib/measure';
 import { MeasureShape } from './ObjectNode';
 import { TextEditor } from './TextEditor';
+import { fileAnnotAt, fileAnnotsOf, takeOverAnnot } from '@/actions/fileComments';
+import type { FileAnnot } from '@/lib/pdf/fileAnnots';
 
 type Draft =
   | { kind: 'box'; tool: ToolId; x0: number; y0: number; x1: number; y1: number }
@@ -95,6 +98,17 @@ export function PageOverlay({ page, zoom }: { page: PageRef; zoom: number }) {
   const [guides, setGuides] = useState<Array<{ vertical: boolean; pos: number }>>([]);
   const editing = objects.find((o): o is TextObject => o.id === editingTextId && o.type === 'text');
   const editingNote = objects.find((o): o is NoteObject => o.id === editingTextId && o.type === 'note');
+
+  // Comments already in the file: a Select-tool click takes one over (fileComments.ts).
+  const [fileAnnots, setFileAnnots] = useState<FileAnnot[]>([]);
+  useEffect(() => {
+    if (tool !== 'select' || readOnly || page.kind !== 'source') return;
+    let alive = true;
+    void fileAnnotsOf(page).then((l) => alive && setFileAnnots(l));
+    return () => {
+      alive = false;
+    };
+  }, [tool, readOnly, page]);
 
   const pageHits = useMemo(() => {
     const out: Array<{ rect: R; active: boolean }> = [];
@@ -295,7 +309,8 @@ export function PageOverlay({ page, zoom }: { page: PageRef; zoom: number }) {
     if (!polyDraft) return;
     const onKey = (e: KeyboardEvent) => {
       const pd = polyRef.current;
-      if (!pd) return;
+      // Keys typed into a field (search box, page number…) are not for the drawing.
+      if (!pd || isTypingTarget(e.target)) return;
       if (e.key === 'Enter') finishPoly(pd);
       else if (e.key === 'Escape') setPolyDraft(null);
       else if (e.key === 'Backspace') setPolyDraft({ ...pd, points: pd.points.slice(0, -2) });
@@ -403,6 +418,11 @@ export function PageOverlay({ page, zoom }: { page: PageRef; zoom: number }) {
     switch (tool) {
       case 'select': {
         if (!clickedEmpty) return;
+        const fileAnnot = e.evt.shiftKey ? null : fileAnnotAt(fileAnnots, page, p.x, p.y);
+        if (fileAnnot?.object) {
+          void takeOverAnnot(page.id, fileAnnot.id);
+          return;
+        }
         if (!e.evt.shiftKey) store.select([]);
         startDrag({ kind: 'marquee', x0: p.x, y0: p.y, x1: p.x, y1: p.y });
         return;

@@ -6,13 +6,14 @@
  */
 import { memo, useEffect, useRef, useState, type RefObject } from 'react';
 import type { PageRef } from '@/types';
-import { renderPageToCanvas } from '@/lib/pdf/pdfService';
+import { isRenderCancelled, renderPageToCanvas } from '@/lib/pdf/pdfService';
 import { usePDFStore } from '@/store/usePDFStore';
 import { PageOverlay } from './PageOverlay';
 import { LinkLayer, TextSelectionLayer } from './ReaderLayers';
 import { FormFillLayer } from './FormFillLayer';
 import { isTextTool } from '@/lib/tools';
 import { cn } from '@/lib/cn';
+import { hiddenKey } from '@/actions/fileComments';
 
 interface Props {
   page: PageRef;
@@ -46,6 +47,8 @@ export const PageView = memo(function PageView({ page, index, zoom, scrollRoot }
   const renderEpoch = usePDFStore((s) => s.renderEpoch);
   const tool = usePDFStore((s) => s.tool);
   const nightMode = usePDFStore((s) => s.nightMode);
+  // Comments of the file taken over by the editor are not drawn by pdf.js.
+  const hidden = usePDFStore((s) => hiddenKey(page, s.objects));
   const reading = tool === 'selectText' || tool === 'pan';
 
   useEffect(() => {
@@ -62,7 +65,10 @@ export const PageView = memo(function PageView({ page, index, zoom, scrollRoot }
           setRenderedZoom(zoom);
           setError(null);
         },
-        (e: unknown) => setError(e instanceof Error ? e.message : 'Render failed'),
+        // A cancelled render drew nothing at this zoom: renderedZoom stays as it was.
+        (e: unknown) => {
+          if (!isRenderCancelled(e)) setError(e instanceof Error ? e.message : 'Render failed');
+        },
       );
     }, delay);
     return () => {
@@ -71,7 +77,7 @@ export const PageView = memo(function PageView({ page, index, zoom, scrollRoot }
     };
     // renderedZoom is intentionally excluded: it only chooses the delay.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [near, zoom, page.sourceId, page.sourceIndex, page.baseRotation, page.userRotation, page.kind, renderEpoch]);
+  }, [near, zoom, page.sourceId, page.sourceIndex, page.baseRotation, page.userRotation, page.kind, renderEpoch, hidden]);
 
   // Free bitmap memory for pages far away.
   useEffect(() => {

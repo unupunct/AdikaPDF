@@ -2,7 +2,7 @@ import { afterAll, describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createCanvas } from '@napi-rs/canvas';
-import { PDFDocument, PDFName, PDFRawStream, StandardFonts, rgb, type PDFPage } from 'pdf-lib';
+import { PDFArray, PDFDocument, PDFName, PDFRawStream, StandardFonts, rgb, type PDFPage } from 'pdf-lib';
 import * as pdfjs from 'pdfjs-dist/legacy/build/pdf.mjs';
 import { cmykToRgb, genericCmykProfile, rgbToCmyk } from '@/lib/print/color';
 import { convertColors } from '@/lib/print/convertColors';
@@ -154,6 +154,22 @@ describe('colour conversion', () => {
     expect(issues.map((i) => i.rule)).toEqual(['Fonts embedded']);
     const x1a = await preflightPdfX(src, 'x1a');
     expect(x1a.some((i) => i.rule === 'No transparency')).toBe(true);
+  });
+
+  it('keeps the creation date, uses one timestamp for Info and XMP and writes a file ID', async () => {
+    const d = await PDFDocument.load(await rgbDoc(false));
+    d.setCreationDate(new Date('2020-05-04T03:02:01Z'));
+    const x4 = await convertToPdfX(await d.save(), { level: 'x4', title: 'Raport' });
+    const doc = await PDFDocument.load(x4.bytes, { updateMetadata: false });
+    expect(doc.getCreationDate()?.toISOString()).toBe('2020-05-04T03:02:01.000Z');
+    const xmp = new TextDecoder().decode((doc.catalog.lookup(PDFName.of('Metadata')) as PDFRawStream).contents);
+    expect(xmp).toContain('<xmp:CreateDate>2020-05-04T03:02:01Z</xmp:CreateDate>');
+    const mod = doc.getModificationDate()!.toISOString().replace('.000Z', 'Z');
+    expect(xmp).toContain(`<xmp:ModifyDate>${mod}</xmp:ModifyDate>`);
+    expect(xmp).toContain(`<xmp:MetadataDate>${mod}</xmp:MetadataDate>`);
+    const id = doc.context.trailerInfo.ID as PDFArray;
+    expect(id).toBeInstanceOf(PDFArray);
+    expect(id.size()).toBe(2);
   });
 });
 

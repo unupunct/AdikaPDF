@@ -82,7 +82,7 @@ export function registerFormatTests(test, ctx) {
     const rtf = readFileSync(await savedFile(/sample\.rtf$/), 'latin1');
     assert(rtf.startsWith('{\\rtf1') && rtf.includes('Invoice Total'), 'RTF content');
     const csv = readFileSync(await savedFile(/sample\.csv$/), 'utf8');
-    assert(csv.includes('Invoice'), 'CSV content');
+    assert(csv.includes('Invoice'), `CSV content (${csv.slice(0, 300)})`);
     const json = JSON.parse(readFileSync(await savedFile(/sample\.json$/), 'utf8'));
     assert(json.pages?.length === 3 && JSON.stringify(json).includes('Invoice Total'), 'JSON pages');
     const epubPath = await savedFile(/sample\.epub$/);

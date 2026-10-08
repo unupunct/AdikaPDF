@@ -15,6 +15,14 @@ import type { PageRef } from '@/types';
 const dataOf = (xml: string) => parseXml(xml);
 
 describe('XML', () => {
+  it('keeps line breaks and tabs in attributes', () => {
+    const el = parseXml('<a/>');
+    el.attrs.push(['note', 'line 1\nline 2\tx\r']);
+    const xml = serializeXml(el);
+    expect(xml).toBe('<a note="line 1&#10;line 2&#9;x&#13;"/>');
+    expect(parseXml(xml).attrs[0][1]).toBe('line 1\nline 2\tx\r');
+  });
+
   it('round-trips text, attributes, CDATA and entities', () => {
     const src = '<a x="1 &amp; 2"><b>t &lt; u</b><c><![CDATA[<raw>]]></c><d/></a>';
     const el = parseXml(src);
@@ -154,4 +162,30 @@ describe('XFA forms saved by Adika', () => {
     const text = await pdfjs.getDocument({ data: bytes.slice(), verbosity: 0 }).promise.then((d) => d.getPage(1)).then((p) => p.getTextContent());
     expect(text.items.map((i) => ('str' in i ? i.str : '')).join('')).toContain('Order form – ș ț');
   });
+});
+
+describe('single-stream XFA', () => {
+  async function singleStream(withDatasets: boolean) {
+    const doc = await PDFDocument.create();
+    doc.addPage();
+    const xdp = `<?xml version="1.0" encoding="UTF-8"?>\n<xdp:xdp xmlns:xdp="http://ns.adobe.com/xdp/" timeStamp="2024-01-01T00:00:00Z">${XFA_TEMPLATE}${withDatasets ? XFA_DATASETS : ''}<config xmlns="http://www.xfa.org/schema/xci/3.1/"/></xdp:xdp>`;
+    doc.catalog.set(PDFName.of('AcroForm'), doc.context.obj({ Fields: [], XFA: doc.context.register(doc.context.stream(xdp)) }));
+    return doc;
+  }
+
+  for (const withDatasets of [true, false]) {
+    it(`round-trips with${withDatasets ? '' : 'out'} a datasets packet`, async () => {
+      const doc = await singleStream(withDatasets);
+      const packets = readXfaPackets(doc)!;
+      expect(packets[0][0]).toBe('preamble');
+      expect(packets[0][1]).toContain('<xdp:xdp xmlns:xdp="http://ns.adobe.com/xdp/" timeStamp=');
+      expect(packets.at(-1)).toEqual(['postamble', '</xdp:xdp>']);
+      expect(restoreStaticXfa(doc, packets, { 'form1[0].Main[0].Name[0]': 'Maria' })).toBe('synced');
+      const again = readXfaPackets(await PDFDocument.load(await doc.save()))!;
+      expect(again.map(([n]) => n)).toEqual(['preamble', 'template', 'datasets', 'config', 'postamble']);
+      const whole = parseXml(again.map(([, x]) => x).join('').replace(/^<\?xml[^>]*\?>\s*/, ''));
+      expect(whole.name).toBe('xdp:xdp');
+      expect(textOf(path(whole, 'datasets', 'data', 'form1', 'Main', 'Name'))).toBe('Maria');
+    });
+  }
 });

@@ -22,8 +22,10 @@ import {
   PDFRef,
   PDFStream,
   PDFString,
+  decodePDFRawStream,
   type PDFObject,
 } from 'pdf-lib';
+import { scanContentOps } from './compress';
 
 export const PDFA_PRODUCER = 'Adika PDF Editor';
 
@@ -279,6 +281,8 @@ export interface PdfAMeta {
   attachments?: PdfAAttachment[];
   /** More XMP (rdf:Description blocks), e.g. Factur-X. */
   extraXmp?: string;
+  /** A TrueType font (embedded) to redraw form fields that have no appearance of their own. */
+  fieldFont?: Uint8Array;
 }
 
 export interface PdfAConversionResult {
@@ -384,6 +388,142 @@ function visitDicts(doc: PDFDocument, fn: (d: PDFDict, ref: PDFRef, stream: PDFS
       walk(obj, ref, 0);
     }
   }
+}
+
+// ---------------------------------------------------------------------------
+// Annotations: PDF/A wants every one printable and (except Popup / Link) with
+// a normal appearance.
+// ---------------------------------------------------------------------------
+
+const F_INVISIBLE = 1;
+const F_HIDDEN = 2;
+const F_PRINT = 4;
+const F_NOVIEW = 32;
+const F_TOGGLENOVIEW = 256;
+
+function pageAnnots(doc: PDFDocument): PDFDict[] {
+  const out: PDFDict[] = [];
+  for (const page of doc.getPages()) {
+    const arr = arrayOf(doc, page.node.get(PDFName.of('Annots')));
+    if (arr) for (let i = 0; i < arr.size(); i++) {
+      const a = dictOf(doc, arr.get(i));
+      if (a) out.push(a);
+    }
+  }
+  return out;
+}
+
+function needsAppearance(doc: PDFDocument, a: PDFDict): boolean {
+  const sub = nameOf(a.get(PDFName.of('Subtype')));
+  if (sub === 'Popup' || sub === 'Link') return false;
+  const r = arrayOf(doc, a.get(PDFName.of('Rect')))?.asArray().map((v) => numberOf(doc, v) ?? 0);
+  // Annotations of no size need no appearance.
+  return !(r && r.length === 4 && (r[0] === r[2] || r[1] === r[3]));
+}
+
+function hasNormalAppearance(doc: PDFDocument, a: PDFDict): boolean {
+  const n = dictOf(doc, a.get(PDFName.of('AP')))?.get(PDFName.of('N'));
+  const v = n instanceof PDFRef ? doc.context.lookup(n) : n;
+  return v instanceof PDFStream || v instanceof PDFDict;
+}
+
+function annotFlags(doc: PDFDocument, a: PDFDict): number {
+  return numberOf(doc, a.get(PDFName.of('F'))) ?? 0;
+}
+
+const flagsOk = (f: number) => (f & F_PRINT) !== 0 && (f & (F_INVISIBLE | F_HIDDEN | F_NOVIEW | F_TOGGLENOVIEW)) === 0;
+
+/**
+ * Field appearances regenerated (when the form asked for it with
+ * NeedAppearances or a widget has none), Print flags set, extra appearance
+ * states dropped. Returns the notes for the user.
+ */
+async function fixAnnotations(doc: PDFDocument, needAppearances: boolean, fieldFont: Uint8Array | undefined): Promise<string[]> {
+  const notes: string[] = [];
+  const annots = pageAnnots(doc);
+  const widgetsWithoutAp = annots.filter((a) => nameOf(a.get(PDFName.of('Subtype'))) === 'Widget' && needsAppearance(doc, a) && !hasNormalAppearance(doc, a)).length;
+  if ((needAppearances || widgetsWithoutAp) && doc.catalog.has(PDFName.of('AcroForm'))) {
+    if (fieldFont) {
+      try {
+        const fontkit = (await import('@pdf-lib/fontkit')).default;
+        doc.registerFontkit(fontkit);
+        const font = await doc.embedFont(fieldFont, { subset: false });
+        const form = doc.getForm();
+        // NeedAppearances: the stored appearances may be stale, so all are redone.
+        if (needAppearances) for (const f of form.getFields()) form.markFieldAsDirty(f.ref);
+        form.updateFieldAppearances(font);
+        notes.push('Form field appearances were regenerated (PDF/A does not allow viewers to draw them).');
+      } catch {
+        notes.push('Some form field appearances could not be regenerated.');
+      }
+    }
+  }
+  let fixedFlags = 0;
+  for (const a of pageAnnots(doc)) {
+    if (nameOf(a.get(PDFName.of('Subtype'))) === 'Popup') continue;
+    const f = annotFlags(doc, a);
+    if (!flagsOk(f)) {
+      a.set(PDFName.of('F'), PDFNumber.of((f | F_PRINT) & ~(F_INVISIBLE | F_HIDDEN | F_NOVIEW | F_TOGGLENOVIEW)));
+      fixedFlags++;
+    }
+    // Only the normal appearance is allowed.
+    const ap = dictOf(doc, a.get(PDFName.of('AP')));
+    if (ap) {
+      ap.delete(PDFName.of('D'));
+      ap.delete(PDFName.of('R'));
+    }
+  }
+  if (fixedFlags) notes.push(`${fixedFlags} annotation(s) were made printable and visible (PDF/A requires the Print flag).`);
+  return notes;
+}
+
+/** Colour components of the first output intent's profile (3 for sRGB), or 0. */
+function outputIntentComponents(doc: PDFDocument): number {
+  const intents = arrayOf(doc, doc.catalog.get(PDFName.of('OutputIntents')));
+  const first = intents && dictOf(doc, intents.get(0));
+  const prof = first && dictOf(doc, first.get(PDFName.of('DestOutputProfile')));
+  return (prof && numberOf(doc, prof.get(PDFName.of('N')))) ?? 0;
+}
+
+function decodedContent(doc: PDFDocument, o: PDFObject | undefined): Uint8Array[] {
+  const v = o instanceof PDFRef ? doc.context.lookup(o) : o;
+  if (v instanceof PDFRawStream) {
+    try {
+      return [decodePDFRawStream(v).decode()];
+    } catch {
+      return [];
+    }
+  }
+  const arr = v instanceof PDFArray ? v : undefined;
+  return arr ? arr.asArray().flatMap((x) => decodedContent(doc, x)) : [];
+}
+
+function usesCmykOps(parts: Uint8Array[], res: PDFDict | undefined, doc: PDFDocument): boolean {
+  const named = dictOf(doc, res?.get(PDFName.of('ColorSpace')));
+  // A DefaultCMYK colour space turns DeviceCMYK into a calibrated one.
+  if (named?.has(PDFName.of('DefaultCMYK'))) return false;
+  for (const p of parts) {
+    for (const { op, name } of scanContentOps(p)) {
+      if (op === 'k' || op === 'K') return true;
+      if ((op === 'cs' || op === 'CS') && name && (name === 'DeviceCMYK' || nameOf(named?.get(PDFName.of(name))) === 'DeviceCMYK')) return true;
+    }
+  }
+  return false;
+}
+
+/** Pages, form XObjects and images that paint with DeviceCMYK. */
+function deviceCmykUses(doc: PDFDocument): number {
+  let n = 0;
+  for (const page of doc.getPages()) {
+    if (usesCmykOps(decodedContent(doc, page.node.get(PDFName.of('Contents'))), page.node.Resources(), doc)) n++;
+  }
+  for (const [, obj] of doc.context.enumerateIndirectObjects()) {
+    if (!(obj instanceof PDFRawStream)) continue;
+    const sub = nameOf(obj.dict.get(PDFName.of('Subtype')));
+    if (sub === 'Image' && nameOf(obj.dict.lookup(PDFName.of('ColorSpace'))) === 'DeviceCMYK') n++;
+    else if (sub === 'Form' && usesCmykOps(decodedContent(doc, obj), dictOf(doc, obj.dict.get(PDFName.of('Resources'))), doc)) n++;
+  }
+  return n;
 }
 
 function stringBytes(o: PDFObject | undefined): Uint8Array {
@@ -546,8 +686,10 @@ export async function convertToPdfADetailed(bytes: Uint8Array, meta: PdfAMeta): 
     }
   }
   const acro = dictOf(doc, catalog.get(PDFName.of('AcroForm')));
+  let needAppearances = false;
   if (acro) {
     acro.delete(PDFName.of('XFA'));
+    needAppearances = String(acro.lookup(PDFName.of('NeedAppearances'))) === 'true';
     acro.delete(PDFName.of('NeedAppearances'));
   }
 
@@ -597,6 +739,7 @@ export async function convertToPdfADetailed(bytes: Uint8Array, meta: PdfAMeta): 
       notes.push(`Embedded files were removed (${label} does not allow them).`);
     }
   }
+  notes.push(...(await fixAnnotations(doc, needAppearances, meta.fieldFont)));
   if (removedAttachAnnots) notes.push(`${removedAttachAnnots} file-attachment annotation(s) were removed.`);
   if (removedGroups) notes.push(`${removedGroups} transparency group(s) were removed (PDF/A-1 forbids them).`);
 
@@ -862,6 +1005,18 @@ export async function pdfaWarnings(bytes: Uint8Array, level?: PdfALevel): Promis
     if (efNoModDate) warnings.push(`${efNoModDate} embedded file stream(s) lack /Params /ModDate.`);
   } else if (filespecs) {
     warnings.push(`${filespecs} embedded file(s) found; ${label} does not allow arbitrary embedded files. Choose PDF/A-3b to keep them.`);
+  }
+
+  const annots = pageAnnots(doc);
+  const noAp = annots.filter((a) => needsAppearance(doc, a) && !hasNormalAppearance(doc, a)).length;
+  const noPrint = annots.filter((a) => nameOf(a.get(PDFName.of('Subtype'))) !== 'Popup' && !flagsOk(annotFlags(doc, a))).length;
+  if (noAp) warnings.push(`${noAp} annotation(s) or form field(s) have no appearance stream; PDF/A requires one. Flatten the form or fill the fields again before converting.`);
+  if (noPrint) warnings.push(`${noPrint} annotation(s) are hidden or not set to print; PDF/A requires them to be printable.`);
+  const acro = dictOf(doc, doc.catalog.get(PDFName.of('AcroForm')));
+  if (acro && String(acro.lookup(PDFName.of('NeedAppearances'))) === 'true') warnings.push('The form asks viewers to draw its fields (NeedAppearances); PDF/A forbids that.');
+  const cmyk = deviceCmykUses(doc);
+  if (cmyk && outputIntentComponents(doc) !== 4) {
+    warnings.push(`${cmyk} page(s), image(s) or drawing(s) use DeviceCMYK colours, but the output intent is RGB (sRGB). PDF/A requires device colours to match the output intent: convert the colours to RGB first (or use a CMYK output intent).`);
   }
 
   warnings.push(`The result carries ${label} markers but has not been validated. Validate it with veraPDF before archiving.`);

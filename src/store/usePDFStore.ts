@@ -86,12 +86,20 @@ export type ModalId =
   | 'einvoice'
   | 'portfolio'
   | 'pageSize'
-  | 'customize';
+  | 'customize'
+  | 'hiddenInfo';
 
 export interface Toast {
   id: string;
   kind: 'info' | 'success' | 'error';
   message: string;
+  /** A button on the toast, e.g. "Save as…" after a failed save. */
+  action?: ToastAction;
+}
+
+export interface ToastAction {
+  label: string;
+  run: () => void;
 }
 
 export type SidebarTab = 'pages' | 'bookmarks' | 'comments' | 'attachments' | 'layers' | 'tags' | 'search';
@@ -119,6 +127,8 @@ export interface BusyState {
   message: string;
   /** 0..1, or null for indeterminate. */
   progress: number | null;
+  /** Set when the operation can be cancelled: the overlay shows a Cancel button. */
+  abort?: AbortController;
 }
 
 interface PDFState extends UndoableState {
@@ -129,6 +139,8 @@ interface PDFState extends UndoableState {
   /** Set when the file can be viewed but not re-written (e.g. opened with a password). */
   readOnlyReason: string | null;
   dirty: boolean;
+  /** The document as last opened or saved (same object references), so undo back to it is clean again; null when unsaved changes lie outside the history. */
+  savedDoc: UndoableState | null;
   past: UndoableState[];
   future: UndoableState[];
   signatureStatus: SignatureValidation[];
@@ -178,6 +190,8 @@ interface PDFState extends UndoableState {
   docMeta: DocMeta | null;
   /** Size + mtime of the file on disk when opened/saved, for auto-reload. */
   fileStamp: string | null;
+  /** The source opened in this tab (the base its edits are saved into), see `primarySourceId`. */
+  primarySource: string | null;
   setView: (patch: Partial<Pick<PDFState, 'viewScroll' | 'viewSpread' | 'viewRotation' | 'nightMode' | 'presentation' | 'fullscreen' | 'sidebarTab'>>) => void;
   /** Jumps to a page (and optional y), remembering where we came from. */
   navigateTo: (pageId: string, y?: number) => void;
@@ -187,9 +201,13 @@ interface PDFState extends UndoableState {
   setDocMeta: (meta: DocMeta) => void;
 
   // Document actions
-  loadDocument: (bytes: Uint8Array, name: string, path?: string | null, password?: string) => Promise<void>;
+  /** `original`: `bytes` are exactly the file at `path` (not decrypted, converted or repaired). */
+  loadDocument: (bytes: Uint8Array, name: string, path?: string | null, password?: string, original?: boolean) => Promise<void>;
   closeDocument: () => Promise<void>;
-  addSource: (bytes: Uint8Array, name: string, password?: string) => Promise<{ source: SourceDoc; pages: PageRef[] }>;
+  /** `original`: the bytes are the file as it is on disk (incremental saves can append to them). */
+  addSource: (bytes: Uint8Array, name: string, password?: string, original?: boolean) => Promise<{ source: SourceDoc; pages: PageRef[] }>;
+  /** Releases sources that neither the document nor its undo history uses any more. */
+  releaseUnusedSources: () => void;
   mergeDocument: (bytes: Uint8Array, name: string, atIndex?: number) => Promise<void>;
   markSaved: (path: string | null, name?: string) => void;
   setSignatureStatus: (s: SignatureValidation[]) => void;
@@ -236,7 +254,7 @@ interface PDFState extends UndoableState {
   setTheme: (t: 'light' | 'dark') => void;
   openModal: (m: ModalId) => void;
   setBusy: (b: BusyState | null) => void;
-  toast: (message: string, kind?: Toast['kind']) => void;
+  toast: (message: string, kind?: Toast['kind'], action?: ToastAction) => void;
   dismissToast: (id: string) => void;
   setSearch: (patch: Partial<PDFState['search']>) => void;
   saveSignature: (sig: SavedSignature) => void;
@@ -295,6 +313,33 @@ function snapshot(s: UndoableState): UndoableState {
 
 const EMPTY_DOC: UndoableState = { pages: [], objects: [], fieldValues: {}, outline: null };
 
+const UNDOABLE_KEYS = ['pages', 'objects', 'fieldValues', 'outline'] as const;
+
+/** Same document state (by reference: undo restores the very same objects). */
+export function sameDoc(a: UndoableState, b: UndoableState | null): boolean {
+  return !!b && UNDOABLE_KEYS.every((k) => a[k] === b[k]);
+}
+
+export const PASSWORD_READ_ONLY =
+  'This PDF is password-protected, so it opens read-only. To edit it, open the original unprotected file (or ask its owner for one).';
+export const OWNER_PASSWORD_READ_ONLY =
+  'This PDF is protected by its author (an owner password restricts changes), so it opens read-only: Adika cannot save it without removing that protection. To edit it, use an unprotected copy from its author.';
+
+/** Sources whose pages were in the document at some point (a source loaded just now and not used yet is kept). */
+const usedSources = new Set<string>();
+
+/** Source ids the document refers to now or in its undo/redo history. */
+function referencedSources(s: Pick<PDFState, 'pages' | 'past' | 'future'>): Set<string> {
+  const out = new Set<string>();
+  const seen = new Set<PageRef[]>();
+  for (const pages of [s.pages, ...s.past.map((p) => p.pages), ...s.future.map((p) => p.pages)]) {
+    if (seen.has(pages)) continue;
+    seen.add(pages);
+    for (const p of pages) if (p.sourceId) out.add(p.sourceId);
+  }
+  return out;
+}
+
 export const usePDFStore = create<PDFState>()((set, get) => ({
   ...EMPTY_DOC,
   sources: {},
@@ -302,6 +347,7 @@ export const usePDFStore = create<PDFState>()((set, get) => ({
   filePath: null,
   readOnlyReason: null,
   dirty: false,
+  savedDoc: EMPTY_DOC,
   past: [],
   future: [],
   signatureStatus: [],
@@ -342,6 +388,7 @@ export const usePDFStore = create<PDFState>()((set, get) => ({
   searchOptions: { caseSensitive: false, wholeWord: false },
   docMeta: null,
   fileStamp: null,
+  primarySource: null,
   setView: (patch) => set(patch),
   navigateTo: (pageId, y) => {
     const s = get();
@@ -364,50 +411,72 @@ export const usePDFStore = create<PDFState>()((set, get) => ({
     get().scrollToPage(target.pageId, target.y);
   },
   setSearchOptions: (patch) => set((s) => ({ searchOptions: { ...s.searchOptions, ...patch } })),
-  setDocMeta: (docMeta) => set({ docMeta, dirty: true }),
+  setDocMeta: (docMeta) => set({ docMeta, dirty: true, savedDoc: null }),
 
   // ------------------------------------------------------------ document
 
-  addSource: async (bytes, name, password) => {
+  addSource: async (bytes, name, password, original) => {
     const doc = await openPdf(bytes, password);
     const id = uid('src');
     registerSource(id, doc);
-    const source: SourceDoc = { id, name, bytes, pageCount: doc.numPages };
     const pages: PageRef[] = [];
-    for (let i = 0; i < doc.numPages; i++) {
-      const p = await doc.getPage(i + 1);
-      const [x0, y0, x1, y1] = p.view;
-      pages.push({
-        id: uid('pg'),
-        kind: 'source',
-        sourceId: id,
-        sourceIndex: i,
-        baseRotation: normalizeRotation(p.rotate),
-        userRotation: 0,
-        width: Math.abs(x1 - x0),
-        height: Math.abs(y1 - y0),
-      });
+    try {
+      for (let i = 0; i < doc.numPages; i++) {
+        const p = await doc.getPage(i + 1);
+        const [x0, y0, x1, y1] = p.view;
+        pages.push({
+          id: uid('pg'),
+          kind: 'source',
+          sourceId: id,
+          sourceIndex: i,
+          baseRotation: normalizeRotation(p.rotate),
+          userRotation: 0,
+          width: Math.abs(x1 - x0),
+          height: Math.abs(y1 - y0),
+        });
+      }
+    } catch (e) {
+      // A page that cannot be read: nothing of this source stays registered.
+      void releaseSource(id);
+      throw e;
     }
+    const source: SourceDoc = { id, name, bytes, pageCount: doc.numPages, ...(password ? { password } : {}), ...(original ? { original } : {}) };
     set((s) => ({ sources: { ...s.sources, [id]: source } }));
     return { source, pages };
   },
 
-  loadDocument: async (bytes, name, path = null, password) => {
-    const previous = Object.keys(get().sources);
-    const { pages } = await get().addSource(bytes, name, password);
-    for (const id of previous) {
+  releaseUnusedSources: () => {
+    const s = get();
+    const live = referencedSources(s);
+    for (const id of live) usedSources.add(id);
+    const gone = Object.keys(s.sources).filter((id) => !live.has(id) && usedSources.has(id));
+    if (!gone.length) return;
+    set((st) => ({ sources: Object.fromEntries(Object.entries(st.sources).filter(([k]) => !gone.includes(k))) }));
+    for (const id of gone) {
+      usedSources.delete(id);
       void releaseSource(id);
     }
+  },
+
+  loadDocument: async (bytes, name, path = null, password, original = false) => {
+    const previous = Object.keys(get().sources);
+    const { isPdfEncrypted } = await import('@/lib/crypto/encrypt');
+    // Opened without a password but encrypted: an owner password limits changes, and saving cannot re-encrypt it.
+    const ownerLocked = !password && isPdfEncrypted(bytes);
+    const { pages } = await get().addSource(bytes, name, password, original && !!path);
+    for (const id of previous) {
+      usedSources.delete(id);
+      void releaseSource(id);
+    }
+    const doc: UndoableState = { ...EMPTY_DOC, pages };
     set((s) => ({
-      ...EMPTY_DOC,
-      pages,
+      ...doc,
       sources: Object.fromEntries(Object.entries(s.sources).filter(([k]) => !previous.includes(k))),
       fileName: name,
       filePath: path,
-      readOnlyReason: password
-        ? 'This PDF is password-protected, so it opens read-only. To edit it, open the original unprotected file (or ask its owner for one).'
-        : null,
+      readOnlyReason: password ? PASSWORD_READ_ONLY : ownerLocked ? OWNER_PASSWORD_READ_ONLY : null,
       dirty: false,
+      savedDoc: doc,
       past: [],
       future: [],
       selectedIds: [],
@@ -422,11 +491,14 @@ export const usePDFStore = create<PDFState>()((set, get) => ({
       viewRotation: 0,
       docMeta: null,
       fileStamp: null,
+      primarySource: pages[0]?.sourceId ?? null,
     }));
   },
 
   closeDocument: async () => {
+    // The tab stays open, empty (the welcome screen); other tabs are not touched.
     const ids = Object.keys(get().sources);
+    for (const id of ids) usedSources.delete(id);
     set({
       ...EMPTY_DOC,
       sources: {},
@@ -434,12 +506,21 @@ export const usePDFStore = create<PDFState>()((set, get) => ({
       filePath: null,
       readOnlyReason: null,
       dirty: false,
+      savedDoc: EMPTY_DOC,
       past: [],
       future: [],
       selectedIds: [],
       currentPageId: null,
       signatureStatus: [],
       editingTextId: null,
+      search: { query: '', hits: [], active: 0, open: false, running: false },
+      navBack: [],
+      navForward: [],
+      viewRotation: 0,
+      docMeta: null,
+      fileStamp: null,
+      primarySource: null,
+      scrollRequest: null,
     });
     await Promise.all(ids.map((id) => releaseSource(id)));
   },
@@ -455,7 +536,7 @@ export const usePDFStore = create<PDFState>()((set, get) => ({
     });
   },
 
-  markSaved: (path, name) => set((s) => ({ dirty: false, filePath: path ?? s.filePath, fileName: name ?? s.fileName })),
+  markSaved: (path, name) => set((s) => ({ dirty: false, savedDoc: snapshot(s), filePath: path ?? s.filePath, fileName: name ?? s.fileName })),
   setSignatureStatus: (signatureStatus) => set({ signatureStatus }),
 
   // ------------------------------------------------------------ history
@@ -464,9 +545,15 @@ export const usePDFStore = create<PDFState>()((set, get) => ({
     const s = get();
     const before = snapshot(s);
     const patch = recipe(before);
+    // Nothing changed (e.g. the recipe returned {}): no undo step, still clean.
+    if (UNDOABLE_KEYS.every((k) => !(k in patch) || patch[k] === before[k])) return;
     const past = [...s.past, before];
-    if (past.length > HISTORY_LIMIT) past.shift();
-    set({ ...patch, past, future: [], dirty: true });
+    const trimmed = past.length > HISTORY_LIMIT;
+    if (trimmed) past.shift();
+    const hadFuture = s.future.length > 0;
+    const next = { ...before, ...patch };
+    set({ ...patch, past, future: [], dirty: !sameDoc(next, s.savedDoc) });
+    if (trimmed || hadFuture || patch.pages) get().releaseUnusedSources();
   },
 
   undo: () => {
@@ -477,7 +564,7 @@ export const usePDFStore = create<PDFState>()((set, get) => ({
       ...prev,
       past: s.past.slice(0, -1),
       future: [snapshot(s), ...s.future],
-      dirty: true,
+      dirty: !sameDoc(prev, s.savedDoc),
       selectedIds: s.selectedIds.filter((id) => prev.objects.some((o) => o.id === id)),
       editingTextId: null,
     });
@@ -491,7 +578,7 @@ export const usePDFStore = create<PDFState>()((set, get) => ({
       ...next,
       past: [...s.past, snapshot(s)],
       future: s.future.slice(1),
-      dirty: true,
+      dirty: !sameDoc(next, s.savedDoc),
       selectedIds: s.selectedIds.filter((id) => next.objects.some((o) => o.id === id)),
       editingTextId: null,
     });
@@ -528,7 +615,7 @@ export const usePDFStore = create<PDFState>()((set, get) => ({
     const prev = s.past[s.past.length - 1];
     const createdByLastCommit = prev && !prev.objects.some((o) => o.id === id) && s.objects.some((o) => o.id === id);
     if (createdByLastCommit) {
-      set({ ...prev, past: s.past.slice(0, -1), future: [], selectedIds: [], editingTextId: null });
+      set({ ...prev, past: s.past.slice(0, -1), future: [], dirty: !sameDoc(prev, s.savedDoc), selectedIds: [], editingTextId: null });
     } else {
       get().deleteObjects([id]);
     }
@@ -710,10 +797,10 @@ export const usePDFStore = create<PDFState>()((set, get) => ({
   },
   openModal: (modal) => set({ modal }),
   setBusy: (busy) => set({ busy }),
-  toast: (message, kind = 'info') => {
+  toast: (message, kind = 'info', action) => {
     const id = uid('toast');
-    set((s) => ({ toasts: [...s.toasts.slice(-4), { id, kind, message }] }));
-    setTimeout(() => get().dismissToast(id), kind === 'error' ? 9000 : 4500);
+    set((s) => ({ toasts: [...s.toasts.slice(-4), { id, kind, message, action }] }));
+    setTimeout(() => get().dismissToast(id), action ? 15000 : kind === 'error' ? 9000 : 4500);
   },
   dismissToast: (id) => set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })),
   setSearch: (patch) => set((s) => ({ search: { ...s.search, ...patch } })),
@@ -732,8 +819,22 @@ export const usePDFStore = create<PDFState>()((set, get) => ({
   setPendingStamp: (pendingStamp) => set({ pendingStamp, tool: pendingStamp ? 'stamp' : 'select' }),
 }));
 
+// Marked unsaved from outside the history (a converted or repaired file, a tool's result): undo cannot make it clean.
+usePDFStore.subscribe((s, prev) => {
+  if (s.dirty && !prev.dirty && s.savedDoc && sameDoc(s, s.savedDoc)) usePDFStore.setState({ savedDoc: null });
+});
+
+/**
+ * The tab's own document: the opened file while any of its pages is still in
+ * the document (also when another file's page was put first), else the first page's source.
+ */
+export function primarySourceId(s: Pick<PDFState, 'pages' | 'primarySource'> = usePDFStore.getState()): string | null {
+  if (s.primarySource && s.pages.some((p) => p.sourceId === s.primarySource)) return s.primarySource;
+  return s.pages.find((p) => p.kind === 'source' && p.sourceId)?.sourceId ?? null;
+}
+
 /** Snapshot of the undoable document, e.g. for export. */
-export function currentDoc(): DocSnapshot & { sources: Record<string, SourceDoc>; fieldValues: Record<string, FieldValue> } {
+export function currentDoc(): DocSnapshot & { sources: Record<string, SourceDoc>; fieldValues: Record<string, FieldValue>; baseSourceId: string | null } {
   const s = usePDFStore.getState();
-  return { pages: s.pages, objects: s.objects, sources: s.sources, fieldValues: s.fieldValues, outline: s.outline };
+  return { pages: s.pages, objects: s.objects, sources: s.sources, fieldValues: s.fieldValues, outline: s.outline, baseSourceId: primarySourceId(s) };
 }

@@ -204,6 +204,7 @@ export function Select<T extends string>({
   className,
   ariaLabel,
   disabled,
+  id,
 }: {
   value: T;
   onChange: (v: T) => void;
@@ -211,9 +212,11 @@ export function Select<T extends string>({
   className?: string;
   ariaLabel?: string;
   disabled?: boolean;
+  id?: string;
 }) {
   return (
     <select
+      id={id}
       aria-label={ariaLabel}
       value={value}
       disabled={disabled}
@@ -229,28 +232,42 @@ export function Select<T extends string>({
   );
 }
 
-export function Label({ children, className, htmlFor }: { children: React.ReactNode; className?: string; htmlFor?: string }) {
+export function Label({ children, className, htmlFor, id }: { children: React.ReactNode; className?: string; htmlFor?: string; id?: string }) {
   return (
-    <label htmlFor={htmlFor} className={cn('mb-1 block text-[11px] font-semibold uppercase tracking-wide text-muted', className)}>
+    <label htmlFor={htmlFor} id={id} className={cn('mb-1 block text-[11px] font-semibold uppercase tracking-wide text-muted', className)}>
       {children}
     </label>
   );
 }
 
+const LABELLABLE = new Set<unknown>([Input, Textarea, Select, 'input', 'select', 'textarea']);
+
+/** A labelled form row: the label is tied to a single control child, or names the group otherwise. */
 export function Field({ label, children, hint }: { label: string; children: React.ReactNode; hint?: React.ReactNode }) {
+  const id = React.useId();
+  const control = React.isValidElement<{ id?: string }>(children) && LABELLABLE.has(children.type) ? children : null;
+  const controlId = control ? (control.props.id ?? `${id}-control`) : undefined;
   return (
     <div className="mb-3">
-      <Label>{label}</Label>
-      {children}
+      <Label htmlFor={controlId} id={`${id}-label`}>
+        {label}
+      </Label>
+      {control ? (
+        React.cloneElement(control, { id: controlId })
+      ) : (
+        <div role="group" aria-labelledby={`${id}-label`}>
+          {children}
+        </div>
+      )}
       {hint ? <p className="mt-1 text-[11px] text-muted">{hint}</p> : null}
     </div>
   );
 }
 
-export function Checkbox({ checked, onChange, label, disabled }: { checked: boolean; onChange: (v: boolean) => void; label: React.ReactNode; disabled?: boolean }) {
+export function Checkbox({ checked, onChange, label, disabled, ariaLabel }: { checked: boolean; onChange: (v: boolean) => void; label: React.ReactNode; disabled?: boolean; ariaLabel?: string }) {
   return (
     <label className={cn('flex cursor-default items-center gap-2 py-1 text-[13px]', disabled && 'opacity-50')}>
-      <input type="checkbox" className="h-4 w-4 accent-[var(--color-brand-600)]" checked={checked} disabled={disabled} onChange={(e) => onChange(e.target.checked)} />
+      <input type="checkbox" aria-label={ariaLabel} className="h-4 w-4 accent-[var(--color-brand-600)]" checked={checked} disabled={disabled} onChange={(e) => onChange(e.target.checked)} />
       {label}
     </label>
   );
@@ -286,9 +303,16 @@ export function ColorSwatch({ value, onChange, label, allowNone }: { value: stri
   );
 }
 
-export function Progress({ value }: { value: number | null }) {
+export function Progress({ value, label }: { value: number | null; label?: string }) {
   return (
-    <div className="relative h-1.5 w-full overflow-hidden rounded-full bg-[var(--border)]">
+    <div
+      role="progressbar"
+      aria-label={label}
+      aria-valuemin={0}
+      aria-valuemax={100}
+      aria-valuenow={value === null ? undefined : Math.round(Math.max(0, Math.min(1, value)) * 100)}
+      className="relative h-1.5 w-full overflow-hidden rounded-full bg-[var(--border)]"
+    >
       {value === null ? (
         <div className="animate-indeterminate absolute inset-y-0 w-1/3 rounded-full bg-brand-500" />
       ) : (

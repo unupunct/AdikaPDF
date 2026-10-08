@@ -36,7 +36,9 @@ export function decodeXmlEntities(s: string): string {
 }
 
 export const escapeXmlText = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-export const escapeXmlAttr = (s: string) => escapeXmlText(s).replace(/"/g, '&quot;');
+// Line breaks and tabs in an attribute would come back as spaces (attribute normalisation): written as references.
+export const escapeXmlAttr = (s: string) =>
+  escapeXmlText(s).replace(/"/g, '&quot;').replace(/\n/g, '&#10;').replace(/\r/g, '&#13;').replace(/\t/g, '&#9;');
 
 /** Parses a document; the result is a synthetic root whose children are the top-level nodes. */
 export function parseXmlDoc(xml: string): XEl {

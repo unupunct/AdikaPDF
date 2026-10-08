@@ -7,8 +7,9 @@ import { PDFDocument } from 'pdf-lib';
 import { marked } from 'marked';
 import { usePDFStore } from '@/store/usePDFStore';
 import { exportCurrentPdf, openPdfBytes, saveDerived, suggestedName, withBusy, PDF_FILTER } from './document';
+import { saveFile } from './saveGuard';
 import { openPdf, type PDFDocumentProxy } from '@/lib/pdf/pdfService';
-import { htmlToPdf, officeToPdf, pickFiles, pickPaths, readFile, saveBytes, scanPage, isDesktop } from '@/lib/platform';
+import { htmlToPdf, officeToPdf, pickFiles, pickPaths, readFile, scanPage, isDesktop } from '@/lib/platform';
 import { imageFileToDataUrl } from '@/lib/objectFactory';
 import { decodeTiff } from '@/lib/images';
 import {
@@ -207,13 +208,36 @@ export async function importTextLike(kind: 'html' | 'markdown' | 'text', o: Html
   const f = files[0];
   if (!f) return;
   await withBusy('Rendering to PDF…', async () => {
-    const text = new TextDecoder('utf-8').decode(f.bytes);
-    let html: string;
-    if (kind === 'html') html = prepareHtmlFile(text, f.path ? f.path.replace(/[\\/][^\\/]*$/, '') : null, o);
-    else if (kind === 'markdown') html = wrapHtml(await marked.parse(text, { gfm: true }), f.name, o);
-    else html = wrapHtml(`<pre style="background:none;padding:0">${escapeHtml(text)}</pre>`, f.name, o);
-    await deliverPdf(await htmlToPdf({ html }), f.name, append);
+    await deliverPdf(await textLikeToPdf(f.bytes, f.name, f.path, kind, o), f.name, append);
   });
+}
+
+/**
+ * Untrusted HTML (a web page file, raw HTML inside Markdown): scripts, forms,
+ * frames and remote resources are removed (the e-mail sanitiser); relative
+ * images and styles next to the file still resolve through <base>.
+ */
+async function safeHtml(html: string): Promise<string> {
+  const { sanitizeHtml } = await import('@/lib/pdf/email');
+  return sanitizeHtml(html, { allowRemote: false, resolveRef: () => null, blocked: 0 });
+}
+
+export function textKind(name: string): 'html' | 'markdown' | 'text' | null {
+  const ext = name.split('.').pop()?.toLowerCase() ?? '';
+  if (['html', 'htm', 'xhtml'].includes(ext)) return 'html';
+  if (['md', 'markdown'].includes(ext)) return 'markdown';
+  if (['txt', 'log', 'csv', 'json', 'xml'].includes(ext)) return 'text';
+  return null;
+}
+
+/** A web page, Markdown or plain-text file rendered to PDF (offline, by Edge). */
+export async function textLikeToPdf(bytes: Uint8Array, name: string, path: string | null, kind: 'html' | 'markdown' | 'text', o: HtmlPageOptions): Promise<Uint8Array> {
+  const text = new TextDecoder('utf-8').decode(bytes);
+  let html: string;
+  if (kind === 'html') html = prepareHtmlFile(await safeHtml(text), path ? path.replace(/[\\/][^\\/]*$/, '') : null, o);
+  else if (kind === 'markdown') html = wrapHtml(await safeHtml(await marked.parse(text, { gfm: true })), name, o);
+  else html = wrapHtml(`<pre style="background:none;padding:0">${escapeHtml(text)}</pre>`, name, o);
+  return htmlToPdf({ html });
 }
 
 export async function importUrl(url: string, append: boolean): Promise<void> {
@@ -341,7 +365,7 @@ const FORMAT_INFO: Record<ExportFormat, { ext: string; label: string }> = {
 
 export async function exportAs(req: ExportRequest): Promise<void> {
   const info = FORMAT_INFO[req.format];
-  const result = await withBusy(`Converting to ${info.label}…`, (progress) =>
+  const result = await withBusy(`Converting to ${info.label}…`, (progress, signal) =>
     withEditedDoc(async (pdf0, bytes0) => {
       const tick = (label: string) => (done: number, total: number) => progress(`${label} (${done}/${total})`, total ? done / total : null);
       const needsText = ['docx', 'odt', 'rtf', 'xlsx', 'csv', 'pptx', 'html', 'epub', 'md', 'txt', 'json'].includes(req.format);
@@ -361,7 +385,7 @@ export async function exportAs(req: ExportRequest): Promise<void> {
         } catch {
           /* default languages */
         }
-        const results = await ocrPages(pdf0, { pageNumbers: empty, dpi: 300, lang, eraseLines: true }, (m, f) => progress(m, f));
+        const results = await ocrPages(pdf0, { pageNumbers: empty, dpi: 300, lang, eraseLines: true, signal }, (m, f) => progress(m, f));
         const found = results.filter((r) => r.words.length);
         if (found.length) {
           for (const r of found) scanned.add(r.pageNumber);
@@ -426,15 +450,14 @@ export async function exportAs(req: ExportRequest): Promise<void> {
     }, progress),
   );
   if (!result) return;
-  const path = await saveBytes(result, `${baseName()}.${info.ext}`, [{ name: info.label, extensions: [info.ext] }]);
-  if (path) usePDFStore.getState().toast(path === 'downloaded' ? 'Downloaded.' : `Saved to ${path}`, 'success');
+  await saveFile(result, `${baseName()}.${info.ext}`, [{ name: info.label, extensions: [info.ext] }]);
 }
 
 // ================================================================ OCR / compress / PDF-A / flatten
 
-export async function runOcr(opts: { pageNumbers: number[]; dpi: number; lang: string; editable?: { family: 'sans' | 'serif' } }): Promise<void> {
+export async function runOcr(opts: { pageNumbers: number[]; dpi: number; lang: string; straighten?: boolean; editable?: { family: 'sans' | 'serif' } }): Promise<void> {
   const editable = opts.editable;
-  const out = await withBusy('Recognising text (OCR)…', (progress) =>
+  const out = await withBusy('Recognising text (OCR)…', (progress, signal) =>
     withEditedDoc(async (pdf, bytes) => {
       const { groupLines, lineColors, makeEditable } = await import('@/lib/pdf/editableScan');
       const pages: import('@/lib/pdf/editableScan').EditablePage[] = [];
@@ -452,9 +475,11 @@ export async function runOcr(opts: { pageNumbers: number[]; dpi: number; lang: s
                   lines: groupLines(r.words).map((l) => ({ text: l.words.map((w) => w.text).join(' '), x: l.x, y: l.y, width: l.width, height: l.height, ...lineColors(pixels, l) })),
                 })
             : undefined,
+          signal,
         },
         (m, f) => progress(m, f),
       );
+      signal.throwIfAborted();
       const words = results.reduce((n, r) => n + r.words.length, 0);
       if (editable) {
         progress('Writing editable text…', null);
@@ -466,16 +491,16 @@ export async function runOcr(opts: { pageNumbers: number[]; dpi: number; lang: s
     }, progress),
   );
   if (!out) return;
+  if (!(await saveDerived(out.bytes, editable ? '-editable' : '-ocr', true))) return;
   usePDFStore
     .getState()
     .toast(editable ? `OCR found ${out.words} words. The text is now real, editable text (Edit → Edit text).` : `OCR found ${out.words} words. The text layer is now searchable and selectable.`, 'success');
-  await saveDerived(out.bytes, editable ? '-editable' : '-ocr', true);
 }
 
 export async function runCompress(opts: CompressOptions): Promise<{ before: number; after: number } | undefined> {
-  const out = await withBusy('Compressing…', async (progress) => {
+  const out = await withBusy('Compressing…', async (progress, signal) => {
     const bytes = await exportCurrentPdf({}, progress);
-    return compressPdf(bytes, opts, (d, t) => progress(`Optimising images (${d}/${t})`, t ? d / t : null));
+    return compressPdf(bytes, opts, (d, t) => progress(`Optimising images (${d}/${t})`, t ? d / t : null), signal);
   });
   if (!out) return undefined;
   if (out.after >= out.before) {
@@ -488,9 +513,12 @@ export async function runCompress(opts: CompressOptions): Promise<{ before: numb
 
 export async function runPdfA(meta: PdfAMeta): Promise<string[] | undefined> {
   const level = meta.level ?? '2b';
-  const out = await withBusy(`Converting to PDF/A-${level}…`, async (progress) => {
+  const out = await withBusy(`Converting to PDF/A-${level}…`, async (progress, signal) => {
     const bytes = await exportCurrentPdf({}, progress);
-    const r = await convertToPdfADetailed(bytes, meta);
+    signal.throwIfAborted();
+    const fieldFont = await loadFontBytes({ family: 'sans', bold: false, italic: false }).catch(() => undefined);
+    const r = await convertToPdfADetailed(bytes, { fieldFont, ...meta });
+    signal.throwIfAborted();
     return { pdfa: r.bytes, warnings: [...r.notes, ...(await pdfaWarnings(r.bytes, level))] };
   });
   if (!out) return undefined;
@@ -649,15 +677,14 @@ export async function splitDocument(ranges: number[][], names: Array<string | nu
   });
   if (!outputs) return;
   if (outputs.length === 1) {
-    await saveBytes(outputs[0].bytes, outputs[0].name, PDF_FILTER);
+    await saveFile(outputs[0].bytes, outputs[0].name, PDF_FILTER);
     return;
   }
   const JSZip = (await import('jszip')).default;
   const zip = new JSZip();
   for (const f of outputs) zip.file(f.name, f.bytes);
   const blob = await zip.generateAsync({ type: 'blob' });
-  const path = await saveBytes(blob, `${base}-split.zip`, [{ name: 'ZIP archive', extensions: ['zip'] }]);
-  if (path) usePDFStore.getState().toast(`Split into ${outputs.length} files.`, 'success');
+  await saveFile(blob, `${base}-split.zip`, [{ name: 'ZIP archive', extensions: ['zip'] }], { successMessage: `Split into ${outputs.length} files.` });
 }
 
 /** Parses "1-3, 5, 8-" style ranges (1-based, inclusive). */
