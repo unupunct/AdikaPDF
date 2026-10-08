@@ -5,6 +5,7 @@
 import { useEffect, useRef, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react';
 import {
   ArrowUpRight,
+  Cloud,
   Scaling,
   Spline,
   Receipt,
@@ -396,6 +397,7 @@ function SignTab() {
         <Big icon={<FileKey2 size={I} />} label="Certificate ID" disabled={!hasDoc} onClick={() => s.openModal('certificate')} tip="Sign with a .pfx/.p12 certificate or create a self-signed ID" testId="btn-cert-sign" />
         <Big icon={<Usb size={I} />} label="Token / smart card" disabled={!hasDoc} onClick={() => s.openModal('token')} tip="Sign with a USB token or smart card (PKCS#11)" testId="btn-token-sign" />
         <Big icon={<KeyRound size={I} />} label="Windows certificate" disabled={!hasDoc} onClick={() => s.openModal('winstore')} tip="Sign with a certificate installed in Windows (qualified certificates, imported .pfx)" testId="btn-winstore-sign" />
+        <Big icon={<Cloud size={I} />} label="Cloud signature" disabled={!hasDoc} onClick={() => s.openModal('cloudsign')} tip="Remote qualified signature with a provider's signing service (Cloud Signature Consortium API): sign in through your browser" testId="btn-cloud-sign" />
         <ToolBtn tool="field-signature" icon={<PenLine size={I} />} label="Signature field" tip="Draw an empty signature field for someone else to sign" />
       </Group>
       <Group label="Validation">

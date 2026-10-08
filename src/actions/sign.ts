@@ -153,6 +153,7 @@ async function signWith(
   meta: SignMeta,
   inkSrc: string | null,
   consumeId: string | null,
+  onAbort?: () => void,
 ): Promise<void> {
   const store = usePDFStore.getState();
   const hadSignatures = store.signatureStatus.length > 0;
@@ -161,7 +162,7 @@ async function signWith(
       'This PDF already carries digital signatures and has unsaved edits. Editing a signed PDF invalidates its signatures; save a copy first if that is intended.',
     );
   }
-  const out = await withBusy('Signing…', async (progress) => {
+  const run = async (progress: (msg: string, fraction: number | null) => void) => {
     const bytes = hadSignatures && !store.dirty ? primarySourceBytes()! : await exportCurrentPdf({}, progress, consumeId ? [consumeId] : []);
     const when = new Date();
     const size = placement.rect ?? { width: 0, height: 0 };
@@ -185,7 +186,17 @@ async function signWith(
       certify: meta.certify && !hadSignatures ? meta.certify : undefined,
       pades: !!meta.pades,
     });
-  });
+  };
+  // Remote signing waits for the browser: that wait can be cancelled.
+  const out = await withBusy(
+    'Signing…',
+    onAbort
+      ? (progress, signal) => {
+          signal.addEventListener('abort', onAbort);
+          return run(progress);
+        }
+      : (progress) => run(progress),
+  );
   if (!out) return;
   let final = out;
   if (meta.ltv) {
@@ -307,6 +318,21 @@ export async function signWithStoreCert(cert: StoreCertificate, placement: SignP
     sign: (data) => winstoreSign(cert.thumbprint, data),
   };
   await signWith({ signer }, { name: info.name, issuer: cnOf(info.issuer) }, placement, meta, inkSrc, consumeId);
+}
+
+/** Signs with a key held elsewhere (remote signing service); the chain is completed from Windows when the signer has none. */
+export async function signWithExternalSigner(
+  signer: ExternalSigner,
+  placement: SignPlacement,
+  meta: SignMeta,
+  inkSrc: string | null,
+  consumeId: string | null = null,
+  onAbort?: () => void,
+): Promise<void> {
+  const chain = signer.chain.length ? signer.chain : await issuerChain(signer.certificate);
+  const subject = signer.certificate.subject.getField('CN')?.value as string | undefined;
+  const issuer = signer.certificate.issuer.getField('CN')?.value as string | undefined;
+  await signWith({ signer: { ...signer, chain } }, { name: subject ?? 'Signer', issuer: issuer ?? '' }, placement, meta, inkSrc, consumeId, onAbort);
 }
 
 /** Intermediate certificates from the Windows CA store, so verifiers can build the chain. */

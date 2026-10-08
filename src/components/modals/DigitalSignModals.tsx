@@ -28,11 +28,11 @@ import { saveFileQuiet } from '@/actions/saveGuard';
 import type { SignatureValidation } from '@/types';
 import { cn } from '@/lib/cn';
 
-function useSignMeta(): [SignMeta, (m: SignMeta) => void] {
+export function useSignMeta(): [SignMeta, (m: SignMeta) => void] {
   return useState<SignMeta>({ reason: 'I approve this document', location: '', contactInfo: '', tsaUrl: null, pades: true });
 }
 
-function usePlacement(): [PlacementState, (p: PlacementState) => void] {
+export function usePlacement(): [PlacementState, (p: PlacementState) => void] {
   const target = useSelectedSignatureTarget();
   const current = usePDFStore((s) => s.pages.findIndex((p) => p.id === s.currentPageId));
   const [p, setP] = useState<PlacementState>({ mode: target ? 'selected' : 'bottom-right', pageNumber: Math.max(1, current + 1) });
@@ -42,7 +42,7 @@ function usePlacement(): [PlacementState, (p: PlacementState) => void] {
   return [p, setP];
 }
 
-function MetaFields({ meta, onChange }: { meta: SignMeta; onChange: (m: SignMeta) => void }) {
+export function MetaFields({ meta, onChange }: { meta: SignMeta; onChange: (m: SignMeta) => void }) {
   const [useTsa, setUseTsa] = useState(meta.tsaUrl !== null);
   const signed = usePDFStore((s) => s.signatureStatus.length > 0);
   return (

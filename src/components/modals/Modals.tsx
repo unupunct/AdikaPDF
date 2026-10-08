@@ -3,6 +3,7 @@ import { useDialogs } from '@/store/useDialogs';
 import { Button, Callout, Dialog, Field, Input } from '@/components/ui/primitives';
 import { SignatureModal } from './SignatureModal';
 import { CertificateModal, StoreCertModal, TokenModal, VerifyModal } from './DigitalSignModals';
+import { CloudSignModal } from './CloudSignModal';
 import { AboutModal, CompressModal, OcrModal, OrganizerModal, PasswordModal, PdfaModal, SplitModal } from './DocumentModals';
 import { ExportModal, ImportModal } from './ConvertModals';
 import { PropertiesModal } from './PropertiesModal';
@@ -33,6 +34,7 @@ export function Modals() {
       <CertificateModal />
       <TokenModal />
       <StoreCertModal />
+      <CloudSignModal />
       <VerifyModal />
       <OrganizerModal />
       <SplitModal />
