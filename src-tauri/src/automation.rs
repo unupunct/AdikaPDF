@@ -31,6 +31,20 @@ pub fn cli_cwd() -> String {
     std::env::current_dir().map(|p| p.display().to_string()).unwrap_or_default()
 }
 
+/// An environment variable for the command line (e.g. the .pfx password of
+/// `--sign`); only ADIKA_* names, so the page cannot read anything else.
+#[tauri::command]
+pub fn cli_env(name: String) -> Option<String> {
+    if !env_name_allowed(&name) {
+        return None;
+    }
+    std::env::var(name).ok()
+}
+
+fn env_name_allowed(name: &str) -> bool {
+    name.len() > 6 && name.starts_with("ADIKA_") && name.bytes().all(|b| b.is_ascii_uppercase() || b.is_ascii_digit() || b == b'_')
+}
+
 #[tauri::command]
 pub fn cli_print(line: String, error: bool) {
     use std::io::Write;
@@ -110,4 +124,19 @@ pub fn move_file(from: String, to: String) -> Result<String, String> {
 pub fn make_dir(path: String) -> Result<(), String> {
     crate::pathguard::check_make_dir(Path::new(&path))?;
     std::fs::create_dir_all(&path).map_err(|e| format!("Could not create {path}: {e}"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn only_adika_variables_are_readable() {
+        assert!(env_name_allowed("ADIKA_PFX_PASSWORD"));
+        assert!(!env_name_allowed("ADIKA_"));
+        assert!(!env_name_allowed("PATH"));
+        assert!(!env_name_allowed("ADIKA_pfx"));
+        assert!(!env_name_allowed("ADIKA_X;PATH"));
+        assert_eq!(cli_env("PATH".into()), None);
+    }
 }

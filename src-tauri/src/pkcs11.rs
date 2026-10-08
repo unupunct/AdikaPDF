@@ -3,7 +3,10 @@
 //! The WebView builds the CMS structure; this module only ever receives the
 //! DER-encoded signed attributes, hashes them and asks the token to sign the
 //! hash. The private key never leaves the token, and the PIN is used for a
-//! single login and dropped (zeroised by `secrecy`) right after.
+//! single login and dropped (zeroised by `secrecy`) right after. Batch
+//! signing keeps one logged-in session open (`pkcs11_open_session` …
+//! `pkcs11_close_session`); only keys that demand the PIN for every
+//! signature make the session hold it until it is closed.
 
 use cryptoki::context::{CInitializeArgs, CInitializeFlags, Pkcs11};
 use cryptoki::mechanism::{Mechanism, MechanismType};
@@ -283,6 +286,73 @@ pub struct TokenSignature {
     mechanism: String,
 }
 
+fn login_user(session: &Session, pin: Option<&AuthPin>) -> Result<(), String> {
+    match session.login(UserType::User, pin) {
+        Ok(()) => Ok(()),
+        Err(cryptoki::error::Error::Pkcs11(cryptoki::error::RvError::UserAlreadyLoggedIn, _)) => Ok(()),
+        Err(e) => Err(login_error(e)),
+    }
+}
+
+fn login_error(e: cryptoki::error::Error) -> String {
+    match e {
+        cryptoki::error::Error::Pkcs11(cryptoki::error::RvError::PinIncorrect, _) => {
+            "Incorrect PIN. Careful: tokens lock after a few wrong attempts.".into()
+        }
+        cryptoki::error::Error::Pkcs11(cryptoki::error::RvError::PinLocked, _) => {
+            "The token PIN is locked. Unlock it with your vendor's tool (PUK).".into()
+        }
+        e => format!("Login failed: {e}"),
+    }
+}
+
+/// Signs `data` (DER signed attributes) with SHA-256. `context_pin` is set for
+/// keys with CKA_ALWAYS_AUTHENTICATE: they need a context-specific login right
+/// after C_SignInit, so the hash-and-sign mechanisms are used multi-part.
+fn sign_data(
+    session: &Session,
+    mechanisms: &[MechanismType],
+    key: ObjectHandle,
+    kt: KeyType,
+    data: &[u8],
+    context_pin: Option<&AuthPin>,
+) -> Result<(Vec<u8>, &'static str), String> {
+    let refused = |e: cryptoki::error::Error| format!("Token refused to sign: {e}");
+    let digest = Sha256::digest(data);
+    let (mech, name, input, raw_ec): (Mechanism, &'static str, Vec<u8>, bool) = if kt == KeyType::RSA {
+        if mechanisms.contains(&MechanismType::SHA256_RSA_PKCS) {
+            (Mechanism::Sha256RsaPkcs, "CKM_SHA256_RSA_PKCS", data.to_vec(), false)
+        } else {
+            let mut info = SHA256_DIGEST_INFO.to_vec();
+            info.extend_from_slice(&digest);
+            (Mechanism::RsaPkcs, "CKM_RSA_PKCS", info, false)
+        }
+    } else if kt == KeyType::EC {
+        if context_pin.is_some() && mechanisms.contains(&MechanismType::ECDSA_SHA256) {
+            (Mechanism::EcdsaSha256, "CKM_ECDSA_SHA256", data.to_vec(), true)
+        } else {
+            (Mechanism::Ecdsa, "CKM_ECDSA", digest.to_vec(), true)
+        }
+    } else {
+        return Err("Unsupported key type on token (only RSA and EC keys can sign PDFs).".to_string());
+    };
+    let signature = match context_pin {
+        None => session.sign(&mech, key, &input).map_err(refused)?,
+        Some(pin) if name != "CKM_RSA_PKCS" && name != "CKM_ECDSA" => {
+            session.sign_init(&mech, key).map_err(refused)?;
+            session.login(UserType::ContextSpecific, Some(pin)).map_err(login_error)?;
+            session.sign_update(&input).map_err(refused)?;
+            session.sign_final().map_err(refused)?
+        }
+        Some(pin) => {
+            // Single-part mechanisms only: log in for the key first (accepted by most modules).
+            session.login(UserType::ContextSpecific, Some(pin)).map_err(login_error)?;
+            session.sign(&mech, key, &input).map_err(refused)?
+        }
+    };
+    Ok((if raw_ec { ecdsa_raw_to_der(&signature) } else { signature }, name))
+}
+
 /// Signs `data_base64` (the DER signed attributes) with the key paired to
 /// certificate `cert_id_hex`. `pin: None` uses the reader's PIN pad.
 #[tauri::command]
@@ -303,38 +373,14 @@ pub async fn pkcs11_sign(
         let session = ctx.open_ro_session(slot).map_err(|e| format!("Could not open session: {e}"))?;
 
         let pin = pin.map(AuthPin::from);
-        match session.login(UserType::User, pin.as_ref()) {
-            Ok(()) => {}
-            Err(cryptoki::error::Error::Pkcs11(cryptoki::error::RvError::UserAlreadyLoggedIn, _)) => {}
-            Err(cryptoki::error::Error::Pkcs11(cryptoki::error::RvError::PinIncorrect, _)) => {
-                return Err("Incorrect PIN. Careful: tokens lock after a few wrong attempts.".into())
-            }
-            Err(cryptoki::error::Error::Pkcs11(cryptoki::error::RvError::PinLocked, _)) => {
-                return Err("The token PIN is locked. Unlock it with your vendor's tool (PUK).".into())
-            }
-            Err(e) => return Err(format!("Login failed: {e}")),
-        }
+        login_user(&session, pin.as_ref())?;
         drop(pin);
 
         let result = (|| {
             let (key, kt) = find_private_key(&session, &id)?
                 .ok_or("No private key on the token matches this certificate.")?;
             let mechanisms = ctx.get_mechanism_list(slot).unwrap_or_default();
-            let digest = Sha256::digest(&data);
-            let (signature, mech) = if kt == KeyType::RSA {
-                if mechanisms.contains(&MechanismType::SHA256_RSA_PKCS) {
-                    (session.sign(&Mechanism::Sha256RsaPkcs, key, &data), "CKM_SHA256_RSA_PKCS")
-                } else {
-                    let mut info = SHA256_DIGEST_INFO.to_vec();
-                    info.extend_from_slice(&digest);
-                    (session.sign(&Mechanism::RsaPkcs, key, &info), "CKM_RSA_PKCS")
-                }
-            } else if kt == KeyType::EC {
-                (session.sign(&Mechanism::Ecdsa, key, &digest).map(|raw| ecdsa_raw_to_der(&raw)), "CKM_ECDSA")
-            } else {
-                return Err("Unsupported key type on token (only RSA and EC keys can sign PDFs).".to_string());
-            };
-            let signature = signature.map_err(|e| format!("Token refused to sign: {e}"))?;
+            let (signature, mech) = sign_data(&session, &mechanisms, key, kt, &data, None)?;
             Ok(TokenSignature {
                 signature_base64: b64.encode(signature),
                 key_type: key_type_name(kt).to_string(),
@@ -343,6 +389,129 @@ pub async fn pkcs11_sign(
         })();
         let _ = session.logout();
         result
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+// ---------------------------------------------------------------- batch sessions
+
+/// A logged-in session kept for signing many files with one PIN entry.
+struct BatchSession {
+    session: Session,
+    key: ObjectHandle,
+    kt: KeyType,
+    mechanisms: Vec<MechanismType>,
+    /// Only for CKA_ALWAYS_AUTHENTICATE keys: the PIN for each signature's
+    /// context-specific login, zeroised when the session is closed.
+    context_pin: Option<AuthPin>,
+}
+
+impl Drop for BatchSession {
+    fn drop(&mut self) {
+        let _ = self.session.logout();
+    }
+}
+
+fn batch_sessions() -> &'static Mutex<HashMap<u32, BatchSession>> {
+    static S: OnceLock<Mutex<HashMap<u32, BatchSession>>> = OnceLock::new();
+    S.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn next_handle() -> u32 {
+    use std::sync::atomic::{AtomicU32, Ordering};
+    static NEXT: AtomicU32 = AtomicU32::new(1);
+    NEXT.fetch_add(1, Ordering::Relaxed)
+}
+
+fn insert_session(s: BatchSession) -> u32 {
+    let h = next_handle();
+    if let Ok(mut map) = batch_sessions().lock() {
+        map.insert(h, s);
+    }
+    h
+}
+
+/// Logs out and forgets the session (the PIN is dropped with it); false when unknown.
+fn remove_session(handle: u32) -> bool {
+    let s = batch_sessions().lock().ok().and_then(|mut m| m.remove(&handle));
+    s.is_some()
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OpenedSession {
+    handle: u32,
+    key_type: String,
+    /// The key asks for the PIN for every signature (CKA_ALWAYS_AUTHENTICATE).
+    always_authenticate: bool,
+}
+
+/// Opens a session and logs in once for a batch of signatures with the key of
+/// `cert_id_hex`. Close it with pkcs11_close_session (also after errors).
+#[tauri::command]
+pub async fn pkcs11_open_session(module: String, slot_id: u64, cert_id_hex: String, pin: Option<String>) -> Result<OpenedSession, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let id = hex::decode(&cert_id_hex).map_err(|e| format!("Bad certificate id: {e}"))?;
+        let ctx = context(&module)?;
+        let slot = slot_from_id(ctx, slot_id)?;
+        let session = ctx.open_ro_session(slot).map_err(|e| format!("Could not open session: {e}"))?;
+        let pin = pin.map(AuthPin::from);
+        login_user(&session, pin.as_ref())?;
+        let found = find_private_key(&session, &id);
+        let (key, kt) = match found {
+            Ok(Some(k)) => k,
+            Ok(None) => {
+                let _ = session.logout();
+                return Err("No private key on the token matches this certificate.".into());
+            }
+            Err(e) => {
+                let _ = session.logout();
+                return Err(e);
+            }
+        };
+        let always = session
+            .get_attributes(key, &[AttributeType::AlwaysAuthenticate])
+            .ok()
+            .and_then(|a| a.into_iter().find_map(|x| if let Attribute::AlwaysAuthenticate(b) = x { Some(b) } else { None }))
+            .unwrap_or(false);
+        let mechanisms = ctx.get_mechanism_list(slot).unwrap_or_default();
+        let key_type = key_type_name(kt).to_string();
+        // PIN pad readers (pin None) ask on the device for each signature.
+        let context_pin = if always { pin } else { None };
+        let handle = insert_session(BatchSession { session, key, kt, mechanisms, context_pin });
+        Ok(OpenedSession { handle, key_type, always_authenticate: always })
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// Signs with an open batch session (see pkcs11_sign for `data_base64`).
+#[tauri::command]
+pub async fn pkcs11_session_sign(handle: u32, data_base64: String) -> Result<TokenSignature, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        use base64::Engine;
+        let b64 = base64::engine::general_purpose::STANDARD;
+        let data = b64.decode(data_base64).map_err(|e| format!("Bad data: {e}"))?;
+        let map = batch_sessions().lock().map_err(|_| "PKCS#11 lock poisoned")?;
+        let s = map.get(&handle).ok_or("The token session has ended. Start the signing again.")?;
+        let (signature, mech) = sign_data(&s.session, &s.mechanisms, s.key, s.kt, &data, s.context_pin.as_ref())?;
+        Ok(TokenSignature {
+            signature_base64: b64.encode(signature),
+            key_type: key_type_name(s.kt).to_string(),
+            mechanism: mech.to_string(),
+        })
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// Logs out and closes a batch session; the PIN it held is zeroised.
+#[tauri::command]
+pub async fn pkcs11_close_session(handle: u32) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        remove_session(handle);
+        Ok(())
     })
     .await
     .map_err(|e| e.to_string())?
@@ -361,5 +530,24 @@ mod tests {
         assert_eq!(der[2], 0x02);
         assert_eq!(der[3], 33); // r gets a leading 0x00
         assert_eq!(der[4], 0x00);
+    }
+
+    #[test]
+    fn batch_session_handles_are_unique_and_unknown_ones_fail() {
+        let a = next_handle();
+        let b = next_handle();
+        assert_ne!(a, b);
+        assert!(!remove_session(u32::MAX));
+        let err = tauri::async_runtime::block_on(pkcs11_session_sign(u32::MAX, String::new())).err().unwrap_or_default();
+        assert!(err.contains("session has ended"), "{err}");
+        // Closing twice (or an unknown handle) is harmless.
+        assert!(tauri::async_runtime::block_on(pkcs11_close_session(u32::MAX)).is_ok());
+    }
+
+    #[test]
+    fn pin_errors_are_explained() {
+        use cryptoki::error::{Error, RvError};
+        assert!(login_error(Error::Pkcs11(RvError::PinIncorrect, cryptoki::context::Function::Login)).contains("Incorrect PIN"));
+        assert!(login_error(Error::Pkcs11(RvError::PinLocked, cryptoki::context::Function::Login)).contains("locked"));
     }
 }

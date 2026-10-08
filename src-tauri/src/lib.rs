@@ -183,6 +183,7 @@ pub fn run() {
             scanner::wia_scan,
             automation::cli_args,
             automation::cli_cwd,
+            automation::cli_env,
             automation::cli_print,
             automation::cli_exit,
             automation::list_dir,
@@ -206,6 +207,9 @@ pub fn run() {
             pkcs11::pkcs11_detect_modules,
             pkcs11::pkcs11_list_tokens,
             pkcs11::pkcs11_sign,
+            pkcs11::pkcs11_open_session,
+            pkcs11::pkcs11_session_sign,
+            pkcs11::pkcs11_close_session,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Adika PDF Editor");

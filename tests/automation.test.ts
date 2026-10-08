@@ -67,6 +67,23 @@ describe('command line', () => {
     expect(absolutePath('E:\\x.pdf', 'C:\\')).toBe('E:\\x.pdf');
     expect(absolutePath('\\\\server\\share\\x.pdf', 'C:\\')).toBe('\\\\server\\share\\x.pdf');
   });
+
+  it('--sign with a .pfx or a Windows store thumbprint; the password never on the command line', () => {
+    const j = parseCli(['--batch', '--sign', '--pfx', 'id.pfx', '--reason', 'Aprobat', '--tsa', 'http://tsa.test', '--level', 'b-lta', '--field', 'Semnătura', '*.pdf']);
+    expect(j.errors).toEqual([]);
+    expect(j.sign).toEqual({ pfx: 'id.pfx', thumbprint: null, passwordEnv: 'ADIKA_PFX_PASSWORD', reason: 'Aprobat', location: '', tsa: 'http://tsa.test', level: 'B-LTA', field: 'Semnătura' });
+    expect(j.files).toEqual(['*.pdf']);
+    const t = parseCli(['--batch', '--sign', '--thumbprint', 'ab:cd ' + 'ef'.repeat(18), 'a.pdf']);
+    expect(t.errors).toEqual([]);
+    expect(t.sign).toMatchObject({ thumbprint: 'ABCD' + 'EF'.repeat(18), level: 'B-B' });
+    expect(parseCli(['--batch', '--sign', '--pfx', 'id.pfx', '--password', 'hunter2', 'a.pdf']).errors[0]).toMatch(/never given on the command line/);
+    expect(parseCli(['--batch', '--sign', '--pfx', 'id.pfx', '--password', 'hunter2', 'a.pdf']).files).toEqual(['a.pdf']);
+    expect(parseCli(['--batch', '--sign', 'a.pdf']).errors).toEqual(['--sign needs either --pfx or --thumbprint.']);
+    expect(parseCli(['--batch', '--sign', '--pfx', 'a.pfx', '--level', 'B-T', 'a.pdf']).errors[0]).toMatch(/needs a timestamp authority/);
+    expect(parseCli(['--batch', '--sign', '--pfx', 'a.pfx', '--ocr', 'a.pdf']).errors).toContain('--sign cannot be combined with other steps.');
+    expect(parseCli(['--batch', '--pfx', 'a.pfx', 'a.pdf']).errors[0]).toMatch(/only works with --sign/);
+    expect(parseCli(['--batch', '--sign', '--pfx', 'a.pfx', '--password-env', 'PATH', 'a.pdf']).errors[0]).toMatch(/ADIKA_/);
+  });
 });
 
 describe('folder search', () => {

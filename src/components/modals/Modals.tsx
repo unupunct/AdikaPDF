@@ -5,6 +5,7 @@ import { SignatureModal } from './SignatureModal';
 import { CertificateModal, StoreCertModal, TokenModal, VerifyModal } from './DigitalSignModals';
 import { UpdateModal } from './UpdateModal';
 import { CloudSignModal } from './CloudSignModal';
+import { BatchSignModal } from './BatchSignModal';
 import { AboutModal, CompressModal, OcrModal, OrganizerModal, PasswordModal, PdfaModal, SplitModal } from './DocumentModals';
 import { ExportModal, ImportModal } from './ConvertModals';
 import { PropertiesModal } from './PropertiesModal';
@@ -37,6 +38,7 @@ export function Modals() {
       <TokenModal />
       <StoreCertModal />
       <CloudSignModal />
+      <BatchSignModal />
       <VerifyModal />
       <OrganizerModal />
       <SplitModal />
