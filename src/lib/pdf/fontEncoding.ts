@@ -93,8 +93,11 @@ const EXTRA_NAMES: Record<string, string> = {
 };
 const EXTRA_TO_UNI = new Map(Object.entries(EXTRA_NAMES).map(([u, n]) => [n, u]));
 
-/** "tcommaaccent" -> "ț" (base letter + accent suffix), "Euro" -> "€". */
+/** "scommaaccent" -> "ș" (base letter + accent suffix), "Euro" -> "€". */
 function composedFromName(name: string): string {
+  // The Adobe Glyph List keeps these for the cedilla forms (as pdf.js reads them).
+  if (name === 'Tcommaaccent') return 'Ţ';
+  if (name === 'tcommaaccent') return 'ţ';
   const extra = EXTRA_TO_UNI.get(name);
   if (extra) return extra;
   const m = /^([A-Za-z])([a-z]+)$/.exec(name);

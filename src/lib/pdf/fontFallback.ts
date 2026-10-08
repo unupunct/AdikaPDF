@@ -13,6 +13,7 @@
  * height (x-height for lowercase-only letters) matches the original.
  */
 import type { PDFDocument, PDFFont, PDFPage } from 'pdf-lib';
+import fontkit from '@pdf-lib/fontkit';
 import type { FontVariant } from '@/lib/fonts';
 import type { SystemFont } from '@/lib/platform';
 import { embedFontForText } from './fontEmbed';
@@ -87,7 +88,8 @@ const TWINS: Record<string, string[]> = {
 
 /** "ABCDEF+Arial-BoldItalicMT" -> family "arial", bold, italic. */
 export function parseBaseName(base: string): { ps: string; family: string; bold: boolean; italic: boolean } {
-  const ps = base.replace(/^[A-Z]{6}\+/, '').trim();
+  // Subset prefix "ABCDEF+"; pdf-lib's random suffix "-1234".
+  const ps = base.replace(/^[A-Z]{6}\+/, '').replace(/-\d{3,}$/, '').trim();
   const cut = ps.search(/[-,]/);
   let fam = cut > 0 ? ps.slice(0, cut) : ps;
   let sty = cut > 0 ? ps.slice(cut + 1) : '';
@@ -250,6 +252,7 @@ export async function attachFallbacks(doc: PDFDocument, pages: Array<{ page: PDF
       faceChars.set(face.id, cur);
     }
   }
+  doc.registerFontkit(fontkit);
   const embedded = new Map<string, PDFFont>();
   for (const [id, { face, chars }] of faceChars) {
     if (chars) embedded.set(id, await embedFontForText(doc, face.bytes, [chars], { prune: face.prune }));

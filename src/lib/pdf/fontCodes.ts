@@ -232,14 +232,11 @@ export class FontCodes {
     let width = 0; // glyph space (1/1000 em)
     const std = this.stdMetrics();
     if (std) {
-      for (const n of names) {
-        const w = std.getWidthOfGlyph(n);
-        if (typeof w === 'number') {
-          name = n;
-          width = w;
-          break;
-        }
-      }
+      // Width from the font's metrics under any of the letter's names; the name written is one that reads as the letter.
+      const w = names.map((n) => std.getWidthOfGlyph(n)).find((v) => typeof v === 'number');
+      if (typeof w !== 'number') return null;
+      width = w;
+      name = names.find((n) => glyphNameToUnicode(n) === ch) ?? '';
     } else if (this.embedded()) {
       const p = this.program();
       if (!p || (p.kind === 'truetype' && this.symbolic())) return null;
@@ -252,6 +249,8 @@ export class FontCodes {
       width = (p.advance(gid) * 1000) / p.unitsPerEm;
     }
     if (!name || !(width > 0)) return null;
+    // A name that does not read as the letter (e.g. Tcommaaccent is Ţ for text extraction) needs a ToUnicode entry.
+    if (glyphNameToUnicode(name) !== ch && !this.dict.has(PDFName.of('ToUnicode'))) return null;
     const code = this.freeCode();
     if (code === null) return null;
 
