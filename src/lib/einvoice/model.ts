@@ -26,6 +26,18 @@ export const DEFAULT_EXEMPTIONS: Partial<Record<VatCategory, { code: string; rea
   E: { code: '', reason: '' },
 };
 
+/** The same in Romanian, written into e-Factura invoices. */
+export const RO_EXEMPTIONS: Partial<Record<VatCategory, { code: string; reason: string }>> = {
+  AE: { code: 'VATEX-EU-AE', reason: 'Taxare inversă' },
+  K: { code: 'VATEX-EU-IC', reason: 'Livrare intracomunitară scutită' },
+  G: { code: 'VATEX-EU-G', reason: 'Export scutit de TVA' },
+  O: { code: 'VATEX-EU-O', reason: 'Operațiune care nu intră în sfera de aplicare a TVA' },
+  E: { code: '', reason: '' },
+};
+
+/** Default exemption of a category for a profile. */
+export const defaultExemption = (category: VatCategory, profile: EInvoiceProfile) => (profile === 'ro' ? RO_EXEMPTIONS : DEFAULT_EXEMPTIONS)[category] ?? { code: '', reason: '' };
+
 export interface DraftParty {
   name: string;
   /** VAT identifier with the country prefix (BT-31 / BT-48), e.g. RO12345678; empty for non-VAT payers. */
@@ -214,7 +226,7 @@ export function calculate(d: InvoiceDraft): CalcInvoice {
     const key = `${category}|${percent ?? ''}`;
     let g = groups.get(key);
     if (!g) {
-      const ex = EXEMPT_CATEGORIES.has(category) ? (d.exemptions[category] ?? DEFAULT_EXEMPTIONS[category] ?? { code: '', reason: '' }) : { code: '', reason: '' };
+      const ex = EXEMPT_CATEGORIES.has(category) ? (d.exemptions[category] ?? defaultExemption(category, d.profile)) : { code: '', reason: '' };
       g = { category, percent, taxable: 0, amount: 0, exemptionCode: ex.code.trim(), exemptionReason: ex.reason.trim() };
       groups.set(key, g);
     }

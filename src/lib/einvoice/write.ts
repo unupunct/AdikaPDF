@@ -43,6 +43,9 @@ function el(name: string, attrs: Record<string, string | undefined> | null, ...k
 }
 const e = (name: string, ...kids: Kid[]) => el(name, null, ...kids);
 
+/** The reason written for an allowance or charge without one (Romanian on e-Factura). */
+const reasonWord = (profile: string, charge: boolean) => (profile === 'ro' ? (charge ? 'Majorare' : 'Reducere') : charge ? 'Charge' : 'Discount');
+
 /** "2026-09-15" -> "20260915" (CII format 102). */
 const d102 = (iso: string) => iso.replace(/-/g, '');
 
@@ -125,7 +128,7 @@ export function writeUbl(c: CalcInvoice): string {
       e(
         'cac:AllowanceCharge',
         e('cbc:ChargeIndicator', a.charge ? 'true' : 'false'),
-        e('cbc:AllowanceChargeReason', a.reason || (a.charge ? 'Charge' : 'Discount')),
+        e('cbc:AllowanceChargeReason', a.reason || reasonWord(d.profile, a.charge)),
         el('cbc:Amount', cur, amountText(a.amount)),
         ublTaxCategory('cac:TaxCategory', a.vatCategory, effective(a.vatCategory, a.vatPercent)),
       ),
@@ -165,7 +168,7 @@ export function writeUbl(c: CalcInvoice): string {
               'cac:AllowanceCharge',
               e('cbc:ChargeIndicator', 'false'),
               e('cbc:AllowanceChargeReasonCode', '95'),
-              e('cbc:AllowanceChargeReason', 'Discount'),
+              e('cbc:AllowanceChargeReason', reasonWord(d.profile, false)),
               e('cbc:MultiplierFactorNumeric', decimalText(l.discountPercent, 4)),
               amt('cbc:Amount', l.discount),
               amt('cbc:BaseAmount', l.gross),
@@ -226,7 +229,7 @@ export function writeCii(c: CalcInvoice): string {
             'ram:SpecifiedLineTradeSettlement',
             e('ram:ApplicableTradeTax', e('ram:TypeCode', 'VAT'), e('ram:CategoryCode', l.vatCategory), effective(l.vatCategory, l.vatPercent) === null ? null : e('ram:RateApplicablePercent', decimalText(effective(l.vatCategory, l.vatPercent)!, 2))),
             l.discount
-              ? e('ram:SpecifiedTradeAllowanceCharge', indicator(false), e('ram:CalculationPercent', decimalText(l.discountPercent, 4)), amt('ram:BasisAmount', l.gross), amt('ram:ActualAmount', l.discount), e('ram:ReasonCode', '95'), e('ram:Reason', 'Discount'))
+              ? e('ram:SpecifiedTradeAllowanceCharge', indicator(false), e('ram:CalculationPercent', decimalText(l.discountPercent, 4)), amt('ram:BasisAmount', l.gross), amt('ram:ActualAmount', l.discount), e('ram:ReasonCode', '95'), e('ram:Reason', reasonWord(d.profile, false)))
               : null,
             e('ram:SpecifiedTradeSettlementLineMonetarySummation', amt('ram:LineTotalAmount', l.net)),
           ),
@@ -272,7 +275,7 @@ export function writeCii(c: CalcInvoice): string {
             'ram:SpecifiedTradeAllowanceCharge',
             indicator(a.charge),
             amt('ram:ActualAmount', a.amount),
-            e('ram:Reason', a.reason || (a.charge ? 'Charge' : 'Discount')),
+            e('ram:Reason', a.reason || reasonWord(d.profile, a.charge)),
             e('ram:CategoryTradeTax', e('ram:TypeCode', 'VAT'), e('ram:CategoryCode', a.vatCategory), effective(a.vatCategory, a.vatPercent) === null ? null : e('ram:RateApplicablePercent', decimalText(effective(a.vatCategory, a.vatPercent)!, 2))),
           ),
         ),

@@ -149,8 +149,8 @@ export function validateInvoice(c: CalcInvoice): InvoiceIssue[] {
     if ((l.vatCategory === 'L' || l.vatCategory === 'M') && l.vatPercent < 0) err(l.vatCategory === 'L' ? 'BR-AF-05' : 'BR-AG-05', `Line ${n}: the VAT rate cannot be negative.`);
   });
   d.allowances.forEach((a, i) => {
-    if (!(a.amount > 0)) err('BR-31', `Document ${a.charge ? 'charge' : 'discount'} ${i + 1} needs an amount.`);
-    if (!a.reason.trim()) warn('BR-33', `Document ${a.charge ? 'charge' : 'discount'} ${i + 1} has no reason; "${a.charge ? 'Charge' : 'Discount'}" is written.`);
+    if (!(a.amount > 0)) err('BR-31', a.charge ? `Document charge ${i + 1} needs an amount.` : `Document discount ${i + 1} needs an amount.`);
+    if (!a.reason.trim()) warn('BR-33', a.charge ? `Document charge ${i + 1} has no reason; a general one is written.` : `Document discount ${i + 1} has no reason; a general one is written.`);
   });
 
   // --- VAT categories

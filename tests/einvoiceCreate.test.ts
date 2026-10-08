@@ -91,7 +91,7 @@ describe('e-invoice calculation (EN 16931)', () => {
     });
     const c = calculate(d);
     expect(c.vat).toEqual([
-      { category: 'AE', percent: 0, taxable: 1000, amount: 0, exemptionCode: 'VATEX-EU-AE', exemptionReason: 'Reverse charge' },
+      { category: 'AE', percent: 0, taxable: 1000, amount: 0, exemptionCode: 'VATEX-EU-AE', exemptionReason: 'Taxare inversă' },
       { category: 'E', percent: 0, taxable: 200, amount: 0, exemptionCode: 'VATEX-EU-132-1I', exemptionReason: 'Scutit conform art. 292 Cod fiscal' },
     ]);
     expect(errors(d)).toEqual([]);
