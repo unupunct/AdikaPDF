@@ -35,7 +35,7 @@ import {
   PDFString,
   PDFWriter,
 } from 'pdf-lib';
-import { hash2B, passwordBytes, type PdfPermissions } from './encrypt';
+import { hash2B, passwordBytes } from './encrypt';
 import { expandObjectStreams, gatherObjects, readTrailers, scanFile } from '@/lib/pdf/repair';
 
 type Bytes = Uint8Array<ArrayBuffer>;
@@ -272,6 +272,8 @@ export interface StandardSecurity {
   filters: Record<string, Method | 'unknown'>;
   /** The /Encrypt dictionary as PDF syntax, every value direct (written back on save). */
   dict: string;
+  /** The trailer's /Encrypt entry as written in the file ("12 0 R", or the dictionary), for incremental updates. */
+  entry: string;
 }
 
 /** A file opened with a password: what saving needs to encrypt it the same way. */
@@ -313,7 +315,7 @@ function directText(o: PDFObject | undefined, lookup: Lookup, depth = 0): string
   return v.toString();
 }
 
-function readSecurity(dict: PDFDict, id: PDFArray | undefined, lookup: Lookup): StandardSecurity {
+function readSecurity(entry: PDFObject, dict: PDFDict, id: PDFArray | undefined, lookup: Lookup): StandardSecurity {
   const get = (k: string) => lookup(dict.get(N(k)));
   const filter = get('Filter');
   if (filter !== N('Standard')) throw new UnsupportedEncryptionError(`This PDF uses the ${filter instanceof PDFName ? filter.decodeText() : 'unknown'} security handler, which Adika cannot decrypt.`);
@@ -368,6 +370,7 @@ function readSecurity(dict: PDFDict, id: PDFArray | undefined, lookup: Lookup): 
     eff,
     filters,
     dict: directText(dict, lookup),
+    entry: entry instanceof PDFRef ? entry.toString() : directText(dict, lookup),
   };
 }
 
@@ -463,25 +466,7 @@ export async function isOwnerPassword(sec: StandardSecurity, password: string): 
   return (await unlock(sec, password, true)) !== null;
 }
 
-// ---------------------------------------------------------------------------
-// Permissions
-// ---------------------------------------------------------------------------
-
-/** The permissions in /P (Table 22); R2 files only know bits 3–6. */
-export function permissionsFromP(p: number, r: number): PdfPermissions {
-  const bit = (n: number) => (p & (1 << (n - 1))) !== 0;
-  const legacy = r < 3;
-  return {
-    print: bit(3),
-    modify: bit(4),
-    copy: bit(5),
-    annotate: bit(6),
-    fillForms: legacy ? bit(6) : bit(9),
-    extractForAccessibility: legacy ? bit(5) : bit(10),
-    assemble: legacy ? bit(4) : bit(11),
-    printHighQuality: legacy ? bit(3) : bit(12),
-  };
-}
+export { permissionsFromP } from './permissions';
 
 // ---------------------------------------------------------------------------
 // Objects
@@ -584,7 +569,7 @@ function readFile(bytes: Uint8Array) {
   const lookup: Lookup = (o) => (o instanceof PDFRef ? collected.entries.get(o.objectNumber)?.obj : o);
   const enc = lookup(trailer.encrypt);
   if (!(enc instanceof PDFDict)) throw new UnsupportedEncryptionError('This PDF is not encrypted, or its encryption dictionary is missing.');
-  return { context, collected, trailer, security: readSecurity(enc, trailer.id, lookup) };
+  return { context, collected, trailer, security: readSecurity(trailer.encrypt!, enc, trailer.id, lookup) };
 }
 
 /** Reads the security settings and unlocks the file key with `password` (throws PdfPasswordError). */

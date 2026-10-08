@@ -8,6 +8,7 @@ import { buildPdf, ExportError, type ExportOptions, type RasterResult } from '@/
 import { PasswordRequiredError, canvasToBytes, rasterizePage } from '@/lib/pdf/pdfService';
 import { fileStamp, pickFiles, readFile, type FileFilter } from '@/lib/platform';
 import { saveFile } from './saveGuard';
+import { allowUnprotectedCopy, protectForSave } from './protection';
 import { activeTabIsEmpty, newTab, removeTab, switchTab, tabWithPath, useTabs } from '@/store/tabs';
 import { addRecent } from '@/lib/recent';
 import { errorText, log } from '@/lib/log';
@@ -311,7 +312,8 @@ export async function saveDocument(saveAs = false): Promise<boolean> {
   const result = await withBusy('Saving…', async (progress) => {
     // A converted XFA form that was only filled in stays the original XFA form.
     const xfa = await import('./xfaForms').then((m) => m.xfaSaveBytes());
-    const bytes = xfa ?? (mode === 'incremental' ? await exportIncrementalPdf(progress) : await exportCurrentPdf({}, progress));
+    // A password-protected file stays protected (same passwords and permissions) unless the protection was removed.
+    const bytes = xfa ?? (mode === 'incremental' ? await exportIncrementalPdf(progress) : await protectForSave(await exportCurrentPdf({}, progress)));
     // A failed write offers "Save as…" to another location.
     const path = await saveFile(bytes, suggestedName(), PDF_FILTER, { existingPath: saveAs ? null : s.filePath, retry: () => saveDocument(true), successMessage: false });
     // The file's new stamp before the document counts as saved, so the reload watcher never mistakes our own save for another program's.
@@ -342,7 +344,7 @@ async function chooseSaveMode(): Promise<'incremental' | 'full' | 'copy' | null>
   const signed = isSigned();
   const { useSaveSettings } = await import('@/lib/saveSettings');
   const { incrementalBlocker } = await import('@/lib/pdf/exportPdf');
-  const blocker = incrementalBlocker(currentDoc(), s.docMeta);
+  const blocker = incrementalBlocker(currentDoc(), s.docMeta, !!s.protection && !s.protection.keep);
   if (!blocker && (signed || useSaveSettings.getState().preferIncremental)) return 'incremental';
   if (!signed) return 'full';
   log('info', `Save: full rewrite of a signed document (${blocker})`);
@@ -368,6 +370,7 @@ async function exportIncrementalPdf(progress?: (msg: string, f: number | null) =
 
 /** Saves bytes produced by an operation (sign, protect, compress…) as a new file. */
 export async function saveDerived(bytes: Uint8Array, suffix: string, reopen: boolean): Promise<string | null> {
+  if (!allowUnprotectedCopy()) return null;
   const path = await saveFile(bytes, suggestedName(suffix), PDF_FILTER, { retry: () => saveDerived(bytes, suffix, reopen) });
   if (reopen && path && path !== 'downloaded') await openPdfBytes(bytes, path.split(/[\\/]/).pop() ?? path, path, true);
   return path;
@@ -379,7 +382,8 @@ export async function refreshSignatureStatus(): Promise<void> {
   const src = id ? s.sources[id] : undefined;
   if (!src) return usePDFStore.getState().setSignatureStatus([]);
   try {
-    const status = await verifyPdfSignatures(src.bytes);
+    // Signatures cover the file's own (encrypted) bytes.
+    const status = await verifyPdfSignatures(src.encryption?.file ?? src.bytes);
     usePDFStore.getState().setSignatureStatus(status);
   } catch {
     usePDFStore.getState().setSignatureStatus([]);

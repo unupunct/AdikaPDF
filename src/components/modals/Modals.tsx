@@ -91,8 +91,8 @@ function PasswordPrompt() {
           prompt.resolve(null);
         }
       }}
-      title="Password required"
-      description={`“${prompt.fileName}” is protected.`}
+      title={prompt.owner ? 'Owner password' : 'Password required'}
+      description={prompt.owner ? `The owner password of “${prompt.fileName}” lifts its restrictions.` : `“${prompt.fileName}” is protected.`}
       width={420}
       testId="password-prompt"
       footer={
@@ -106,7 +106,7 @@ function PasswordPrompt() {
             Cancel
           </Button>
           <Button variant="primary" onClick={submit} data-testid="password-submit">
-            Open
+            {prompt.owner ? 'Unlock' : 'Open'}
           </Button>
         </>
       }
