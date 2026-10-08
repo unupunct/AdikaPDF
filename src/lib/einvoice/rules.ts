@@ -92,16 +92,16 @@ export function defaultEndpoint(p: DraftParty): { id: string; scheme: string } {
   return { id: '', scheme: '' };
 }
 
-/** CIUS-RO maximum lengths: [business term, label, max]. */
-const RO_LENGTHS: Array<[string, string, number]> = [
-  ['BT-1', 'invoice number', 200],
-  ['BT-27', 'seller name', 200],
-  ['BT-44', 'buyer name', 200],
-  ['BT-35', 'seller street', 150],
-  ['BT-50', 'buyer street', 150],
-  ['BT-37', 'seller city', 50],
-  ['BT-52', 'buyer city', 50],
-  ['BT-20', 'payment terms', 100],
+/** CIUS-RO maximum lengths: [business term, max, message]. */
+const RO_LENGTHS: Array<[string, number, string]> = [
+  ['BT-1', 200, 'The invoice number is longer than 200 characters.'],
+  ['BT-27', 200, "The seller's name is longer than 200 characters."],
+  ['BT-44', 200, "The buyer's name is longer than 200 characters."],
+  ['BT-35', 150, "The seller's street is longer than 150 characters."],
+  ['BT-50', 150, "The buyer's street is longer than 150 characters."],
+  ['BT-37', 50, "The seller's city is longer than 50 characters."],
+  ['BT-52', 50, "The buyer's city is longer than 50 characters."],
+  ['BT-20', 100, 'The payment terms are longer than 100 characters.'],
 ];
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -127,11 +127,11 @@ export function validateInvoice(c: CalcInvoice): InvoiceIssue[] {
 
   // --- parties
   const party = (p: DraftParty, who: 'seller' | 'buyer') => {
-    const W = who === 'seller' ? 'The seller' : 'The buyer';
-    if (!p.name.trim()) err(who === 'seller' ? 'BR-06' : 'BR-07', `${W} needs a name.`);
-    if (!/^[A-Z]{2}$/i.test(p.country.trim())) err(who === 'seller' ? 'BR-09' : 'BR-11', `${W} needs a country (two-letter code).`);
-    if (p.vatId.trim() && !/^[A-Z]{2}[A-Z0-9+*.]{2,}$/i.test(p.vatId.replace(/\s+/g, ''))) err('BR-CO-09', `${W}'s VAT number must start with the country code (e.g. RO12345678).`);
-    if (p.email.trim() && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(p.email.trim())) warn('BT-43', `${W}'s e-mail address looks wrong.`);
+    const S = who === 'seller';
+    if (!p.name.trim()) err(S ? 'BR-06' : 'BR-07', S ? 'The seller needs a name.' : 'The buyer needs a name.');
+    if (!/^[A-Z]{2}$/i.test(p.country.trim())) err(S ? 'BR-09' : 'BR-11', S ? 'The seller needs a country (two-letter code).' : 'The buyer needs a country (two-letter code).');
+    if (p.vatId.trim() && !/^[A-Z]{2}[A-Z0-9+*.]{2,}$/i.test(p.vatId.replace(/\s+/g, ''))) err('BR-CO-09', S ? "The seller's VAT number must start with the country code (e.g. RO12345678)." : "The buyer's VAT number must start with the country code (e.g. RO12345678).");
+    if (p.email.trim() && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(p.email.trim())) warn(S ? 'BT-43' : 'BT-58', S ? "The seller's e-mail address looks wrong." : "The buyer's e-mail address looks wrong.");
   };
   party(d.seller, 'seller');
   party(d.buyer, 'buyer');
@@ -199,7 +199,7 @@ function validateRo(c: CalcInvoice, err: (r: string, m: string) => void, warn: (
     'BT-1': d.number, 'BT-27': d.seller.name, 'BT-44': d.buyer.name, 'BT-35': d.seller.street, 'BT-50': d.buyer.street,
     'BT-37': d.seller.city, 'BT-52': d.buyer.city, 'BT-20': d.payment.terms,
   };
-  for (const [bt, label, max] of RO_LENGTHS) if ((values[bt] ?? '').length > max) err(`CIUS-RO ${bt}`, `The ${label} is longer than ${max} characters (${bt}).`);
+  for (const [bt, max, message] of RO_LENGTHS) if ((values[bt] ?? '').length > max) err(`CIUS-RO ${bt}`, message);
   c.lines.forEach((l, i) => {
     if (l.name.length > 100) err('CIUS-RO BT-153', `Line ${i + 1}: the item name is longer than 100 characters.`);
     if (l.description.length > 200) err('CIUS-RO BT-154', `Line ${i + 1}: the item description is longer than 200 characters.`);
@@ -207,15 +207,16 @@ function validateRo(c: CalcInvoice, err: (r: string, m: string) => void, warn: (
 
   // Addresses: street and city always; the county (ISO 3166-2:RO) in Romania, Bucharest by sector.
   const address = (p: DraftParty, who: 'seller' | 'buyer') => {
-    const W = who === 'seller' ? 'The seller' : 'The buyer';
-    const rule = who === 'seller' ? ['CIUS-RO BT-35', 'CIUS-RO BT-37', 'CIUS-RO BT-39', 'CIUS-RO BT-37'] : ['CIUS-RO BT-50', 'CIUS-RO BT-52', 'CIUS-RO BT-54', 'CIUS-RO BT-52'];
-    if (!p.street.trim()) err(rule[0], `${W} needs a street address.`);
-    if (!p.city.trim()) err(rule[1], `${W} needs a city.`);
+    const S = who === 'seller';
+    if (!p.street.trim()) err(S ? 'CIUS-RO BT-35' : 'CIUS-RO BT-50', S ? 'The seller needs a street address.' : 'The buyer needs a street address.');
+    if (!p.city.trim()) err(S ? 'CIUS-RO BT-37' : 'CIUS-RO BT-52', S ? 'The seller needs a city.' : 'The buyer needs a city.');
     if (p.country.toUpperCase() !== 'RO') return;
     const county = p.region.trim().toUpperCase();
-    if (!county) err(rule[2], `${W} needs a county (e.g. RO-CJ; RO-B for Bucharest).`);
-    else if (!RO_COUNTIES[county]) err(rule[2], `${W}'s county must be an ISO 3166-2:RO code such as RO-CJ or RO-B, not "${p.region}".`);
-    else if (county === 'RO-B' && !BUCHAREST_SECTORS.includes(p.city.trim().toUpperCase())) err(rule[3], `In Bucharest the city of ${who === 'seller' ? 'the seller' : 'the buyer'} must be the sector: SECTOR1 to SECTOR6.`);
+    const rule = S ? 'CIUS-RO BT-39' : 'CIUS-RO BT-54';
+    if (!county) err(rule, S ? 'The seller needs a county (e.g. RO-CJ; RO-B for Bucharest).' : 'The buyer needs a county (e.g. RO-CJ; RO-B for Bucharest).');
+    else if (!RO_COUNTIES[county]) err(rule, S ? `The seller's county must be an ISO 3166-2:RO code such as RO-CJ or RO-B, not "${p.region}".` : `The buyer's county must be an ISO 3166-2:RO code such as RO-CJ or RO-B, not "${p.region}".`);
+    else if (county === 'RO-B' && !BUCHAREST_SECTORS.includes(p.city.trim().toUpperCase()))
+      err(S ? 'CIUS-RO BT-37' : 'CIUS-RO BT-52', S ? "In Bucharest the seller's city must be the sector: SECTOR1 to SECTOR6." : "In Bucharest the buyer's city must be the sector: SECTOR1 to SECTOR6.");
   };
   address(d.seller, 'seller');
   address(d.buyer, 'buyer');
