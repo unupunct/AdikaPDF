@@ -579,7 +579,12 @@ test('password protection (AES-256) and reopening with the password prompt', asy
   await page.click('[data-testid="password-submit"]');
   await opening;
   const s = await state();
-  assert(s.pages === 1 && s.readOnly, 'opened read-only with password');
+  // Opened with the password it can be edited; saving keeps the same protection.
+  const prot = await S(() => {
+    const p = window.__adika.store.getState().protection;
+    return p ? { keep: p.keep } : null;
+  });
+  assert(s.pages === 1 && !s.readOnly && prot?.keep, `opened editable with its protection kept (${JSON.stringify({ readOnly: s.readOnly, prot })})`);
 });
 
 test('digital signature with a self-signed ID, then verification', async () => {
