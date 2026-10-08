@@ -2,6 +2,7 @@
 import JSZip from 'jszip';
 import { usePDFStore } from '@/store/usePDFStore';
 import { exportCurrentPdf } from './document';
+import { allowUnprotectedCopy } from './protection';
 import { loadFontBytes } from '@/lib/fonts';
 import { combineMerged, fileNameFor, formFieldNames, mergeRow, readTable, type DataTable } from '@/lib/mailMerge';
 import { fileStamp, isDesktop, pickFiles, pickFolder, writeFile } from '@/lib/platform';
@@ -49,6 +50,7 @@ export async function runMailMerge(job: MergeJob, onProgress: (done: number, tot
   const store = usePDFStore.getState();
   const rows = job.table.rows;
   if (!rows.length) throw new Error('The table has no rows.');
+  if (!allowUnprotectedCopy()) return null;
   // Pick where to write first, so nothing is computed for nothing.
   let folder: string | null = null;
   if (job.output === 'files' && isDesktop) {

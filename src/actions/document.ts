@@ -383,7 +383,7 @@ export async function refreshSignatureStatus(): Promise<void> {
   if (!src) return usePDFStore.getState().setSignatureStatus([]);
   try {
     // Signatures cover the file's own (encrypted) bytes.
-    const status = await verifyPdfSignatures(src.encryption?.file ?? src.bytes);
+    const status = await verifyPdfSignatures(primarySourceFile()!);
     usePDFStore.getState().setSignatureStatus(status);
   } catch {
     usePDFStore.getState().setSignatureStatus([]);
@@ -408,9 +408,17 @@ export async function closeTabAction(tabId: string): Promise<void> {
   if (tabId !== activeId && useTabs.getState().tabs.some((t) => t.id === activeId)) switchTab(activeId);
 }
 
-/** The primary source's bytes (the opened file as loaded). */
+/** The primary source's bytes (the opened file as loaded; a password-protected one decrypted). */
 export function primarySourceBytes(): Uint8Array | null {
   const s = usePDFStore.getState();
   const id = primarySourceId(s);
   return id ? (s.sources[id]?.bytes ?? null) : null;
+}
+
+/** The opened file itself, also when it is encrypted (what its signatures cover). */
+export function primarySourceFile(): Uint8Array | null {
+  const s = usePDFStore.getState();
+  const id = primarySourceId(s);
+  const src = id ? s.sources[id] : undefined;
+  return src ? (src.encryption?.file ?? src.bytes) : null;
 }

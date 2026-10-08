@@ -5,7 +5,7 @@
  */
 import forge from 'node-forge';
 import { usePDFStore } from '@/store/usePDFStore';
-import { exportCurrentPdf, primarySourceBytes, refreshSignatureStatus, saveDerived, withBusy } from './document';
+import { exportCurrentPdf, primarySourceFile, refreshSignatureStatus, saveDerived, withBusy } from './document';
 import {
   identityFromCertificateDer,
   signPdf,
@@ -162,7 +162,7 @@ async function signWith(
     );
   }
   const out = await withBusy('Signing…', async (progress) => {
-    const bytes = hadSignatures && !store.dirty ? primarySourceBytes()! : await exportCurrentPdf({}, progress, consumeId ? [consumeId] : []);
+    const bytes = hadSignatures && !store.dirty ? primarySourceFile()! : await exportCurrentPdf({}, progress, consumeId ? [consumeId] : []);
     const when = new Date();
     const size = placement.rect ?? { width: 0, height: 0 };
     const appearancePng = placement.rect
@@ -225,7 +225,7 @@ async function signWith(
  */
 export async function addArchiveTimestamp(tsaUrl: string): Promise<void> {
   const store = usePDFStore.getState();
-  const bytes = primarySourceBytes();
+  const bytes = primarySourceFile();
   if (!bytes || !store.signatureStatus.length) return;
   if (store.dirty) {
     store.toast('Save or undo the changes first: the timestamp is added to the signed file as it is.', 'info');
@@ -246,7 +246,7 @@ export async function addArchiveTimestamp(tsaUrl: string): Promise<void> {
 /** Verify → Add long-term validation: stores the validation data in an already signed PDF (the signatures stay valid). */
 export async function addLongTermValidation(): Promise<void> {
   const store = usePDFStore.getState();
-  const bytes = primarySourceBytes();
+  const bytes = primarySourceFile();
   if (!bytes || !store.signatureStatus.length) return;
   if (store.dirty) {
     store.toast('Save or undo the changes first: validation data is added to the signed file as it is.', 'info');
@@ -402,7 +402,7 @@ async function trustedRoots(): Promise<forge.pki.Certificate[]> {
 
 /** Full verification (chain against the Windows trust store, OCSP/CRL online). */
 export async function verifyCurrentSignatures(checkRevocation: boolean): Promise<SignatureValidation[] | undefined> {
-  const bytes = primarySourceBytes();
+  const bytes = primarySourceFile();
   if (!bytes) return undefined;
   const result = await withBusy('Verifying signatures…', async () =>
     verifyPdfSignatures(bytes, {
