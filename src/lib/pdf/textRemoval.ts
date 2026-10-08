@@ -25,6 +25,7 @@ import {
 } from 'pdf-lib';
 import { Font as StdFont } from '@pdf-lib/standard-fonts';
 import { STD_ALIASES, glyphNameToUnicode, parseToUnicode, standardMaps, streamBytes } from './fontEncoding';
+import { fontCodes, type FontStyle } from './fontCodes';
 
 export { parseToUnicode };
 
@@ -264,6 +265,8 @@ export interface FontInfo {
   baseName: string;
   /** Type3: the glyph's box in text space per unit font size [x0, y0, x1, y1] (others use a fixed em band). */
   glyphBox?: (code: number) => [number, number, number, number] | null;
+  /** The font dictionary (to find or add codes for letters the page does not draw yet). */
+  dict?: PDFDict;
 }
 
 function num(v: unknown, dflt = 0): number {
@@ -311,6 +314,7 @@ function loadFont(doc: PDFDocument, fontObj: unknown): FontInfo {
       unicode: (c) => toUni?.get(c) ?? '',
       ok: true,
       baseName,
+      dict: d,
     };
   }
 
@@ -356,7 +360,7 @@ function loadFont(doc: PDFDocument, fontObj: unknown): FontInfo {
   if (widthsArr instanceof PDFArray) {
     const ws: number[] = [];
     for (let k = 0; k < widthsArr.size(); k++) ws.push(num(widthsArr.lookup(k), missing));
-    return { twoByte: false, width: (c) => (ws[c - first] ?? missing) * scale, unicode, ok: true, baseName, glyphBox };
+    return { twoByte: false, width: (c) => (ws[c - first] ?? missing) * scale, unicode, ok: true, baseName, glyphBox, dict: d };
   }
   const std = STD_ALIASES[baseName.toLowerCase().replace(/\s+/g, '')];
   if (std && !isType3) {
@@ -371,6 +375,7 @@ function loadFont(doc: PDFDocument, fontObj: unknown): FontInfo {
       unicode,
       ok: true,
       baseName,
+      dict: d,
     };
   }
   return { ...bad, unicode, baseName };
@@ -925,6 +930,29 @@ export interface RemovalResult {
   mcids: number[];
   /** Annotations taken off the page (with their popups). */
   removedAnnotRefs: string[];
+  /** Per native edit: letters added to the document's font encoding, and letters drawn in a fallback font. */
+  editFonts: Array<EditFonts | null>;
+}
+
+export interface EditFonts {
+  /** Letters the font had but no code reached: a code was added to its encoding. */
+  added: string;
+  /** Letters the document's font lacks, drawn in another font (its label, e.g. "Arial (installed)"). */
+  fallback: Array<{ chars: string; font: string }>;
+}
+
+/** A font embedded for letters the document's font lacks (`fontFallback.ts`). */
+export interface FallbackFont {
+  /** Its font dictionary. */
+  ref: PDFRef;
+  label: string;
+  has: (ch: string) => boolean;
+  /** The letter's code as hex digits. */
+  hex: (ch: string) => string;
+  /** Advance width per unit font size. */
+  width: (ch: string) => number;
+  /** Font size relative to the document's letters (matches cap height / x-height). */
+  sizeRatio: number;
 }
 
 /** A replacement of the letters in `boxes` by text `newWidth` points wide: the rest of the line makes room. */
@@ -937,6 +965,8 @@ export interface LineEdit {
   color?: string;
   /** Restyled text: size relative to the original letters (1.2 = 20% larger). */
   sizeRatio?: number;
+  /** Fonts for letters the document's font does not have (first match wins). */
+  fallbacks?: FallbackFont[];
 }
 
 /**
@@ -947,7 +977,7 @@ export interface LineEdit {
  * and reports what it could not.
  */
 export function removeGlyphs(doc: PDFDocument, page: PDFPage, boxes: Box[], mode: 'redact' | 'replace', edits: LineEdit[] = []): RemovalResult {
-  const fail = (reason: string): RemovalResult => ({ ok: false, reason, removedGlyphs: 0, removedAnnots: 0, coversImage: false, editShifts: edits.map(() => 0), editScales: edits.map(() => 1), editNative: edits.map(() => false), mcids: [], removedAnnotRefs: [] });
+  const fail = (reason: string): RemovalResult => ({ ok: false, reason, removedGlyphs: 0, removedAnnots: 0, coversImage: false, editShifts: edits.map(() => 0), editScales: edits.map(() => 1), editNative: edits.map(() => false), mcids: [], removedAnnotRefs: [], editFonts: edits.map(() => null) });
   if (!boxes.length) return { ...fail(''), ok: true, reason: undefined };
   let it: Interpretation;
   try {
@@ -981,7 +1011,13 @@ export function removeGlyphs(doc: PDFDocument, page: PDFPage, boxes: Box[], mode
 
   const crop = page.getCropBox();
   const bounds = { x0: crop.x, y0: crop.y, x1: crop.x + crop.width, y1: crop.y + crop.height };
-  const natives = mode === 'replace' ? edits.map((e) => nativeText(it, remove, e)) : edits.map(() => null);
+  const fallbackKeys = new Map<PDFRef, string>();
+  const fallbackKey = (f: FallbackFont) => {
+    let k = fallbackKeys.get(f.ref);
+    if (!k) fallbackKeys.set(f.ref, (k = registerFont(doc, page, f.ref)));
+    return k;
+  };
+  const natives = mode === 'replace' ? edits.map((e) => nativeText(doc, it, remove, e, fallbackKey)) : edits.map(() => null);
   let effective = edits.map((e, i) => (natives[i] ? { ...e, newWidth: natives[i]!.width } : e));
   let { shift, scales: editScales } = mode === 'replace' ? lineShifts(it.glyphs, remove, effective, bounds) : { shift: new Map<number, number>(), scales: edits.map(() => 1) };
   if (natives.some((n, i) => n && editScales[i] < 1)) {
@@ -1089,7 +1125,8 @@ export function removeGlyphs(doc: PDFDocument, page: PDFPage, boxes: Box[], mode
     const stream = doc.context.flateStream(out);
     page.node.set(PDFName.of('Contents'), doc.context.register(stream));
   }
-  return { ok: true, removedGlyphs: remove.size, removedAnnots, coversImage, editShifts, editScales, editNative, mcids, removedAnnotRefs };
+  const editFonts = natives.map((n) => n?.fonts ?? null);
+  return { ok: true, removedGlyphs: remove.size, removedAnnots, coversImage, editShifts, editScales, editNative, mcids, removedAnnotRefs, editFonts };
 }
 
 /**
@@ -1216,27 +1253,31 @@ function lineShifts(glyphs: Glyph[], remove: Set<number>, edits: LineEdit[], bou
   return { shift, scales };
 }
 
+interface NativeItem {
+  hex: string;
+  /** Written in another font (a fallback for a missing letter). */
+  font?: { key: string; fs: number };
+}
+
 interface Native {
   first: number;
   last: number;
   /** Restyled: the fill colour to write the letters in, and the colour to restore after them. */
   color?: { rgb: string; restore: string };
-  /** Restyled: font resource and size to write the letters with, and the size to restore. */
-  font?: { key: string; fs: number; restore: number };
-  /** Hex glyph codes, or TJ spacing numbers (for spaces the font never drew). */
-  items: Array<string | number>;
+  /** Font resource, the size to write the letters with and the size to restore after them. */
+  key: string;
+  fs: number;
+  restoreFs: number;
+  /** Glyph codes, or TJ spacing numbers (for spaces the font never drew). */
+  items: Array<NativeItem | number>;
   /** New text width and the width of the removed span, user space. */
   width: number;
   span: number;
+  fonts: EditFonts;
 }
 
-/**
- * The new text of an edit encoded in the font of the letters it replaces,
- * using only glyphs that font already draws on this page (subset fonts hold
- * nothing else). Null when a letter is missing or the span mixes fonts.
- */
-function nativeText(it: Interpretation, remove: Set<number>, e: LineEdit): Native | null {
-  if (e.text === undefined) return null;
+/** The glyphs of the edit's span (in text order), when they are all in one font at one size. */
+function editSpan(it: Interpretation, remove: Set<number>, e: LineEdit): number[] | null {
   const R: number[] = [];
   it.glyphs.forEach((g, i) => {
     if (remove.has(i) && e.boxes.some((b) => inside(b, g.cx, g.cy))) R.push(i);
@@ -1244,34 +1285,135 @@ function nativeText(it: Interpretation, remove: Set<number>, e: LineEdit): Nativ
   if (!R.length) return null;
   const ref = it.glyphs[R[0]].run;
   if (R.some((i) => it.glyphs[i].run.key !== ref.key || Math.abs(it.glyphs[i].run.fs - ref.fs) > 1e-3)) return null;
+  return R;
+}
+
+/** Letter -> code of the glyphs this font draws on the page. */
+function drawnCodes(it: Interpretation, key: string): Map<string, number[]> {
   const enc = new Map<string, number[]>();
-  for (const g of it.glyphs) if (g.run.key === ref.key && g.text && [...g.text].length === 1 && !enc.has(g.text)) enc.set(g.text, g.run.bytes);
-  const items: Array<string | number> = [];
+  for (const g of it.glyphs) if (g.run.key === key && g.text && [...g.text].length === 1 && !enc.has(g.text)) enc.set(g.text, g.run.bytes);
+  return enc;
+}
+
+/**
+ * The new text of an edit encoded in the font of the letters it replaces:
+ * glyphs that font draws on the page, then codes it has for the letter (or
+ * adds, when its program has the glyph), then the edit's fallback fonts for
+ * letters it lacks. Null when a letter has none of these or the span mixes fonts.
+ */
+function nativeText(doc: PDFDocument, it: Interpretation, remove: Set<number>, e: LineEdit, fallbackKey: (f: FallbackFont) => string): Native | null {
+  if (e.text === undefined) return null;
+  const R = editSpan(it, remove, e);
+  if (!R) return null;
+  const ref = it.glyphs[R[0]].run;
+  const enc = drawnCodes(it, ref.key);
+  const codes = fontCodes(doc, ref.font);
+  const items: Native['items'] = [];
   let width = 0;
   const ratio = e.sizeRatio && Math.abs(e.sizeRatio - 1) > 1e-3 ? e.sizeRatio : 1;
   const fs = ref.fs * ratio;
+  let added = '';
+  const fallback = new Map<string, string>();
+  const hex = (bytes: number[]) => bytes.map((b) => b.toString(16).padStart(2, '0')).join('');
   for (const ch of e.text) {
-    const bytes = enc.get(ch);
-    if (bytes) {
-      const code = ref.font.twoByte ? (bytes[0] << 8) | bytes[1] : bytes[0];
-      const isSpace = !ref.font.twoByte && code === 32;
-      items.push(bytes.map((b) => b.toString(16).padStart(2, '0')).join(''));
-      width += (ref.font.width(code) * fs + ref.Tc + (isSpace ? ref.Tw : 0)) * ref.Th * ref.s;
+    const drawn = enc.get(ch);
+    const own = drawn ? { bytes: drawn, width: ref.font.width(ref.font.twoByte ? (drawn[0] << 8) | drawn[1] : drawn[0]), added: false } : (codes?.codeFor(ch) ?? null);
+    if (own) {
+      const isSpace = !ref.font.twoByte && own.bytes[0] === 32;
+      items.push({ hex: hex(own.bytes) });
+      width += (own.width * fs + ref.Tc + (isSpace ? ref.Tw : 0)) * ref.Th * ref.s;
+      if (own.added && !added.includes(ch)) added += ch;
     } else if (/\s/.test(ch)) {
       // A word space the font never drew: move by a quarter em.
       items.push(-250);
       width += 0.25 * fs * ref.Th * ref.s;
-    } else return null;
+    } else {
+      const f = e.fallbacks?.find((x) => x.has(ch));
+      if (!f) return null;
+      const ffs = fs * f.sizeRatio;
+      items.push({ hex: f.hex(ch), font: { key: fallbackKey(f), fs: ffs } });
+      width += (f.width(ch) * ffs + ref.Tc) * ref.Th * ref.s;
+      const got = fallback.get(f.label) ?? '';
+      if (!got.includes(ch)) fallback.set(f.label, got + ch);
+    }
   }
   const first = it.glyphs[R[0]];
   const last = it.glyphs[R[R.length - 1]];
   const span = (last.origin[0] - first.origin[0]) * first.dir[0] + (last.origin[1] - first.origin[1]) * first.dir[1] + last.advance;
-  // Restyled letters: their own colour and size, the original ones restored after them.
-  const restyle: Pick<Native, 'color' | 'font'> = {};
+  // Restyled letters: their own colour, the original one restored after them.
   const orig = first.color;
-  if (e.color && /^#[0-9a-f]{6}$/i.test(e.color) && e.color.toLowerCase() !== orig.toLowerCase()) restyle.color = { rgb: rgbOp(e.color), restore: rgbOp(orig) };
-  if (ratio !== 1) restyle.font = { key: ref.key, fs, restore: ref.fs };
-  return { first: R[0], last: R[R.length - 1], items, width, span, ...restyle };
+  const color = e.color && /^#[0-9a-f]{6}$/i.test(e.color) && e.color.toLowerCase() !== orig.toLowerCase() ? { rgb: rgbOp(e.color), restore: rgbOp(orig) } : undefined;
+  return {
+    first: R[0],
+    last: R[R.length - 1],
+    items,
+    width,
+    span,
+    color,
+    key: ref.key,
+    fs,
+    restoreFs: ref.fs,
+    fonts: { added, fallback: [...fallback].map(([font, chars]) => ({ font, chars })) },
+  };
+}
+
+/** Adds a font to the page's resources (or finds it there); returns its resource name. */
+function registerFont(doc: PDFDocument, page: PDFPage, ref: PDFRef): string {
+  let res = resourcesOf(page);
+  if (!res) {
+    res = doc.context.obj({});
+    page.node.set(PDFName.of('Resources'), res);
+  }
+  let fonts = res.lookup(PDFName.of('Font'));
+  if (!(fonts instanceof PDFDict)) {
+    fonts = doc.context.obj({});
+    res.set(PDFName.of('Font'), fonts as PDFDict);
+  }
+  const dict = fonts as PDFDict;
+  for (const [k, v] of dict.entries()) if (v === ref) return k.decodeText();
+  let n = 1;
+  while (dict.has(PDFName.of(`AdkFb${n}`))) n++;
+  dict.set(PDFName.of(`AdkFb${n}`), ref);
+  return `AdkFb${n}`;
+}
+
+/** Letters the edits need that the document's font cannot draw. */
+export interface LetterNeed {
+  chars: string;
+  style: FontStyle;
+}
+
+/**
+ * For each edit: the letters of its new text the document's font has no
+ * glyph for (after adding codes for glyphs its program has), and the font's
+ * style, so the caller can prepare fallback fonts (`LineEdit.fallbacks`).
+ * Null when nothing is missing or the edit is not written in the document's font.
+ */
+export function lettersToSupply(doc: PDFDocument, page: PDFPage, edits: LineEdit[]): Array<LetterNeed | null> {
+  let it: Interpretation;
+  try {
+    it = interpret(doc, page);
+  } catch {
+    return edits.map(() => null);
+  }
+  const remove = new Set<number>();
+  it.glyphs.forEach((g, i) => {
+    if (edits.some((e) => e.boxes.some((b) => inside(b, g.cx, g.cy)))) remove.add(i);
+  });
+  return edits.map((e) => {
+    if (e.text === undefined) return null;
+    const R = editSpan(it, remove, e);
+    if (!R) return null;
+    const ref = it.glyphs[R[0]].run;
+    const enc = drawnCodes(it, ref.key);
+    const codes = fontCodes(doc, ref.font);
+    let chars = '';
+    for (const ch of e.text) if (!enc.has(ch) && !/\s/.test(ch) && !chars.includes(ch) && !codes?.codeFor(ch)) chars += ch;
+    if (!chars) return null;
+    const name = ref.font.baseName;
+    const style: FontStyle = codes?.style() ?? { baseName: name, bold: /bold|black/i.test(name), italic: /italic|oblique/i.test(name), serif: /times|serif|roman|georgia/i.test(name) && !/sans/i.test(name), mono: /mono|courier/i.test(name), capHeight: 0, xHeight: 0 };
+    return { chars, style };
+  });
 }
 
 /** "#rrggbb" -> "r g b rg". */
@@ -1308,24 +1450,38 @@ function rewriteShow(s: Show, remove: Set<number>, shift: Map<number, number>, g
       // stays where it was and the line shift moves it as for any replacement.
       flushHex();
       flushNum();
-      const restyled = !!(ins.color || ins.font);
+      const base = { key: ins.key, fs: ins.fs };
+      let cur = { key: ins.key, fs: ins.restoreFs };
+      const restyled = !!ins.color || Math.abs(ins.fs - ins.restoreFs) > 1e-6 || ins.items.some((i) => typeof i !== 'number' && i.font);
+      // Font switches (restyled size, fallback letters) need whole Tf operators between TJ arrays.
+      const use = (f: { key: string; fs: number }) => {
+        if (f.key === cur.key && Math.abs(f.fs - cur.fs) < 1e-6) return;
+        flushHex();
+        flushNum();
+        closeArray();
+        ops.push(`${pdfName(f.key)} ${fmtNum(Math.round(f.fs * 1000) / 1000)} Tf`);
+        cur = f;
+      };
       if (restyled) {
         closeArray();
         if (ins.color) ops.push(ins.color.rgb);
-        if (ins.font) ops.push(`/${ins.font.key} ${fmtNum(Math.round(ins.font.fs * 1000) / 1000)} Tf`);
       }
       for (const item of ins.items) {
-        if (typeof item === 'number') pending += item;
-        else {
+        if (typeof item === 'number') {
+          use(base);
+          flushHex();
+          pending += item;
+        } else {
+          use(item.font ?? base);
           flushNum();
-          hex += item;
+          hex += item.hex;
         }
       }
       flushHex();
       if (restyled) {
         flushNum();
+        use({ key: ins.key, fs: ins.restoreFs });
         closeArray();
-        if (ins.font) ops.push(`/${ins.font.key} ${fmtNum(Math.round(ins.font.restore * 1000) / 1000)} Tf`);
         if (ins.color) ops.push(ins.color.restore);
       }
       pending += ins.width * glyphs[p.glyph!].k;
