@@ -203,6 +203,20 @@ describe('fallback fonts for missing letters', () => {
     expect(await pdfjsText(bytes)).toContain('Semnat de Ștefan ț Ionescu');
   });
 
+  it('works on a renumbered (fontkit) subset of Arial too (when installed)', async (ctx) => {
+    if (!existsSync(ARIAL)) ctx.skip();
+    const d = await PDFDocument.create();
+    d.registerFontkit(fontkit);
+    const font = await d.embedFont(readFileSync(ARIAL), { subset: true });
+    d.addPage([595, 842]).drawText('Semnat de Stefan Ionescu, Bucuresti', { x: 50, y: 700, size: 12, font });
+    const doc = await PDFDocument.load(await d.save());
+    const src = sources({ installed: async () => [sysFont({ path: ARIAL, family: 'Arial', fullName: 'Arial', postscript: 'ArialMT' })] });
+    const { res, bytes, after } = await edit(doc, 'Stefan', 'Ștefan', src);
+    expect(res.editFonts[0]?.fallback).toEqual([{ font: 'Arial', installed: true, chars: 'Ș' }]);
+    expect(await pdfjsText(bytes)).toContain('Semnat de Ștefan Ionescu, Bucuresti');
+    expectNoOverlaps(after);
+  });
+
   it('falls back to Noto in the style of the original font (serif, italic from the descriptor flags)', async () => {
     const doc = await cidDoc('Semnat de Stefan Ionescu', SANS, true);
     // An anonymous font name: only /Flags tell the style.
