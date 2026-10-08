@@ -20,6 +20,7 @@ export interface InvoiceLabels {
   orderRef: string;
   buyerRef: string;
   contractRef: string;
+  precedingRef: string;
   seller: string;
   buyer: string;
   vatId: string;
@@ -66,6 +67,7 @@ export const EN_LABELS: InvoiceLabels = {
   orderRef: 'Order no.',
   buyerRef: 'Buyer reference',
   contractRef: 'Contract',
+  precedingRef: 'Corrected invoice',
   seller: 'Seller',
   buyer: 'Buyer',
   vatId: 'VAT ID',
@@ -125,7 +127,7 @@ const M = 40;
 
 export async function renderEInvoice(
   inv: EInvoice,
-  opts: { loadFont: (v: FontVariant) => Promise<Uint8Array>; labels?: InvoiceLabels; locale?: string; xml?: { name: string; bytes: Uint8Array }; warnings?: string[]; meansName?: (code: string) => string },
+  opts: { loadFont: (v: FontVariant) => Promise<Uint8Array>; labels?: InvoiceLabels; locale?: string; xml?: { name: string; bytes: Uint8Array }; warnings?: string[]; meansName?: (code: string) => string; logo?: Uint8Array },
 ): Promise<Uint8Array> {
   const L = opts.labels ?? EN_LABELS;
   const doc = await PDFDocument.create();
@@ -201,7 +203,19 @@ export async function renderEInvoice(
   };
 
   newPage();
-  // --- title and document data
+  // --- logo, title and document data
+  const top = y;
+  if (opts.logo?.length) {
+    try {
+      const png = opts.logo[0] === 0x89 && opts.logo[1] === 0x50;
+      const img = png ? await doc.embedPng(opts.logo) : await doc.embedJpg(opts.logo);
+      const s = Math.min(42 / img.height, 160 / img.width, 1);
+      page.drawImage(img, { x: M, y: y - img.height * s, width: img.width * s, height: img.height * s });
+      y -= img.height * s + 6;
+    } catch {
+      /* not a PNG or JPEG: no logo */
+    }
+  }
   const title = inv.kind === 'credit' ? L.credit : L.invoice;
   text(title.toUpperCase(), M, y - 20, 20, bold, accent);
   const meta: Array<[string, string]> = [
@@ -212,9 +226,10 @@ export async function renderEInvoice(
     [L.currency, inv.currency],
     [L.orderRef, inv.orderReference],
     [L.contractRef, inv.contractReference],
+    [L.precedingRef, inv.precedingInvoice],
     [L.buyerRef, inv.buyerReference],
   ].filter(([, v]) => v) as Array<[string, string]>;
-  let my = y - 6;
+  let my = top - 6;
   for (const [k, v] of meta) {
     right(k, A4[0] - M - 130, my - 10, 8.5, regular, grey);
     text(v, A4[0] - M - 122, my - 10, 9.5, k === L.number ? bold : regular);

@@ -7,7 +7,8 @@
  *
  * Service sign-in: OAuth 2.0 authorization code with PKCE (S256) in the
  * system browser, redirected to a one-shot loopback listener. Credential
- * authorization is bound to the hash being signed: OAuth with scope
+ * authorization is bound to the hash(es) being signed (several documents
+ * share one authorization up to the credential's `multisign`): OAuth with scope
  * "credential" (`hashes` in the request) or `credentials/authorize` with a
  * PIN / OTP. Tokens, SAD, PIN and OTP live only in memory and never appear in
  * error messages.
@@ -76,6 +77,8 @@ export interface CscCredential {
   pin: { label?: string; format?: string; optional: boolean } | null;
   otp: { label?: string; format?: string; online: boolean; optional: boolean } | null;
   scal: string | null;
+  /** Signatures one authorization may cover (credentials/info `multisign`; 1 when not announced). */
+  multisign: number;
   description: string;
   name: string;
   subject: string;
@@ -260,6 +263,7 @@ export function parseCredential(id: string, info: Record<string, unknown>): CscC
     pin,
     otp,
     scal: str(info.SCAL) ?? null,
+    multisign: Math.max(1, Math.floor(Number(info.multisign) || 1)),
     description: str(info.description) ?? '',
     name: leaf ? cnOf(subject) : id,
     subject,
@@ -533,18 +537,35 @@ export class CscClient {
    * the SAD to send with signatures/signHash.
    */
   async authorizeHash(cred: CscCredential, hash: Uint8Array, secrets: CscSecrets = {}): Promise<{ bearer: string; sad?: string }> {
+    return this.authorizeHashes(cred, [hash], secrets);
+  }
+
+  /**
+   * One authorization for exactly these hashes (numSignatures = their count,
+   * at most the credential's `multisign`): one PIN / OTP or browser confirmation.
+   */
+  async authorizeHashes(cred: CscCredential, hashes: Uint8Array[], secrets: CscSecrets = {}): Promise<{ bearer: string; sad?: string }> {
+    if (!hashes.length) throw new CscError('Nothing to sign.');
+    if (hashes.length > cred.multisign) throw new CscError(`${this.provider.name} allows ${cred.multisign} signature(s) per authorization.`);
     const info = await this.ensureInfo();
     if (cred.authMode === 'oauth2code') {
-      const extra: Record<string, string> = { scope: 'credential', credentialID: cred.id, numSignatures: '1', hashAlgorithmOID: OID_SHA256, description: 'Adika PDF Editor' };
-      if (info.v1) extra.hash = toBase64Url(hash);
-      else extra.hashes = toBase64Url(hash);
+      const extra: Record<string, string> = {
+        scope: 'credential',
+        credentialID: cred.id,
+        numSignatures: String(hashes.length),
+        hashAlgorithmOID: OID_SHA256,
+        description: 'Adika PDF Editor',
+      };
+      const list = hashes.map(toBase64Url).join(',');
+      if (info.v1) extra.hash = list;
+      else extra.hashes = list;
       const t = await this.browserAuthorize(extra);
       return info.v1 ? { bearer: await this.serviceToken(), sad: t.access } : { bearer: t.access };
     }
-    const body: Record<string, unknown> = { credentialID: cred.id, numSignatures: 1 };
-    if (info.v1) body.hash = [toBase64(hash)];
+    const body: Record<string, unknown> = { credentialID: cred.id, numSignatures: hashes.length };
+    if (info.v1) body.hash = hashes.map(toBase64);
     else {
-      body.hashes = [toBase64(hash)];
+      body.hashes = hashes.map(toBase64);
       body.hashAlgorithmOID = OID_SHA256;
     }
     if (secrets.pin) body.PIN = secrets.pin;
@@ -557,11 +578,17 @@ export class CscClient {
 
   /** signatures/signHash for one SHA-256 hash; returns the raw signature value. */
   async signHash(cred: CscCredential, hash: Uint8Array, auth: { bearer: string; sad?: string }): Promise<Uint8Array> {
+    return (await this.signHashes(cred, [hash], auth))[0];
+  }
+
+  /** signatures/signHash for several authorised hashes in one call; the signatures in the same order. */
+  async signHashes(cred: CscCredential, hashes: Uint8Array[], auth: { bearer: string; sad?: string }): Promise<Uint8Array[]> {
     const info = await this.ensureInfo();
     const algo = chooseSignAlgo(cred);
+    const list = hashes.map(toBase64);
     const body: Record<string, unknown> = info.v1
-      ? { credentialID: cred.id, SAD: auth.sad, hash: [toBase64(hash)], hashAlgo: OID_SHA256, signAlgo: algo.signAlgo }
-      : { credentialID: cred.id, hashes: [toBase64(hash)], hashAlgorithmOID: OID_SHA256, signAlgo: algo.signAlgo, ...(auth.sad ? { SAD: auth.sad } : {}) };
+      ? { credentialID: cred.id, SAD: auth.sad, hash: list, hashAlgo: OID_SHA256, signAlgo: algo.signAlgo }
+      : { credentialID: cred.id, hashes: list, hashAlgorithmOID: OID_SHA256, signAlgo: algo.signAlgo, ...(auth.sad ? { SAD: auth.sad } : {}) };
     if (algo.signAlgoParams) body.signAlgoParams = algo.signAlgoParams;
     let d: Record<string, unknown>;
     try {
@@ -570,9 +597,44 @@ export class CscClient {
       if (e instanceof CscAuthError && auth.bearer === this.service?.access) this.service = null;
       throw e;
     }
-    const sig = str(arr(d.signatures)[0]);
-    if (!sig) throw new CscError(`${this.provider.name} returned no signature.`);
-    return fromBase64(sig);
+    const sigs = arr(d.signatures).map(str);
+    if (sigs.length !== hashes.length || sigs.some((x) => !x)) throw new CscError(`${this.provider.name} returned no signature.`);
+    return sigs.map((x) => fromBase64(x!));
+  }
+
+  /**
+   * Signing many documents: up to `multisign` hashes share one authorization
+   * (one PIN / OTP or browser confirmation). Round 0 uses `secrets`; a later
+   * round asks `moreSecrets` (a one-time code is used up by each authorization).
+   */
+  batchSigner(
+    cred: CscCredential,
+    secrets: CscSecrets,
+    moreSecrets?: (round: number) => Promise<CscSecrets | null>,
+    onAuthorize?: (mode: CscCredential['authMode'], count: number) => void,
+  ): Omit<ExternalSigner, 'sign'> & { groupSize: number; signAll(signedAttrs: Uint8Array[]): Promise<Uint8Array[]> } {
+    const base = this.signer(cred, secrets);
+    let round = 0;
+    return {
+      certificate: base.certificate,
+      chain: base.chain,
+      keyAlgorithm: base.keyAlgorithm,
+      rsaPss: base.rsaPss,
+      groupSize: Math.min(cred.multisign, 50),
+      signAll: async (signedAttrs) => {
+        const hashes = signedAttrs.map(sha256);
+        let s = secrets;
+        if (round > 0 && cred.otp && !cred.otp.optional) {
+          const more = await moreSecrets?.(round);
+          if (!more) throw new CscError('Signing stopped: no one-time code for the next files.');
+          s = { pin: more.pin ?? secrets.pin, otp: more.otp };
+        }
+        round++;
+        onAuthorize?.(cred.authMode, hashes.length);
+        const auth = await this.authorizeHashes(cred, hashes, s);
+        return this.signHashes(cred, hashes, auth);
+      },
+    };
   }
 
   /**

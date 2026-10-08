@@ -346,6 +346,11 @@ export async function cliCwd(): Promise<string> {
   return invoke<string>('cli_cwd');
 }
 
+/** An ADIKA_* environment variable (null when unset or another name). */
+export async function cliEnv(name: string): Promise<string | null> {
+  return (await invoke<string | null>('cli_env', { name })) ?? null;
+}
+
 export async function cliPrint(line: string, error = false): Promise<void> {
   await invoke('cli_print', { line, error });
 }
@@ -447,6 +452,44 @@ export async function appDataWrite(name: string, bytes: Uint8Array): Promise<voi
   await invoke('appdata_write', bytes, { headers: { 'x-name': encodeURIComponent(name) } });
 }
 
+// ---------------------------------------------------------------- installed fonts
+
+/** A font installed in Windows (one face of a font file). */
+export interface SystemFont {
+  path: string;
+  /** Face index in a .ttc / .otc collection. */
+  index: number;
+  family: string;
+  subfamily: string;
+  typoFamily: string;
+  typoSubfamily: string;
+  fullName: string;
+  postscript: string;
+  weight: number;
+  italic: boolean;
+  bold: boolean;
+  /** OS/2 embedding permissions (bit 2 = restricted: may not be embedded). */
+  fsType: number;
+}
+
+let systemFontList: Promise<SystemFont[]> | null = null;
+
+/** The fonts installed in Windows (system and per-user folders); empty outside the desktop app. */
+export function systemFonts(): Promise<SystemFont[]> {
+  if (!isDesktop) return Promise.resolve([]);
+  if (!systemFontList) {
+    systemFontList = invoke<SystemFont[]>('system_fonts');
+    systemFontList.catch(() => (systemFontList = null));
+  }
+  return systemFontList;
+}
+
+/** An installed font file's bytes (only files in the Windows font folders can be read). */
+export async function readSystemFont(path: string): Promise<Uint8Array> {
+  if (!isDesktop) throw new DesktopOnlyError('Installed fonts');
+  return new Uint8Array(await invoke<ArrayBuffer>('system_font_read', { path }));
+}
+
 // ---------------------------------------------------------------- Windows certificate store
 
 export interface StoreCertificate {
@@ -532,6 +575,21 @@ export async function pkcs11Sign(args: {
     pin: args.pin,
     dataBase64: bytesToBase64(args.data),
   });
+}
+
+/** Logs in once for a batch of signatures; close the session at the end (also after errors). */
+export async function pkcs11OpenSession(args: { module: string; slotId: number; certIdHex: string; pin: string | null }): Promise<{ handle: number; keyType: string; alwaysAuthenticate: boolean }> {
+  if (!isDesktop) throw new DesktopOnlyError('Hardware token signing');
+  return invoke('pkcs11_open_session', { module: args.module, slotId: args.slotId, certIdHex: args.certIdHex, pin: args.pin });
+}
+
+export async function pkcs11SessionSign(handle: number, data: Uint8Array): Promise<Uint8Array> {
+  const res = await invoke<TokenSignature>('pkcs11_session_sign', { handle, dataBase64: bytesToBase64(data) });
+  return base64ToBytes(res.signatureBase64);
+}
+
+export async function pkcs11CloseSession(handle: number): Promise<void> {
+  await invoke('pkcs11_close_session', { handle });
 }
 
 export function bytesToBase64(bytes: Uint8Array): string {

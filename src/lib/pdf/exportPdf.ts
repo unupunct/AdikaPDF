@@ -95,7 +95,8 @@ import { writeOutline } from './outline';
 import { dropUnreachableObjects } from './prune';
 import { retargetPageRefs, scrubStructTree } from './redactCleanup';
 
-import { removeGlyphs, type Box, type LineEdit } from './textRemoval';
+import { removeGlyphs, type Box, type EditFonts, type LineEdit } from './textRemoval';
+import { attachFallbacks, defaultFallbackSources, type FallbackSources } from './fontFallback';
 import { readFieldLogic, writeCalcOrder, writeFieldLogic } from './formScripts';
 import { readXfaPackets, restoreStaticXfa, xfaKindOf } from './xfa';
 import { parseSvgPath } from './vectorEdit';
@@ -146,6 +147,17 @@ export interface ExportOptions {
   onProgress?: (message: string, fraction: number) => void;
   /** Text shown in fields whose value a form script formatted ("sourceId::name" -> text); the value itself stays plain. */
   fieldDisplay?: Record<string, string>;
+  /** Where fonts for letters a document's font lacks come from (null: draw such edits in Adika's font). */
+  fallbackFonts?: FallbackSources | null;
+  /** Called with the edits that had letters drawn in a fallback font. */
+  onFontFallback?: (notes: FontFallbackNote[]) => void;
+}
+
+/** Edited text written in the document's font, with some letters in another font. */
+export interface FontFallbackNote {
+  objectId: string;
+  text: string;
+  fallback: EditFonts['fallback'];
 }
 
 export class ExportError extends Error {}
@@ -1027,16 +1039,52 @@ export async function buildPdf(input: ExportInput, options: ExportOptions = {}):
     if (res.mcids.length) redactedMcids.set(page.ref.toString(), new Set([...(redactedMcids.get(page.ref.toString()) ?? []), ...res.mcids]));
     for (const r of res.removedAnnotRefs) goneAnnots.add(r);
   };
+  const pdfBoxes = (ref: PageRef, page: PDFPage) => {
+    const pm = displayToPdfMatrix(totalRotation(ref), visibleBox(page));
+    return (r: Rect): Box => {
+      const b = transformRectBounds(pm, r);
+      return { x0: b.x, y0: b.y, x1: b.x + b.width, y1: b.y + b.height };
+    };
+  };
+  // Single-line replacements tell the engine their width so the rest of the line makes room.
+  const lineEdits = (replacers: TextObject[], toPdf: (r: Rect) => Box): LineEdit[] =>
+    replacers.map((o) => {
+      const newWidth = singleLineWidth(o, opts.measure);
+      // Plain one-line text can be written in the document's own font, also in another colour or
+      // size; another typeface, bold or italic needs Adika's font.
+      const og = o.original;
+      const sameFace = !og || (og.fontFamily === o.fontFamily && og.bold === o.bold && og.italic === o.italic);
+      const native = Number.isFinite(newWidth) && o.opacity >= 1 && !o.background && sameFace;
+      return {
+        boxes: o.replaces!.map(toPdf),
+        newWidth,
+        text: native ? o.text : undefined,
+        color: og && og.color.toLowerCase() !== o.color.toLowerCase() ? o.color : undefined,
+        sizeRatio: og && og.fontSize > 0 && Math.abs(og.fontSize - o.fontSize) > 0.05 ? o.fontSize / og.fontSize : undefined,
+      };
+    });
+  // Letters the document's fonts lack: codes added for glyphs they have, fonts embedded for the rest.
+  const editsByPage = new Map<string, LineEdit[]>();
+  for (const { ref, page } of planned) {
+    const replacers = replacersByPage.get(ref.id);
+    if (replacers?.length && ref.kind === 'source' && ref.sourceId) editsByPage.set(ref.id, lineEdits(replacers, pdfBoxes(ref, page)));
+  }
+  const fallbackSources = options.fallbackFonts === undefined ? defaultFallbackSources(opts.loadFont) : options.fallbackFonts;
+  if (fallbackSources && editsByPage.size) {
+    const pagesWithEdits = planned.filter((p) => editsByPage.has(p.ref.id)).map((p) => ({ page: p.page, edits: editsByPage.get(p.ref.id)! }));
+    try {
+      await attachFallbacks(doc, pagesWithEdits, fallbackSources);
+    } catch {
+      /* no fallback fonts: such edits are drawn in Adika's font */
+    }
+  }
+  const fontNotes: FontFallbackNote[] = [];
   for (let k = 0; k < planned.length; k++) {
     const { ref, page } = planned[k];
     const redactions = redactsByPage.get(ref.id);
     const replacers = replacersByPage.get(ref.id);
     if (!redactions?.length && !replacers?.length) continue;
-    const pm = displayToPdfMatrix(totalRotation(ref), visibleBox(page));
-    const toPdf = (r: Rect): Box => {
-      const b = transformRectBounds(pm, r);
-      return { x0: b.x, y0: b.y, x1: b.x + b.width, y1: b.y + b.height };
-    };
+    const toPdf = pdfBoxes(ref, page);
     const editable = ref.kind === 'source' && !!ref.sourceId;
     if (redactions?.length) {
       // Static XFA keeps its own copy of the values: fields under a box are emptied there too.
@@ -1057,22 +1105,7 @@ export async function buildPdf(input: ExportInput, options: ExportOptions = {}):
       }
     }
     if (replacers?.length) {
-      // Single-line replacements tell the engine their width so the rest of the line makes room.
-      const edits: LineEdit[] = replacers.map((o) => {
-        const newWidth = singleLineWidth(o, opts.measure);
-        // Plain one-line text can be written in the document's own font, also in another colour or
-        // size; another typeface, bold or italic needs Adika's font.
-        const og = o.original;
-        const sameFace = !og || (og.fontFamily === o.fontFamily && og.bold === o.bold && og.italic === o.italic);
-        const native = Number.isFinite(newWidth) && o.opacity >= 1 && !o.background && sameFace;
-        return {
-          boxes: o.replaces!.map(toPdf),
-          newWidth,
-          text: native ? o.text : undefined,
-          color: og && og.color.toLowerCase() !== o.color.toLowerCase() ? o.color : undefined,
-          sizeRatio: og && og.fontSize > 0 && Math.abs(og.fontSize - o.fontSize) > 0.05 ? o.fontSize / og.fontSize : undefined,
-        };
-      });
+      const edits = editsByPage.get(ref.id) ?? lineEdits(replacers, toPdf);
       const res = editable ? removeGlyphs(doc, page, edits.flatMap((e) => e.boxes), 'replace', edits) : null;
       if (res?.ok) noteRemoval(page, res);
       if (!res?.ok || res.coversImage) coverReplaced.add(ref.id);
@@ -1081,6 +1114,8 @@ export async function buildPdf(input: ExportInput, options: ExportOptions = {}):
           if (res.editShifts[i]) replacerShift.set(o.id, res.editShifts[i]);
           if (res.editScales[i] < 1) replacerScale.set(o.id, res.editScales[i]);
           if (res.editNative[i]) replacerNative.add(o.id);
+          const fonts = res.editNative[i] ? res.editFonts[i] : null;
+          if (fonts?.fallback.length) fontNotes.push({ objectId: o.id, text: o.text, fallback: fonts.fallback });
         });
       }
     }
@@ -1308,7 +1343,9 @@ export async function buildPdf(input: ExportInput, options: ExportOptions = {}):
   // Embed fonts/images first, then drop orphans (replaced or deleted pages).
   await doc.flush();
   dropUnreachableObjects(doc);
-  return doc.save({ useObjectStreams: true, updateFieldAppearances: !keepXfa });
+  const out = await doc.save({ useObjectStreams: true, updateFieldAppearances: !keepXfa });
+  if (fontNotes.length) options.onFontFallback?.(fontNotes);
+  return out;
 }
 
 /** Original pages no longer in the document: their references move to the page that replaced them, or go. */

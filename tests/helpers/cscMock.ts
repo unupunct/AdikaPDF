@@ -6,6 +6,7 @@
  *   rsa-qes: RSA, explicit authorization (PIN + online OTP), QcStatements
  *   ec-oauth: ECDSA P-256 (hand-made certificate), OAuth credential authorization
  *   rsa-pss: RSA offering only RSASSA-PSS, implicit authorization
+ * One authorization (SAD or credential token) covers up to `multisign` hashes.
  * Everything is in memory; the transport never touches the network.
  */
 import forge from 'node-forge';
@@ -190,6 +191,10 @@ export class MockCsc {
   specs = '2.0.0.2';
   otpSent: string | null = null;
   issueRefreshTokens = true;
+  /** Signatures one authorization may cover (announced in credentials/info and enforced). */
+  multisign = 1;
+  /** Credential authorizations granted (PIN/OTP or browser confirmations). */
+  authorizations = 0;
   private codes = new Map<string, Grant>();
   private tokens = new Map<string, AccessToken>();
   private refresh = new Map<string, true>();
@@ -222,11 +227,11 @@ export class MockCsc {
         cert: cert(certDer(pki.rsaLeaf.cert)),
         auth: { mode: 'explicit', expression: 'PIN AND OTP', objects: [{ type: 'Password', id: 'PIN', format: 'N', label: 'PIN' }, { type: 'OTP', id: 'OTP', format: 'N', label: 'SMS code', generator: 'online' }] },
         SCAL: '2',
-        multisign: 1,
+        multisign: this.multisign,
       };
     if (id === 'ec-oauth')
-      return { credentialID: id, key: { status: 'enabled', algo: ['1.2.840.10045.4.3.2'], len: 256, curve: '1.2.840.10045.3.1.7' }, cert: cert(pki.ecCertDer), auth: { mode: 'oauth2code' }, SCAL: '2', multisign: 1 };
-    if (id === 'rsa-pss') return { credentialID: id, key: { status: 'enabled', algo: ['1.2.840.113549.1.1.10'], len: 1024 }, cert: cert(certDer(pki.pssLeaf.cert)), auth: { mode: 'implicit' }, SCAL: '1', multisign: 1 };
+      return { credentialID: id, key: { status: 'enabled', algo: ['1.2.840.10045.4.3.2'], len: 256, curve: '1.2.840.10045.3.1.7' }, cert: cert(pki.ecCertDer), auth: { mode: 'oauth2code' }, SCAL: '2', multisign: this.multisign };
+    if (id === 'rsa-pss') return { credentialID: id, key: { status: 'enabled', algo: ['1.2.840.113549.1.1.10'], len: 1024 }, cert: cert(certDer(pki.pssLeaf.cert)), auth: { mode: 'implicit' }, SCAL: '1', multisign: this.multisign };
     throw new Error('unknown credential');
   }
 
@@ -246,6 +251,10 @@ export class MockCsc {
     const hashes = q.get('hashes')?.split(',');
     if (scope === 'credential' && (!q.get('credentialID') || !hashes?.length || q.get('numSignatures') !== String(hashes.length))) {
       return { redirectUri, result: { ...result, error: 'invalid_request', errorDescription: 'credential scope needs credentialID, numSignatures and hashes' } };
+    }
+    if (scope === 'credential') {
+      if (hashes!.length > this.multisign) return { redirectUri, result: { ...result, error: 'invalid_request', errorDescription: 'numSignatures exceeds multisign' } };
+      this.authorizations++;
     }
     this.codes.set(code, { scope, credentialID: q.get('credentialID') ?? undefined, hashes, challenge: q.get('code_challenge')!, redirectUri, clientId: CLIENT_ID });
     return { redirectUri, result: { ...result, code } };
@@ -280,11 +289,13 @@ export class MockCsc {
           const id = String(body.credentialID);
           const hashes = body.hashes as string[] | undefined;
           if (!hashes?.length || body.numSignatures !== hashes.length || body.hashAlgorithmOID !== '2.16.840.1.101.3.4.2.1') return reply(400, { error: 'invalid_request', error_description: 'Missing hashes' });
+          if (hashes.length > this.multisign) return reply(400, { error: 'invalid_request', error_description: 'numSignatures exceeds multisign' });
           if (id === 'rsa-qes') {
             if (body.PIN !== PIN) return reply(400, { error: 'invalid_pin', error_description: 'The PIN is not correct' });
             if (!this.otpSent || body.OTP !== this.otpSent) return reply(400, { error: 'invalid_otp', error_description: 'The OTP is not correct' });
             this.otpSent = null;
           } else if (id !== 'rsa-pss') return reply(400, { error: 'invalid_request', error_description: 'This credential is authorised with OAuth' });
+          this.authorizations++;
           const sad = this.id('sad');
           this.sads.set(sad, { credentialID: id, hashes, left: hashes.length });
           return reply(200, { SAD: sad, expiresIn: 300 });

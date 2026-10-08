@@ -248,6 +248,13 @@ export function BatchModal() {
             ))}
           </div>
           <OpParams op={single} onChange={setSingle} repeat={pw2} onRepeat={setPw2} />
+          <p className="text-[11px] text-muted">
+            To sign many files with a digital ID, use{' '}
+            <button type="button" className="text-brand-600 underline" onClick={() => usePDFStore.getState().openModal('batchsign')} disabled={running} data-testid="batch-open-sign">
+              Sign many files
+            </button>
+            .
+          </p>
         </>
       ) : (
         <div data-testid="sequence-editor">

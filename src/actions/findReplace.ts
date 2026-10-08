@@ -14,6 +14,7 @@ import { findPattern, type PatternId } from '@/lib/patterns';
 import type { Finder, Range, TextMatch } from '@/lib/pdf/textSearch';
 import type { EditorObject, PageRef, TextObject } from '@/types';
 import type { SearchOptions } from '@/lib/search';
+import { tellFontFallbacks } from './fontNotes';
 
 export async function findMatches(finder: Finder): Promise<TextMatch[]> {
   const s = usePDFStore.getState();
@@ -105,7 +106,7 @@ export async function replaceAll(query: string, replacement: string, opts: Searc
       });
       const onRefs = new Set(refs.map((r) => r.id));
       const objs = list.filter((m) => onRefs.has(m.pageId)).map((m) => replacementFor(m, replacement));
-      const bytes = await buildPdf({ sources: { [sid]: src }, pages: refs, objects: objs, fieldValues: {} });
+      const bytes = await buildPdf({ sources: { [sid]: src }, pages: refs, objects: objs, fieldValues: {} }, { onFontFallback: tellFontFallbacks });
       const { source, pages: fresh } = await usePDFStore.getState().addSource(bytes, src.name);
       pages = pages.map((p) => {
         if (p.sourceId !== sid) return p;

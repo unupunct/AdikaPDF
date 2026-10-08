@@ -18,7 +18,7 @@ export const EINVOICE_EXTENSIONS = ['xml', 'zip'];
 const LOCALES: Record<string, string> = { en: 'en-GB', ro: 'ro-RO', de: 'de-DE', fr: 'fr-FR', hu: 'hu-HU', it: 'it-IT', es: 'es-ES' };
 export const invoiceLocale = () => LOCALES[useLang.getState().lang] ?? 'en-GB';
 
-function labels(): InvoiceLabels {
+export function invoiceLabels(): InvoiceLabels {
   return Object.fromEntries(Object.entries(EN_LABELS).map(([k, v]) => [k, translate(v)])) as unknown as InvoiceLabels;
 }
 
@@ -53,7 +53,7 @@ export async function renderInvoicePdf(xml: string, xmlName: string): Promise<{ 
   const warnings = checkEInvoice(invoice).map(translate);
   const bytes = await renderEInvoice(invoice, {
     loadFont: loadFontBytes,
-    labels: labels(),
+    labels: invoiceLabels(),
     locale: invoiceLocale(),
     xml: { name: /\.xml$/i.test(xmlName) ? xmlName : `${xmlName}.xml`, bytes: new TextEncoder().encode(xml) },
     warnings,
@@ -75,6 +75,7 @@ export async function openEInvoice(bytes: Uint8Array, name: string): Promise<boo
   if (ok) {
     usePDFStore.setState({ dirty: true });
     const s = usePDFStore.getState();
+    void import('./einvoiceCreate').then((m) => m.rememberCustomerOf(r.invoice));
     if (r.warnings.length) s.toast(`The invoice has ${r.warnings.length} problem(s): ${r.warnings[0]}`, 'error');
     else s.toast('E-invoice opened as a readable PDF; the XML is attached. Save to keep it.', 'success');
   }

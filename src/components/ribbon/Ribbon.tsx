@@ -9,6 +9,7 @@ import {
   Scaling,
   Spline,
   Receipt,
+  ReceiptText,
   Package,
   ListOrdered,
   BadgeCheck,
@@ -404,6 +405,7 @@ function SignTab() {
         <Big icon={<Usb size={I} />} label="Token / smart card" disabled={!hasDoc} onClick={() => s.openModal('token')} tip="Sign with a USB token or smart card (PKCS#11)" testId="btn-token-sign" />
         <Big icon={<KeyRound size={I} />} label="Windows certificate" disabled={!hasDoc} onClick={() => s.openModal('winstore')} tip="Sign with a certificate installed in Windows (qualified certificates, imported .pfx)" testId="btn-winstore-sign" />
         <Big icon={<Cloud size={I} />} label="Cloud signature" disabled={!hasDoc} onClick={() => s.openModal('cloudsign')} tip="Remote qualified signature with a provider's signing service (Cloud Signature Consortium API): sign in through your browser" testId="btn-cloud-sign" />
+        <Big icon={<FileStack size={I} />} label="Sign many files" onClick={() => s.openModal('batchsign')} tip="Sign many PDFs at once with one certificate, token or cloud signature: the PIN is asked once" testId="btn-batch-sign" />
         <ToolBtn tool="field-signature" icon={<PenLine size={I} />} label="Signature field" tip="Draw an empty signature field for someone else to sign" />
       </Group>
       <Group label="Validation">
@@ -618,6 +620,7 @@ function ConvertTab() {
       </Group>
       <Group label="E-invoice">
         <Big icon={<Receipt size={I} />} label="E-invoice" onClick={() => s.openModal('einvoice')} tip="e-Factura, UBL and Factur-X / ZUGFeRD: open invoice XML as a readable PDF, show the invoice inside a PDF, embed an invoice XML" testId="btn-einvoice" />
+        <Big icon={<ReceiptText size={I} />} label="New e-invoice" onClick={() => void import('@/actions/einvoiceCreate').then((m) => m.openNewEInvoice())} tip="Issue an e-Factura (ANAF), Peppol or Factur-X invoice: saved sellers, customers and products, live totals and checks" testId="btn-einvoice-new" />
       </Group>
       <Group label="Many files">
         <Big icon={<FileStack size={I} />} label="Batch" onClick={() => s.openModal('batch')} tip="OCR, compress, watermark, page numbers, PDF/A, protect, sanitize or flatten many PDFs at once, one operation or a saved sequence of steps" testId="btn-batch" />
