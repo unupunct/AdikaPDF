@@ -129,7 +129,7 @@ function PartyFields({ party, onChange, profile, who }: { party: DraftParty; onC
       </Row>
       <Row label={ro ? 'County' : 'Region'}>
         {ro ? (
-          <span data-no-translate>
+          <span data-no-translate className="block">
             <Select
               value={party.region}
               ariaLabel="County"
@@ -143,7 +143,7 @@ function PartyFields({ party, onChange, profile, who }: { party: DraftParty; onC
       </Row>
       <Row label={ro && party.region === 'RO-B' ? 'Sector' : 'City'}>
         {ro && party.region === 'RO-B' ? (
-          <span data-no-translate>
+          <span data-no-translate className="block">
             <Select value={party.city} ariaLabel="Sector" onChange={(v) => onChange({ ...party, city: v })} options={BUCHAREST_SECTORS.map((s) => ({ value: s, label: s }))} />
           </span>
         ) : (
@@ -303,7 +303,7 @@ export function EInvoiceCreateModal() {
         <div className="flex min-w-0 flex-col gap-3">
           <div className="grid grid-cols-3 gap-2">
             <Row label="Seller profile">
-              <span data-no-translate>
+              <span data-no-translate className="block">
                 <Select value={sellerId} ariaLabel="Seller profile" onChange={pickSeller} options={[...book.sellers.map((s) => ({ value: s.id, label: s.party.name || '?' })), { value: '', label: translate('New seller…') }]} />
               </span>
             </Row>
@@ -442,7 +442,7 @@ export function EInvoiceCreateModal() {
             right={
               <div className="flex items-center gap-1">
                 {book.products.length ? (
-                  <span data-no-translate className="w-56">
+                  <span data-no-translate className="block w-56">
                     <Select
                       value=""
                       ariaLabel="Add from catalogue"
@@ -574,12 +574,12 @@ export function EInvoiceCreateModal() {
                 <Textarea rows={2} value={notesText} onChange={(e) => setNotesText(e.target.value)} />
               </Row>
               <Row label="Rounding">
-                <div className="flex gap-1">
+                <span className="flex gap-1">
                   <NumberInput value={draft.rounding} onChange={(n) => patch({ rounding: n })} ariaLabel="Rounding" />
                   <Button size="sm" variant="ghost" onClick={() => patch({ rounding: roundingFor(calc.totals.taxInclusive, calc.totals.prepaid, 1) })} title="Round the amount due to a whole unit">
                     ±1
                   </Button>
-                </div>
+                </span>
               </Row>
             </div>
           </Section>
