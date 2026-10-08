@@ -937,15 +937,17 @@ export interface RemovalResult {
 export interface EditFonts {
   /** Letters the font had but no code reached: a code was added to its encoding. */
   added: string;
-  /** Letters the document's font lacks, drawn in another font (its label, e.g. "Arial (installed)"). */
-  fallback: Array<{ chars: string; font: string }>;
+  /** Letters the document's font lacks, drawn in another font. */
+  fallback: Array<{ chars: string; font: string; installed: boolean }>;
 }
 
 /** A font embedded for letters the document's font lacks (`fontFallback.ts`). */
 export interface FallbackFont {
   /** Its font dictionary. */
   ref: PDFRef;
+  /** Font name shown to the user, and whether it is a font installed in Windows. */
   label: string;
+  installed: boolean;
   has: (ch: string) => boolean;
   /** The letter's code as hex digits. */
   hex: (ch: string) => string;
@@ -1313,7 +1315,7 @@ function nativeText(doc: PDFDocument, it: Interpretation, remove: Set<number>, e
   const ratio = e.sizeRatio && Math.abs(e.sizeRatio - 1) > 1e-3 ? e.sizeRatio : 1;
   const fs = ref.fs * ratio;
   let added = '';
-  const fallback = new Map<string, string>();
+  const fallback = new Map<FallbackFont, string>();
   const hex = (bytes: number[]) => bytes.map((b) => b.toString(16).padStart(2, '0')).join('');
   for (const ch of e.text) {
     const drawn = enc.get(ch);
@@ -1333,8 +1335,8 @@ function nativeText(doc: PDFDocument, it: Interpretation, remove: Set<number>, e
       const ffs = fs * f.sizeRatio;
       items.push({ hex: f.hex(ch), font: { key: fallbackKey(f), fs: ffs } });
       width += (f.width(ch) * ffs + ref.Tc) * ref.Th * ref.s;
-      const got = fallback.get(f.label) ?? '';
-      if (!got.includes(ch)) fallback.set(f.label, got + ch);
+      const got = fallback.get(f) ?? '';
+      if (!got.includes(ch)) fallback.set(f, got + ch);
     }
   }
   const first = it.glyphs[R[0]];
@@ -1353,7 +1355,7 @@ function nativeText(doc: PDFDocument, it: Interpretation, remove: Set<number>, e
     key: ref.key,
     fs,
     restoreFs: ref.fs,
-    fonts: { added, fallback: [...fallback].map(([font, chars]) => ({ font, chars })) },
+    fonts: { added, fallback: [...fallback].map(([f, chars]) => ({ font: f.label, installed: f.installed, chars })) },
   };
 }
 
