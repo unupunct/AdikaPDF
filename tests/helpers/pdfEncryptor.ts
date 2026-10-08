@@ -71,7 +71,7 @@ function aes(bits: 128 | 256, key: Buffer, iv: Buffer, data: Buffer, padding: bo
 /** ISO 32000-2 Algorithm 2.B. */
 function hash2B(pw: Buffer, salt: Buffer, udata: Buffer): Buffer {
   let k = hash('sha256', pw, salt, udata);
-  let e = Buffer.alloc(0);
+  let e: Buffer = Buffer.alloc(0);
   for (let round = 0; round < 64 || e[e.length - 1] > round - 32; round++) {
     const k1 = Buffer.concat(Array(64).fill(Buffer.concat([pw, k, udata])));
     e = aes(128, k.subarray(0, 16), k.subarray(16, 32), k1, false);
