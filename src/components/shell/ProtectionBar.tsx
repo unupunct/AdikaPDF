@@ -48,7 +48,7 @@ export function ProtectionBar() {
       <div className="min-w-0 flex-1 truncate">
         {restricted ? (
           <>
-            <span className="font-medium">This PDF&apos;s owner restricts editing.</span> <span>{allowedText(p)}</span>
+            <span className="font-medium">The owner of this PDF restricts editing.</span> <span>{allowedText(p)}</span>
             {!p.permissions.print ? <> <span>Printing is not allowed.</span></> : null}
             {!p.permissions.copy ? <> <span>Copying text is not allowed.</span></> : null}
           </>

@@ -75,7 +75,7 @@ output file independently with pdf-lib and pdf.js.
 - Self-signed signatures prove integrity, not identity; for eIDAS qualified signatures use a
   certificate from a qualified provider on a token.
 - Redacted pages are rebuilt as images (run OCR afterwards to make them searchable again).
-- Password-protected PDFs open read-only, and so do PDFs restricted by an owner password.
+- Password-protected PDFs (RC4 40–128-bit, AES-128 and AES-256) can be edited and are saved with the same passwords and permissions, also as incremental updates. Opened without the owner password, the owner's restrictions apply as in Acrobat (for example: comments and form filling allowed, page content locked; printing and copying as permitted); "Enter owner password…" lifts them, and with the owner password the protection can also be removed. PDFs encrypted with another security handler still open read-only.
 - PDF/A output carries the required markers and warns about what it cannot fix (e.g. CMYK content); validate critical archives with veraPDF.
 - Form scripts that run too long are stopped and turned off for that document.
 - OCR is statistical: on clean scans most words come out exactly, but check important text (e.g. a capital Ș at the start of a line can be read as S).

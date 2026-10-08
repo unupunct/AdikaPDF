@@ -1,0 +1,210 @@
+{
+  "This PDF's owner does not allow changing its content. Enter the owner password to unlock it.": {
+    "ro": "Proprietarul acestui PDF nu permite modificarea conținutului. Introduceți parola de proprietar pentru a-l debloca.",
+    "de": "Der Eigentümer dieser PDF-Datei erlaubt keine Änderungen am Inhalt. Geben Sie das Besitzerkennwort ein, um sie zu entsperren.",
+    "fr": "Le propriétaire de ce PDF n'autorise pas la modification de son contenu. Saisissez le mot de passe du propriétaire pour le déverrouiller.",
+    "hu": "A PDF tulajdonosa nem engedélyezi a tartalom módosítását. A feloldáshoz adja meg a tulajdonosi jelszót.",
+    "it": "Il proprietario di questo PDF non consente di modificarne il contenuto. Inserisci la password del proprietario per sbloccarlo.",
+    "es": "El propietario de este PDF no permite cambiar su contenido. Introduce la contraseña de propietario para desbloquearlo."
+  },
+  "This PDF's owner does not allow adding, removing or moving pages. Enter the owner password to unlock it.": {
+    "ro": "Proprietarul acestui PDF nu permite adăugarea, eliminarea sau mutarea paginilor. Introduceți parola de proprietar pentru a-l debloca.",
+    "de": "Der Eigentümer dieser PDF-Datei erlaubt kein Hinzufügen, Entfernen oder Verschieben von Seiten. Geben Sie das Besitzerkennwort ein, um sie zu entsperren.",
+    "fr": "Le propriétaire de ce PDF n'autorise pas l'ajout, la suppression ou le déplacement de pages. Saisissez le mot de passe du propriétaire pour le déverrouiller.",
+    "hu": "A PDF tulajdonosa nem engedélyezi oldalak hozzáadását, törlését vagy áthelyezését. A feloldáshoz adja meg a tulajdonosi jelszót.",
+    "it": "Il proprietario di questo PDF non consente di aggiungere, rimuovere o spostare pagine. Inserisci la password del proprietario per sbloccarlo.",
+    "es": "El propietario de este PDF no permite añadir, quitar ni mover páginas. Introduce la contraseña de propietario para desbloquearlo."
+  },
+  "This PDF's owner does not allow comments. Enter the owner password to unlock it.": {
+    "ro": "Proprietarul acestui PDF nu permite comentarii. Introduceți parola de proprietar pentru a-l debloca.",
+    "de": "Der Eigentümer dieser PDF-Datei erlaubt keine Kommentare. Geben Sie das Besitzerkennwort ein, um sie zu entsperren.",
+    "fr": "Le propriétaire de ce PDF n'autorise pas les commentaires. Saisissez le mot de passe du propriétaire pour le déverrouiller.",
+    "hu": "A PDF tulajdonosa nem engedélyezi a megjegyzéseket. A feloldáshoz adja meg a tulajdonosi jelszót.",
+    "it": "Il proprietario di questo PDF non consente i commenti. Inserisci la password del proprietario per sbloccarlo.",
+    "es": "El propietario de este PDF no permite comentarios. Introduce la contraseña de propietario para desbloquearlo."
+  },
+  "This PDF's owner does not allow filling in its form. Enter the owner password to unlock it.": {
+    "ro": "Proprietarul acestui PDF nu permite completarea formularului. Introduceți parola de proprietar pentru a-l debloca.",
+    "de": "Der Eigentümer dieser PDF-Datei erlaubt kein Ausfüllen des Formulars. Geben Sie das Besitzerkennwort ein, um sie zu entsperren.",
+    "fr": "Le propriétaire de ce PDF n'autorise pas le remplissage de son formulaire. Saisissez le mot de passe du propriétaire pour le déverrouiller.",
+    "hu": "A PDF tulajdonosa nem engedélyezi az űrlap kitöltését. A feloldáshoz adja meg a tulajdonosi jelszót.",
+    "it": "Il proprietario di questo PDF non consente di compilarne il modulo. Inserisci la password del proprietario per sbloccarlo.",
+    "es": "El propietario de este PDF no permite rellenar su formulario. Introduce la contraseña de propietario para desbloquearlo."
+  },
+  "This PDF's owner does not allow printing it. Enter the owner password to unlock it.": {
+    "ro": "Proprietarul acestui PDF nu permite tipărirea lui. Introduceți parola de proprietar pentru a-l debloca.",
+    "de": "Der Eigentümer dieser PDF-Datei erlaubt kein Drucken. Geben Sie das Besitzerkennwort ein, um sie zu entsperren.",
+    "fr": "Le propriétaire de ce PDF n'autorise pas son impression. Saisissez le mot de passe du propriétaire pour le déverrouiller.",
+    "hu": "A PDF tulajdonosa nem engedélyezi a nyomtatást. A feloldáshoz adja meg a tulajdonosi jelszót.",
+    "it": "Il proprietario di questo PDF non ne consente la stampa. Inserisci la password del proprietario per sbloccarlo.",
+    "es": "El propietario de este PDF no permite imprimirlo. Introduce la contraseña de propietario para desbloquearlo."
+  },
+  "This PDF's owner does not allow copying or converting its content. Enter the owner password to unlock it.": {
+    "ro": "Proprietarul acestui PDF nu permite copierea sau conversia conținutului. Introduceți parola de proprietar pentru a-l debloca.",
+    "de": "Der Eigentümer dieser PDF-Datei erlaubt kein Kopieren oder Konvertieren des Inhalts. Geben Sie das Besitzerkennwort ein, um sie zu entsperren.",
+    "fr": "Le propriétaire de ce PDF n'autorise pas la copie ni la conversion de son contenu. Saisissez le mot de passe du propriétaire pour le déverrouiller.",
+    "hu": "A PDF tulajdonosa nem engedélyezi a tartalom másolását vagy konvertálását. A feloldáshoz adja meg a tulajdonosi jelszót.",
+    "it": "Il proprietario di questo PDF non consente di copiarne o convertirne il contenuto. Inserisci la password del proprietario per sbloccarlo.",
+    "es": "El propietario de este PDF no permite copiar ni convertir su contenido. Introduce la contraseña de propietario para desbloquearlo."
+  },
+  "This PDF's owner restricts it: a new copy would drop that protection. Enter the owner password to unlock it.": {
+    "ro": "Proprietarul acestui PDF îl restricționează: o copie nouă ar pierde această protecție. Introduceți parola de proprietar pentru a-l debloca.",
+    "de": "Der Eigentümer dieser PDF-Datei schränkt sie ein: Eine neue Kopie würde diesen Schutz verlieren. Geben Sie das Besitzerkennwort ein, um sie zu entsperren.",
+    "fr": "Le propriétaire de ce PDF le restreint : une nouvelle copie perdrait cette protection. Saisissez le mot de passe du propriétaire pour le déverrouiller.",
+    "hu": "A PDF tulajdonosa korlátozza a dokumentumot: egy új másolatból eltűnne ez a védelem. A feloldáshoz adja meg a tulajdonosi jelszót.",
+    "it": "Il proprietario di questo PDF lo limita: una nuova copia perderebbe questa protezione. Inserisci la password del proprietario per sbloccarlo.",
+    "es": "El propietario de este PDF lo restringe: una copia nueva perdería esa protección. Introduce la contraseña de propietario para desbloquearlo."
+  },
+  "Owner password accepted: every restriction is lifted.": {
+    "ro": "Parola de proprietar a fost acceptată: toate restricțiile au fost ridicate.",
+    "de": "Besitzerkennwort akzeptiert: Alle Einschränkungen sind aufgehoben.",
+    "fr": "Mot de passe du propriétaire accepté : toutes les restrictions sont levées.",
+    "hu": "A tulajdonosi jelszó elfogadva: minden korlátozás megszűnt.",
+    "it": "Password del proprietario accettata: tutte le restrizioni sono state rimosse.",
+    "es": "Contraseña de propietario aceptada: se han levantado todas las restricciones."
+  },
+  "Only the owner can remove this PDF's protection. Enter the owner password first.": {
+    "ro": "Doar proprietarul poate elimina protecția acestui PDF. Introduceți mai întâi parola de proprietar.",
+    "de": "Nur der Eigentümer kann den Schutz dieser PDF-Datei entfernen. Geben Sie zuerst das Besitzerkennwort ein.",
+    "fr": "Seul le propriétaire peut supprimer la protection de ce PDF. Saisissez d'abord le mot de passe du propriétaire.",
+    "hu": "A PDF védelmét csak a tulajdonos távolíthatja el. Először adja meg a tulajdonosi jelszót.",
+    "it": "Solo il proprietario può rimuovere la protezione di questo PDF. Inserisci prima la password del proprietario.",
+    "es": "Solo el propietario puede quitar la protección de este PDF. Introduce primero la contraseña de propietario."
+  },
+  "Saving keeps the password protection.": {
+    "ro": "La salvare, protecția cu parolă se păstrează.",
+    "de": "Beim Speichern bleibt der Kennwortschutz erhalten.",
+    "fr": "L'enregistrement conserve la protection par mot de passe.",
+    "hu": "Mentéskor a jelszavas védelem megmarad.",
+    "it": "Il salvataggio mantiene la protezione con password.",
+    "es": "Al guardar se mantiene la protección con contraseña."
+  },
+  "The password protection is removed when you save.": {
+    "ro": "Protecția cu parolă va fi eliminată la salvare.",
+    "de": "Der Kennwortschutz wird beim Speichern entfernt.",
+    "fr": "La protection par mot de passe sera supprimée à l'enregistrement.",
+    "hu": "A jelszavas védelem mentéskor eltávolításra kerül.",
+    "it": "La protezione con password verrà rimossa al salvataggio.",
+    "es": "La protección con contraseña se quitará al guardar."
+  },
+  "The password protection is being removed.": {
+    "ro": "Protecția cu parolă este eliminată.",
+    "de": "Der Kennwortschutz wird entfernt.",
+    "fr": "La protection par mot de passe est en cours de suppression.",
+    "hu": "A jelszavas védelem eltávolítás alatt áll.",
+    "it": "La protezione con password viene rimossa.",
+    "es": "Se está quitando la protección con contraseña."
+  },
+  "Owner password": {
+    "ro": "Parola de proprietar",
+    "de": "Besitzerkennwort",
+    "fr": "Mot de passe du propriétaire",
+    "hu": "Tulajdonosi jelszó",
+    "it": "Password del proprietario",
+    "es": "Contraseña de propietario"
+  },
+  "The owner password of “{0}” lifts its restrictions.": {
+    "ro": "Parola de proprietar a documentului „{0}” ridică restricțiile acestuia.",
+    "de": "Das Besitzerkennwort von „{0}“ hebt seine Einschränkungen auf.",
+    "fr": "Le mot de passe du propriétaire de « {0} » lève ses restrictions.",
+    "hu": "A(z) „{0}” tulajdonosi jelszava feloldja a korlátozásait.",
+    "it": "La password del proprietario di «{0}» ne rimuove le restrizioni.",
+    "es": "La contraseña de propietario de «{0}» levanta sus restricciones."
+  },
+  "The owner of this PDF restricts editing.": {
+    "ro": "Proprietarul acestui PDF restricționează editarea.",
+    "de": "Der Eigentümer dieser PDF-Datei schränkt die Bearbeitung ein.",
+    "fr": "Le propriétaire de ce PDF restreint la modification.",
+    "hu": "A PDF tulajdonosa korlátozza a szerkesztést.",
+    "it": "Il proprietario di questo PDF limita la modifica.",
+    "es": "El propietario de este PDF restringe la edición."
+  },
+  "You can edit it, add comments and fill in fields.": {
+    "ro": "Îl puteți edita, puteți adăuga comentarii și completa câmpuri.",
+    "de": "Sie können sie bearbeiten, Kommentare hinzufügen und Felder ausfüllen.",
+    "fr": "Vous pouvez le modifier, ajouter des commentaires et remplir des champs.",
+    "hu": "Szerkesztheti, megjegyzéseket fűzhet hozzá és kitöltheti a mezőket.",
+    "it": "Puoi modificarlo, aggiungere commenti e compilare i campi.",
+    "es": "Puedes editarlo, añadir comentarios y rellenar campos."
+  },
+  "You can edit its content and fill in fields.": {
+    "ro": "Puteți edita conținutul și completa câmpuri.",
+    "de": "Sie können den Inhalt bearbeiten und Felder ausfüllen.",
+    "fr": "Vous pouvez modifier son contenu et remplir des champs.",
+    "hu": "Szerkesztheti a tartalmát és kitöltheti a mezőket.",
+    "it": "Puoi modificarne il contenuto e compilare i campi.",
+    "es": "Puedes editar su contenido y rellenar campos."
+  },
+  "You can add comments and fill in fields.": {
+    "ro": "Puteți adăuga comentarii și completa câmpuri.",
+    "de": "Sie können Kommentare hinzufügen und Felder ausfüllen.",
+    "fr": "Vous pouvez ajouter des commentaires et remplir des champs.",
+    "hu": "Megjegyzéseket fűzhet hozzá és kitöltheti a mezőket.",
+    "it": "Puoi aggiungere commenti e compilare i campi.",
+    "es": "Puedes añadir comentarios y rellenar campos."
+  },
+  "You can fill in fields.": {
+    "ro": "Puteți completa câmpuri.",
+    "de": "Sie können Felder ausfüllen.",
+    "fr": "Vous pouvez remplir des champs.",
+    "hu": "Kitöltheti a mezőket.",
+    "it": "Puoi compilare i campi.",
+    "es": "Puedes rellenar campos."
+  },
+  "You can read it, but not change it.": {
+    "ro": "Îl puteți citi, dar nu și modifica.",
+    "de": "Sie können sie lesen, aber nicht ändern.",
+    "fr": "Vous pouvez le lire, mais pas le modifier.",
+    "hu": "Elolvashatja, de nem módosíthatja.",
+    "it": "Puoi leggerlo, ma non modificarlo.",
+    "es": "Puedes leerlo, pero no cambiarlo."
+  },
+  "Printing is not allowed.": {
+    "ro": "Tipărirea nu este permisă.",
+    "de": "Drucken ist nicht erlaubt.",
+    "fr": "L'impression n'est pas autorisée.",
+    "hu": "A nyomtatás nem engedélyezett.",
+    "it": "La stampa non è consentita.",
+    "es": "No se permite imprimir."
+  },
+  "Copying text is not allowed.": {
+    "ro": "Copierea textului nu este permisă.",
+    "de": "Kopieren von Text ist nicht erlaubt.",
+    "fr": "La copie du texte n'est pas autorisée.",
+    "hu": "A szöveg másolása nem engedélyezett.",
+    "it": "La copia del testo non è consentita.",
+    "es": "No se permite copiar texto."
+  },
+  "This PDF is password-protected: saving keeps the same passwords and permissions.": {
+    "ro": "Acest PDF este protejat cu parolă: la salvare se păstrează aceleași parole și permisiuni.",
+    "de": "Diese PDF-Datei ist kennwortgeschützt: Beim Speichern bleiben dieselben Kennwörter und Berechtigungen erhalten.",
+    "fr": "Ce PDF est protégé par mot de passe : l'enregistrement conserve les mêmes mots de passe et autorisations.",
+    "hu": "Ez a PDF jelszóval védett: mentéskor ugyanazok a jelszavak és engedélyek maradnak érvényben.",
+    "it": "Questo PDF è protetto da password: il salvataggio mantiene le stesse password e autorizzazioni.",
+    "es": "Este PDF está protegido con contraseña: al guardar se mantienen las mismas contraseñas y permisos."
+  },
+  "Enter owner password…": {
+    "ro": "Introduceți parola de proprietar…",
+    "de": "Besitzerkennwort eingeben…",
+    "fr": "Saisir le mot de passe du propriétaire…",
+    "hu": "Tulajdonosi jelszó megadása…",
+    "it": "Inserisci la password del proprietario…",
+    "es": "Introducir contraseña de propietario…"
+  },
+  "Remove protection": {
+    "ro": "Eliminați protecția",
+    "de": "Schutz entfernen",
+    "fr": "Supprimer la protection",
+    "hu": "Védelem eltávolítása",
+    "it": "Rimuovi protezione",
+    "es": "Quitar protección"
+  },
+  "Keep protection": {
+    "ro": "Păstrați protecția",
+    "de": "Schutz beibehalten",
+    "fr": "Conserver la protection",
+    "hu": "Védelem megtartása",
+    "it": "Mantieni protezione",
+    "es": "Mantener protección"
+  }
+}
