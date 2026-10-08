@@ -4,3 +4,4 @@ public/tesseract
 public/pdfjs
 *.log
 .tools
+release-assets
