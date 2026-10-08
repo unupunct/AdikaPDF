@@ -73,11 +73,15 @@ export class FontCodes {
   /** Codes added here (simple fonts) or CIDs (Type0) -> their width in em. */
   private readonly addedWidths = new Map<number, number>();
 
-  constructor(
-    private readonly doc: PDFDocument,
-    private readonly dict: PDFDict,
-    private readonly info: FontInfo,
-  ) {
+  // Plain fields (no parameter properties): E2E loads this file with Node's type stripping.
+  private readonly doc: PDFDocument;
+  private readonly dict: PDFDict;
+  private readonly info: FontInfo;
+
+  constructor(doc: PDFDocument, dict: PDFDict, info: FontInfo) {
+    this.doc = doc;
+    this.dict = dict;
+    this.info = info;
     const st = dict.lookup(PDFName.of('Subtype'));
     this.subtype = st instanceof PDFName ? st.decodeText() : '';
     const descs = dict.lookup(PDFName.of('DescendantFonts'));

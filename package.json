@@ -19,7 +19,7 @@
     "desktop:build": "tauri build",
     "desktop:build:release": "node scripts/build-release.mjs",
     "release:assets": "node scripts/release-assets.mjs",
-    "test:e2e": "node tests/e2e/suite.mjs",
+    "test:e2e": "node --import ./tests/e2e/tsResolve.mjs tests/e2e/suite.mjs",
     "test:e2e:installed": "node tests/e2e/open-with.mjs"
   },
   "dependencies": {
