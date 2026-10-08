@@ -1,0 +1,26 @@
+{
+  "“{0}” was drawn in {1} (installed in Windows) because the document's font did not include it.": {
+    "ro": "„{0}” a fost scris cu fontul {1} (instalat în Windows), pentru că fontul documentului nu îl conținea.",
+    "de": "„{0}“ wurde in {1} (in Windows installiert) gezeichnet, weil die Schrift des Dokuments es nicht enthielt.",
+    "fr": "« {0} » a été dessiné avec {1} (installée dans Windows), car la police du document ne le contenait pas.",
+    "hu": "A(z) „{0}” a(z) {1} betűtípussal (Windowsban telepítve) készült, mert a dokumentum betűtípusa nem tartalmazta.",
+    "it": "«{0}» è stato disegnato con {1} (installato in Windows), perché il carattere del documento non lo conteneva.",
+    "es": "«{0}» se dibujó con {1} (instalada en Windows), porque la fuente del documento no lo incluía."
+  },
+  "“{0}” was drawn in {1} because the document's font did not include it.": {
+    "ro": "„{0}” a fost scris cu fontul {1}, pentru că fontul documentului nu îl conținea.",
+    "de": "„{0}“ wurde in {1} gezeichnet, weil die Schrift des Dokuments es nicht enthielt.",
+    "fr": "« {0} » a été dessiné avec {1}, car la police du document ne le contenait pas.",
+    "hu": "A(z) „{0}” a(z) {1} betűtípussal készült, mert a dokumentum betűtípusa nem tartalmazta.",
+    "it": "«{0}» è stato disegnato con {1}, perché il carattere del documento non lo conteneva.",
+    "es": "«{0}» se dibujó con {1}, porque la fuente del documento no lo incluía."
+  },
+  "Installed fonts": {
+    "ro": "Fonturile instalate",
+    "de": "Installierte Schriftarten",
+    "fr": "Les polices installées",
+    "hu": "A telepített betűtípusok",
+    "it": "I caratteri installati",
+    "es": "Las fuentes instaladas"
+  }
+}

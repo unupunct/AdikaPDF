@@ -8,6 +8,7 @@ import { buildPdf, ExportError, type ExportOptions, type RasterResult } from '@/
 import { PasswordRequiredError, canvasToBytes, rasterizePage } from '@/lib/pdf/pdfService';
 import { fileStamp, pickFiles, readFile, type FileFilter } from '@/lib/platform';
 import { saveFile } from './saveGuard';
+import { tellFontFallbacks } from './fontNotes';
 import { allowUnprotectedCopy, protectForSave } from './protection';
 import { activeTabIsEmpty, newTab, removeTab, switchTab, tabWithPath, useTabs } from '@/store/tabs';
 import { addRecent } from '@/lib/recent';
@@ -263,6 +264,7 @@ export async function exportCurrentPdf(
     fieldDisplay: formattedDisplay(input.fieldValues),
     rasterizeRedactedPage: rasterizeWithRedactions,
     onProgress: (m, f) => progress?.(m, f),
+    onFontFallback: tellFontFallbacks,
     ...extra,
   });
 }

@@ -1,6 +1,7 @@
 // Find & replace, Find & redact, and the update notice — included by suite.mjs.
-import { readFileSync } from 'node:fs';
-import { PDFDocument as PD, StandardFonts } from 'pdf-lib';
+import { existsSync, readFileSync } from 'node:fs';
+import { PDFDocument as PD, PDFName, StandardFonts } from 'pdf-lib';
+import fontkit from '@pdf-lib/fontkit';
 
 export function registerReplaceTests(test, ctx) {
   const { S, page, dir, open, idle, savedFile, assert, pdfText, join, writeFileSync, F } = ctx;
@@ -67,6 +68,36 @@ export function registerReplaceTests(test, ctx) {
     for (const gone of ['Popescu', 'firma', 'RO49', '9384', '722']) assert(!text.includes(gone), `"${gone}" removed (${text})`);
     assert(/Contract 17\/2026 total 1111\.50 EUR/.test(flat(text)), 'the rest of the page is still real text (not a picture)');
     assert(text.includes('Client:') && text.includes('IBAN'), 'labels kept');
+  });
+
+  // Round 13, not yet run against a release build.
+  test('find & replace: a letter missing from the subset font is drawn in the installed typeface, the rest stays in the document font', async () => {
+    const arialPath = 'C:\\Windows\\Fonts\\arial.ttf';
+    if (!existsSync(arialPath)) return;
+    const d = await PD.create();
+    d.registerFontkit(fontkit);
+    // A subset of Arial with only the letters drawn: no Ș.
+    const font = await d.embedFont(readFileSync(arialPath), { subset: true });
+    d.addPage([595, 842]).drawText('Semnat de Stefan Ionescu, Bucuresti', { x: 60, y: 760, size: 12, font });
+    const path = join(dir, 'subset-font.pdf');
+    writeFileSync(path, await d.save());
+    await open(path);
+    await page.keyboard.press('Control+h');
+    await page.waitForSelector('[data-testid="replace-input"]');
+    await page.fill('[data-testid="search-input"]', 'Stefan');
+    await page.fill('[data-testid="replace-input"]', 'Ștefan');
+    await page.click('[data-testid="replace-all"]');
+    await page.waitForFunction(() => window.__adika.store.getState().toasts.some((t) => /“Ș” was drawn in Arial \(installed in Windows\)/.test(t.message)), null, { timeout: 30000 });
+    await idle();
+    await page.keyboard.press('Escape');
+    await page.keyboard.press('Control+Shift+s');
+    await idle();
+    const saved = await savedFile(/subset-font\.pdf$/);
+    const [text] = await pdfText(saved);
+    assert(/Semnat de\s*Ștefan Ionescu, Bucuresti/.test(flat(text)), `new text reads back exactly (${flat(text)})`);
+    const out = await PD.load(readFileSync(saved));
+    const fonts = out.getPage(0).node.Resources().lookup(PDFName.of('Font'));
+    assert(fonts.keys().length === 2, 'the document font plus one fallback font for Ș');
   });
 
   test('updates: About shows the real version; a newer release shows a notice that can be dismissed', async () => {

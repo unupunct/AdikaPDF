@@ -11,8 +11,12 @@
 import { PDFDocument, type PDFFont } from 'pdf-lib';
 import fontkit from '@pdf-lib/fontkit';
 
-/** Embeds `fontBytes` into `doc`, keeping outlines only for glyphs used by `texts`. */
-export async function embedFontForText(doc: PDFDocument, fontBytes: Uint8Array, texts: Iterable<string>): Promise<PDFFont> {
+/**
+ * Embeds `fontBytes` into `doc`, keeping outlines only for glyphs used by
+ * `texts` (`prune: false` embeds the whole font, for licences that forbid subsetting).
+ */
+export async function embedFontForText(doc: PDFDocument, fontBytes: Uint8Array, texts: Iterable<string>, opts: { prune?: boolean } = {}): Promise<PDFFont> {
+  if (opts.prune === false) return doc.embedFont(fontBytes, { subset: false });
   const scratch = await PDFDocument.create();
   scratch.registerFontkit(fontkit);
   const measuring = await scratch.embedFont(fontBytes, { subset: false });

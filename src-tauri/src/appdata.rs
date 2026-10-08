@@ -7,7 +7,7 @@ use percent_encoding::percent_decode_str;
 use std::path::PathBuf;
 use tauri::ipc::{InvokeBody, Request, Response};
 
-fn root() -> PathBuf {
+pub(crate) fn root() -> PathBuf {
     if let Some(dir) = std::env::var_os("ADIKA_DATA_DIR") {
         return PathBuf::from(dir);
     }

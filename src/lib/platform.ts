@@ -452,6 +452,44 @@ export async function appDataWrite(name: string, bytes: Uint8Array): Promise<voi
   await invoke('appdata_write', bytes, { headers: { 'x-name': encodeURIComponent(name) } });
 }
 
+// ---------------------------------------------------------------- installed fonts
+
+/** A font installed in Windows (one face of a font file). */
+export interface SystemFont {
+  path: string;
+  /** Face index in a .ttc / .otc collection. */
+  index: number;
+  family: string;
+  subfamily: string;
+  typoFamily: string;
+  typoSubfamily: string;
+  fullName: string;
+  postscript: string;
+  weight: number;
+  italic: boolean;
+  bold: boolean;
+  /** OS/2 embedding permissions (bit 2 = restricted: may not be embedded). */
+  fsType: number;
+}
+
+let systemFontList: Promise<SystemFont[]> | null = null;
+
+/** The fonts installed in Windows (system and per-user folders); empty outside the desktop app. */
+export function systemFonts(): Promise<SystemFont[]> {
+  if (!isDesktop) return Promise.resolve([]);
+  if (!systemFontList) {
+    systemFontList = invoke<SystemFont[]>('system_fonts');
+    systemFontList.catch(() => (systemFontList = null));
+  }
+  return systemFontList;
+}
+
+/** An installed font file's bytes (only files in the Windows font folders can be read). */
+export async function readSystemFont(path: string): Promise<Uint8Array> {
+  if (!isDesktop) throw new DesktopOnlyError('Installed fonts');
+  return new Uint8Array(await invoke<ArrayBuffer>('system_font_read', { path }));
+}
+
 // ---------------------------------------------------------------- Windows certificate store
 
 export interface StoreCertificate {
