@@ -6,7 +6,7 @@
  *
  *   node scripts/release-assets.mjs [--out dir] [--notes "text" | --notes-file notes.md] [--bundle-dir dir]
  *
- * Upload all three files to the release v<version> (gh release upload v<v> <out>/*):
+ * Upload all three files to the release v<version> (the command is printed):
  * the updater reads releases/latest/download/latest.json, whose url must name
  * exactly the uploaded installer.
  */
@@ -66,9 +66,10 @@ export function main(argv = process.argv.slice(2)) {
   fs.copyFileSync(exe, path.join(out, installerName(version)));
   fs.writeFileSync(path.join(out, `${installerName(version)}.sig`), signature);
   fs.writeFileSync(path.join(out, 'latest.json'), `${JSON.stringify(latest, null, 2)}\n`);
+  const files = [installerName(version), `${installerName(version)}.sig`, 'latest.json'];
   console.log(`Release assets for v${version} in ${out}:`);
-  for (const f of [installerName(version), `${installerName(version)}.sig`, 'latest.json']) console.log(`  ${f}`);
-  console.log(`Upload: gh release upload v${version} "${path.join(out, '*')}" (or list the three files)`);
+  for (const f of files) console.log(`  ${f}`);
+  console.log(`Upload: gh release upload v${version} ${files.map((f) => `"${path.join(out, f)}"`).join(' ')}`);
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
