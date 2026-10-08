@@ -108,8 +108,11 @@ export function registerUx4Tests(test, ctx) {
       return { name: s.fileName, rot: s.pages[1].userRotation, dirty: s.dirty };
     });
     assert(there.name === 'fereastra.pdf' && there.rot === 90 && there.dirty, `document in the new window (${JSON.stringify(there)})`);
-    const here = await S(() => window.__adika.store.getState().pages.length);
-    assert(here === 0, 'gone from the first window');
+    // The first window lets go of the tab once the new one confirms it has the document.
+    const gone = await page
+      .waitForFunction(() => window.__adika.store.getState().pages.length === 0, null, { timeout: 15000 })
+      .then(() => true, () => false);
+    assert(gone, 'gone from the first window');
     await win.evaluate(() => window.__adika.closeWindow()).catch(() => undefined);
   });
 }

@@ -34,9 +34,16 @@ export async function launchApp({ args = [], port = 9333, exe = EXE, recoveryDir
       await new Promise((r) => setTimeout(r, 300));
     }
   }
+  // Tests read the clipboard: grant it up front, or WebView2 shows a permission prompt nobody answers.
+  try {
+    const cdp = await browser.newBrowserCDPSession();
+    await cdp.send('Browser.grantPermissions', { origin: 'http://tauri.localhost', permissions: ['clipboardReadWrite', 'clipboardSanitizedWrite'] });
+  } catch {
+    /* older WebView2: the clipboard checks may then prompt */
+  }
   let page;
   while (!page) {
-    page = browser.contexts()[0]?.pages().find((p) => !p.url().startsWith('devtools'));
+    page = browser.contexts()[0]?.pages().find((p) => !p.url().startsWith('devtools') && !p.url().startsWith('edge://'));
     if (!page) await new Promise((r) => setTimeout(r, 200));
   }
   await page.waitForFunction(() => window.__adika && document.querySelector('[data-testid="app-root"]'), null, { timeout: 30000 });

@@ -601,8 +601,8 @@ async function fontStyles(page: PDFPageProxy, names: Set<string>): Promise<Map<s
   return out;
 }
 
-async function positionedItems(page: PDFPageProxy, detectBold: boolean): Promise<{ items: PositionedItem[]; viewport: PageViewport }> {
-  const viewport = page.getViewport({ scale: 1 });
+async function positionedItems(page: PDFPageProxy, detectBold: boolean, rotation?: number): Promise<{ items: PositionedItem[]; viewport: PageViewport }> {
+  const viewport = rotation === undefined ? page.getViewport({ scale: 1 }) : page.getViewport({ scale: 1, rotation });
   const content = await page.getTextContent();
   const styles = content.styles as Record<string, TextStyle>;
   const textItems = content.items.filter((it): it is TextItem => 'str' in it);
@@ -646,9 +646,15 @@ export async function extractStructuredText(
   onProgress?.(0, pages.length);
   for (let i = 0; i < pages.length; i++) {
     const page = await pdf.getPage(pages[i]);
-    const { items, viewport } = await positionedItems(page, opts.detectBold ?? true);
+    let { items, viewport } = await positionedItems(page, opts.detectBold ?? true);
     // Only horizontal text takes part in line grouping.
-    const horizontal = items.filter((it) => Math.abs(it.angle) < 0.05);
+    let horizontal = items.filter((it) => Math.abs(it.angle) < 0.05);
+    // A page turned with /Rotate whose text runs along the unturned page: read it unturned.
+    if (page.rotate % 360 !== 0 && horizontal.length * 2 < items.length) {
+      const flat = await positionedItems(page, opts.detectBold ?? true, 0);
+      const flatHorizontal = flat.items.filter((it) => Math.abs(it.angle) < 0.05);
+      if (flatHorizontal.length > horizontal.length) ({ items, viewport, horizontal } = { ...flat, horizontal: flatHorizontal });
+    }
     const lines = assignTableColumns(groupTextItems(horizontal));
     out.push({ pageNumber: pages[i], width: viewport.width, height: viewport.height, lines });
     page.cleanup();
