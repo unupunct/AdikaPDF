@@ -5,7 +5,7 @@
  * vector output. If the PDF engine is unavailable, pages are printed as
  * 300 DPI images instead.
  */
-import { usePDFStore } from '@/store/usePDFStore';
+import { blockedReason, usePDFStore } from '@/store/usePDFStore';
 import { exportCurrentPdf, withBusy } from './document';
 import { rasterizePage, canvasToBytes } from '@/lib/pdf/pdfService';
 import type { PrintLayout } from '@/lib/pdf/impose';
@@ -47,6 +47,8 @@ export function e2eInterceptPrint(fn: ((bytes: Uint8Array) => void) | null): voi
 export async function printDocument(opts: PrintOptions = {}): Promise<void> {
   const store = usePDFStore.getState();
   if (store.pages.length === 0) return;
+  const why = blockedReason(store, 'print');
+  if (why) return store.toast(why, 'info');
   const data = await prepare(opts);
   if (!data) return;
   if (printInterceptor) {

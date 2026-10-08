@@ -6,7 +6,7 @@
  * lib/pdf/fileAnnots.ts).
  */
 import type { PDFDocument } from 'pdf-lib';
-import { usePDFStore } from '@/store/usePDFStore';
+import { blockedReason, usePDFStore } from '@/store/usePDFStore';
 import { getAnnotations, onSourceRelease, openPdf, setHiddenAnnotations } from '@/lib/pdf/pdfService';
 import { totalRotation } from '@/lib/geometry';
 import { uid } from '@/lib/uid';
@@ -105,11 +105,9 @@ async function stampPicture(page: PageRef, id: string): Promise<string | null> {
 
 function canEdit(): boolean {
   const s = usePDFStore.getState();
-  if (s.readOnlyReason) {
-    s.toast(s.readOnlyReason, 'info');
-    return false;
-  }
-  return true;
+  const why = blockedReason(s, 'comments');
+  if (why) s.toast(why, 'info');
+  return !why;
 }
 
 /** Turns a comment of the file into an editor object and selects it. */

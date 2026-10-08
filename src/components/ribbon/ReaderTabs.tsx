@@ -73,7 +73,7 @@ import { MeasureGroup } from './MeasureTools';
 import { useAutoScroll } from '@/components/viewer/AutoScroll';
 import { toggleSplit, useSplit } from '@/components/viewer/SplitView';
 import { getAuthor, setAuthor } from '@/lib/author';
-import { usePDFStore } from '@/store/usePDFStore';
+import { blockedReason, toolEditKind, usePDFStore } from '@/store/usePDFStore';
 import { useStorePick } from '@/hooks/useStorePick';
 import { closeDocumentAction, openDialog, openPdfPath, saveDocument } from '@/actions/document';
 import { DropdownContent, DropdownItem, DropdownMenu, DropdownSeparator, DropdownTrigger, Tooltip } from '@/components/ui/primitives';
@@ -157,8 +157,8 @@ export function Stack({ children }: { children: ReactNode }) {
 
 export function ToolBtn({ tool, icon, label, tip, big = true }: { tool: ToolId; icon: ReactNode; label: string; tip?: string; big?: boolean }) {
   const active = usePDFStore((s) => s.tool === tool);
-  const reading = tool === 'selectText' || tool === 'pan' || tool === 'select' || tool === 'snapshot';
-  const enabled = usePDFStore((s) => s.pages.length > 0 && (reading || !s.readOnlyReason));
+  const kind = toolEditKind(tool);
+  const enabled = usePDFStore((s) => s.pages.length > 0 && (!kind || !blockedReason(s, kind)));
   const setTool = usePDFStore((s) => s.setTool);
   const B = big ? Big : Small;
   return <B icon={icon} label={label} tip={tip} active={active} disabled={!enabled} onClick={() => setTool(active && tool !== 'selectText' ? 'selectText' : tool)} testId={`tool-${tool}`} />;
@@ -269,7 +269,7 @@ export function PageNavigator() {
 // ------------------------------------------------------------------ Home
 
 export function HomeTab() {
-  const s = useStorePick('fitMode', 'goBack', 'goForward', 'navBack', 'navForward', 'openModal', 'pages', 'readOnlyReason', 'redo', 'setSearch', 'setZoom', 'undo', 'zoom');
+  const s = useStorePick('fitMode', 'goBack', 'goForward', 'navBack', 'navForward', 'openModal', 'pages', 'protection', 'readOnlyReason', 'redo', 'setSearch', 'setZoom', 'undo', 'zoom');
   const canUndo = usePDFStore((st) => st.past.length > 0);
   const canRedo = usePDFStore((st) => st.future.length > 0);
   const hasDoc = s.pages.length > 0;
@@ -329,8 +329,8 @@ export function HomeTab() {
         <Big icon={<FolderSearch size={I} />} label="Search folders" onClick={() => s.openModal('foldersearch')} tip="Search the text of every PDF in chosen folders" testId="btn-foldersearch" />
       </Group>
       <Group label="Quick actions">
-        <Big icon={<Signature size={I} />} label="Fill & Sign" disabled={!editable} onClick={() => s.openModal('signature')} />
-        <Big icon={<LayoutGrid size={I} />} label="Organize" disabled={!editable} onClick={() => s.openModal('organizer')} />
+        <Big icon={<Signature size={I} />} label="Fill & Sign" disabled={!hasDoc || !!blockedReason(s, 'forms')} onClick={() => s.openModal('signature')} />
+        <Big icon={<LayoutGrid size={I} />} label="Organize" disabled={!hasDoc || !!blockedReason(s, 'pages')} onClick={() => s.openModal('organizer')} />
         <Big icon={<FileOutput size={I} />} label="Export" disabled={!hasDoc} onClick={() => s.openModal('export')} />
         <Big icon={<Wrench size={I} />} label="Tools" onClick={() => s.openModal('tools')} tip="PDF to Word, JPG to PDF, Merge, Compress…" testId="btn-tools" />
       </Group>

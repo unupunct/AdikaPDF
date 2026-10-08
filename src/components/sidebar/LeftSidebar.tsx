@@ -5,7 +5,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { MessagesSquare, Bookmark, FileSearch, Layers as LayersIcon, LayoutGrid, Paperclip, Save, ExternalLink, Tags as TagsIcon } from 'lucide-react';
 import { TagsPanel } from './TagsPanel';
-import { usePDFStore, type SidebarTab } from '@/store/usePDFStore';
+import { blockedReason, usePDFStore, type SidebarTab } from '@/store/usePDFStore';
 import { ThumbnailSidebar } from './ThumbnailSidebar';
 import { Tooltip } from '@/components/ui/primitives';
 import { getEmbeddedFiles, getLayerConfig, type EmbeddedFile } from '@/lib/pdf/pdfService';
@@ -180,7 +180,7 @@ function LayersPanel() {
     usePDFStore.getState().bumpRenderEpoch();
     await load();
   };
-  const readOnly = usePDFStore((s) => s.readOnlyReason !== null);
+  const readOnly = usePDFStore((s) => blockedReason(s, 'content') !== null);
   const chosen = (rows ?? []).filter((r) => selected.includes(rowKey(r)));
   // Layer edits work within one document: the first selected layer's.
   const sameSource = chosen.filter((r) => r.sourceId === chosen[0]?.sourceId);

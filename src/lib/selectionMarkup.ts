@@ -4,7 +4,7 @@
  * converted to page display coordinates and merged per line.
  */
 import type { MarkupKind } from '@/types';
-import { usePDFStore } from '@/store/usePDFStore';
+import { blockedReason, usePDFStore } from '@/store/usePDFStore';
 import { makeMarkup } from './objectFactory';
 import { getAuthor } from './author';
 
@@ -62,8 +62,9 @@ export function selectionByPage(): Array<{ pageId: string; boxes: Box[]; text: s
 /** Creates markup for the current selection; returns how many pages got markup. */
 export function applyMarkupToSelection(kind: MarkupKind): number {
   const store = usePDFStore.getState();
-  if (store.readOnlyReason) {
-    store.toast(store.readOnlyReason, 'error');
+  const why = blockedReason(store, 'comments');
+  if (why) {
+    store.toast(why, 'error');
     return 0;
   }
   const groups = selectionByPage();

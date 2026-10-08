@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { CaseSensitive, ChevronDown, ChevronUp, List, Loader2, Replace, WholeWord, X } from 'lucide-react';
-import { usePDFStore } from '@/store/usePDFStore';
+import { blockedReason, usePDFStore } from '@/store/usePDFStore';
 import { searchDocument } from '@/lib/search';
 import { useTabs } from '@/store/tabs';
 import { Button, Input } from '@/components/ui/primitives';
@@ -31,7 +31,7 @@ export function SearchBar() {
   const showReplace = usePDFStore((s) => s.search.replace ?? false);
   const [replacement, setReplacement] = useState('');
   const [replacing, setReplacing] = useState(false);
-  const readOnly = usePDFStore((s) => !!s.readOnlyReason);
+  const readOnly = usePDFStore((s) => !!blockedReason(s, 'content'));
 
   const doReplaceAll = async () => {
     const q = usePDFStore.getState().search.query;

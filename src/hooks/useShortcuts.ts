@@ -1,6 +1,6 @@
 /** Global keyboard shortcuts. Ignored while typing in inputs. */
 import { useEffect } from 'react';
-import { usePDFStore } from '@/store/usePDFStore';
+import { blockedReason, toolEditKind, usePDFStore } from '@/store/usePDFStore';
 import { closeDocumentAction, openDialog, saveDocument } from '@/actions/document';
 import { cycleTab } from '@/store/tabs';
 import { readCurrentPage, readToEnd, stopReading, togglePauseReading } from '@/actions/readingAids';
@@ -239,7 +239,8 @@ export function useShortcuts(): void {
         }
         return;
       }
-      if (!mod && !e.altKey && TOOL_KEYS[key] && !s.readOnlyReason) {
+      const toolKind = TOOL_KEYS[key] ? toolEditKind(TOOL_KEYS[key]) : null;
+      if (!mod && !e.altKey && TOOL_KEYS[key] && !s.readOnlyReason && !(toolKind && blockedReason(s, toolKind))) {
         s.setTool(TOOL_KEYS[key]);
         return;
       }
