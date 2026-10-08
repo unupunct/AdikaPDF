@@ -14,7 +14,7 @@ import type { EditorObject, FieldKind, LineObject, NoteObject, PageRef, TextObje
 import { NotePopup } from './NotePopup';
 import { getAuthor } from '@/lib/author';
 import { isTextTool } from '@/lib/tools';
-import { usePDFStore } from '@/store/usePDFStore';
+import { blockedReason, toolEditKind, usePDFStore } from '@/store/usePDFStore';
 import { displaySize, normalizeAngle, normalizeRect, objectDisplayBounds, type Rect as R } from '@/lib/geometry';
 import {
   defaultFieldSize,
@@ -79,6 +79,11 @@ export function PageOverlay({ page, zoom }: { page: PageRef; zoom: number }) {
   const hits = usePDFStore((s) => s.search.hits);
   const activeHit = usePDFStore((s) => s.search.active);
   const readOnly = usePDFStore((s) => s.readOnlyReason !== null);
+  // The owner's restrictions: e.g. comments allowed, page content not.
+  const toolBlocked = usePDFStore((s) => {
+    const kind = toolEditKind(s.tool);
+    return !!kind && !!blockedReason(s, kind);
+  });
 
   const objects = useMemo(() => allObjects.filter((o) => o.pageId === page.id), [allObjects, page.id]);
   const selectedHere = useMemo(() => objects.filter((o) => selectedIds.includes(o.id)), [objects, selectedIds]);
@@ -409,6 +414,11 @@ export function PageOverlay({ page, zoom }: { page: PageRef; zoom: number }) {
   const onStagePointerDown = (e: Konva.KonvaEventObject<PointerEvent>) => {
     // Snapshots are a reading feature: they also work on read-only documents.
     if (e.evt.button !== 0 || (readOnly && tool !== 'snapshot')) return;
+    if (toolBlocked) {
+      const s = usePDFStore.getState();
+      s.toast(blockedReason(s, toolEditKind(tool)!) ?? '', 'info');
+      return;
+    }
     const store = usePDFStore.getState();
     const clickedEmpty = e.target === e.target.getStage() || e.target.name() === 'hit-bg';
     const p = clampPoint(pointFromClient(e.evt.clientX, e.evt.clientY));

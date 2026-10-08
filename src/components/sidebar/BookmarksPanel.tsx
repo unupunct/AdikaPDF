@@ -5,7 +5,7 @@
  */
 import { useEffect, useRef, useState } from 'react';
 import { BookmarkPlus, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Pencil, Trash2 } from 'lucide-react';
-import { usePDFStore } from '@/store/usePDFStore';
+import { blockedReason, usePDFStore } from '@/store/usePDFStore';
 import { Tooltip } from '@/components/ui/primitives';
 import { goToDestination } from '@/components/viewer/ReaderLayers';
 import { openExternal } from '@/lib/platform';
@@ -31,7 +31,7 @@ function useSources(): Array<{ id: string }> {
 export function BookmarksPanel() {
   const outline = usePDFStore((s) => s.outline);
   const pages = usePDFStore((s) => s.pages);
-  const readOnly = usePDFStore((s) => s.readOnlyReason !== null);
+  const readOnly = usePDFStore((s) => blockedReason(s, 'content') !== null);
   const sources = useSources();
   const [original, setOriginal] = useState<Tree | null>(null);
   const [selected, setSelected] = useState<string | null>(null);

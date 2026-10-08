@@ -1,7 +1,7 @@
 /** Document properties: description (editable), file, PDF, security and fonts. */
 import { useEffect, useState, type ReactNode } from 'react';
 import { PDFDict, PDFDocument, PDFName } from 'pdf-lib';
-import { usePDFStore } from '@/store/usePDFStore';
+import { blockedReason, usePDFStore } from '@/store/usePDFStore';
 import { Button, Dialog, Field, Input, Select, Tabs, Textarea } from '@/components/ui/primitives';
 import { Plus, Trash2 } from 'lucide-react';
 import type { DocMeta } from '@/store/usePDFStore';
@@ -90,7 +90,7 @@ async function readInfo(sourceId: string, bytes: Uint8Array): Promise<Info> {
     linearized: i.IsLinearized === true,
     forms: i.IsXFAPresent ? 'XFA form' : i.IsAcroFormPresent ? 'Interactive form (AcroForm)' : 'None',
     permissions: perms ? Object.entries(PERMISSION_NAMES).filter(([bit]) => perms.has(Number(bit))).map(([, n]) => n) : null,
-    encrypted: encrypted || usePDFStore.getState().readOnlyReason !== null,
+    encrypted: encrypted || usePDFStore.getState().readOnlyReason !== null || usePDFStore.getState().protection !== null,
     fonts: fonts.sort((a, b) => a.name.localeCompare(b.name)),
     ...extra,
   };
@@ -130,7 +130,7 @@ export function PropertiesModal() {
   const page = s.pages.find((p) => p.id === s.currentPageId) ?? s.pages[0];
   const size = page ? displaySize(page) : null;
   const bytes = Object.values(s.sources).reduce((n, x) => n + x.bytes.length, 0);
-  const readOnly = s.readOnlyReason !== null;
+  const readOnly = blockedReason(s, 'content') !== null;
 
   return (
     <Dialog

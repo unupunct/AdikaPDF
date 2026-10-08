@@ -1,7 +1,7 @@
 /** "Create PDF from…" (import) and "Export PDF to…" dialogs. */
 import { useEffect, useRef, useState } from 'react';
 import { BookOpen, Camera, DraftingCompass, FileImage, FileType2, Globe, ScanLine, Trash2 } from 'lucide-react';
-import { usePDFStore } from '@/store/usePDFStore';
+import { blockedReason, usePDFStore } from '@/store/usePDFStore';
 import { useModalArgs, type ImportKind } from '@/store/useModalArgs';
 import { Button, Callout, Checkbox, Dialog, Field, Input, Select, Tabs } from '@/components/ui/primitives';
 import {
@@ -31,7 +31,7 @@ const close = () => usePDFStore.getState().openModal(null);
 
 export function ImportModal() {
   const open = usePDFStore((s) => s.modal === 'import');
-  const hasDoc = usePDFStore((s) => s.pages.length > 0 && !s.readOnlyReason);
+  const hasDoc = usePDFStore((s) => s.pages.length > 0 && !blockedReason(s, 'pages'));
   const kind = useModalArgs((s) => s.importKind);
   const setKind = (importKind: ImportKind) => useModalArgs.setState({ importKind });
   const [append, setAppend] = useState(false);

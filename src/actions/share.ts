@@ -9,6 +9,7 @@ import { usePDFStore } from '@/store/usePDFStore';
 import { translate } from '@/lib/i18n';
 import { isDesktop, openExternal, revealInExplorer, sendMail } from '@/lib/platform';
 import { errorMessage, exportCurrentPdf, primarySourceBytes, suggestedName, withBusy } from './document';
+import { protectForSave } from './protection';
 
 export async function emailDocument(): Promise<void> {
   const s = usePDFStore.getState();
@@ -19,7 +20,8 @@ export async function emailDocument(): Promise<void> {
   }
   const name = suggestedName();
   const path = await withBusy('Preparing the attachment…', async (progress) => {
-    const bytes = s.readOnlyReason ? primarySourceBytes() : await exportCurrentPdf({}, progress);
+    // A protected document is sent protected, as it would be saved.
+    const bytes = s.readOnlyReason ? primarySourceBytes() : await protectForSave(await exportCurrentPdf({}, progress));
     if (!bytes) throw new Error(s.readOnlyReason ?? 'Nothing to send.');
     return invoke<string>('mail_prepare', bytes, { headers: { 'x-name': encodeURIComponent(name) } });
   });

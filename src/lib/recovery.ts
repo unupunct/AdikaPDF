@@ -7,7 +7,7 @@
  * start offers to recover what was left.
  */
 import { invoke } from '@tauri-apps/api/core';
-import { usePDFStore } from '@/store/usePDFStore';
+import { protectionOf, usePDFStore } from '@/store/usePDFStore';
 import { activeTabIsEmpty, newTab, tabSlice, useTabs, type DocSlice } from '@/store/tabs';
 import { isDesktop } from './platform';
 import { uid } from './uid';
@@ -49,6 +49,8 @@ interface BackupState {
   sources: BackupSource[];
   /** Snapshots handed to another window: whether the document had unsaved changes. */
   dirty?: boolean;
+  /** Snapshots: the owner password was given; saving keeps the protection. */
+  protection?: { owner: boolean; keep: boolean };
 }
 
 export interface BackupInfo {
@@ -59,7 +61,7 @@ export interface BackupInfo {
   edits: number;
 }
 
-type Doc = Pick<DocSlice, 'primarySource' | 'sources' | 'pages' | 'objects' | 'fieldValues' | 'outline' | 'fileName' | 'filePath' | 'fileStamp' | 'readOnlyReason' | 'docMeta' | 'dirty'>;
+type Doc = Pick<DocSlice, 'primarySource' | 'sources' | 'pages' | 'objects' | 'fieldValues' | 'outline' | 'fileName' | 'filePath' | 'fileStamp' | 'readOnlyReason' | 'protection' | 'docMeta' | 'dirty'>;
 
 async function write(name: string, bytes: Uint8Array): Promise<void> {
   await invoke('recovery_write', bytes, { headers: { 'x-name': encodeURIComponent(name) } });
@@ -82,7 +84,8 @@ let busy: Promise<void> = Promise.resolve();
 async function backupTab(tabId: string): Promise<void> {
   const doc = tabSlice(tabId);
   const dir = folderFor(tabId);
-  if (!doc || !doc.dirty || !doc.pages.length || doc.readOnlyReason) {
+  // A document that needs a password to open is never written to disk decrypted (pages it rewrote would be).
+  if (!doc || !doc.dirty || !doc.pages.length || doc.readOnlyReason || doc.protection?.unlocked.userPassword) {
     if (written.has(dir)) {
       written.delete(dir);
       await remove(dir);
@@ -106,7 +109,8 @@ async function writeState(dir: string, done: Set<string>, s: Doc, extra: Partial
     const xfaBytes = xfaOriginalOf(id);
     const xfa = xfaBytes ? `xfa-${safe(id)}.pdf` : undefined;
     if (!done.has(id)) {
-      await write(`${dir}/${file}`, src.bytes);
+      // A protected file is written as it is (encrypted), and decrypted again when restored.
+      await write(`${dir}/${file}`, src.encryption?.file ?? src.bytes);
       if (xfaBytes) await write(`${dir}/${xfa}`, xfaBytes);
       done.add(id);
     }
@@ -211,7 +215,7 @@ export async function discardBackups(dirs: string[]): Promise<void> {
 /** The active document as a snapshot another window can open (`adoptSnapshot`). Passwords are not written. */
 export async function writeSnapshot(dir: string): Promise<void> {
   const s = usePDFStore.getState();
-  await writeState(dir, new Set(), s, { dirty: s.dirty, readOnlyReason: s.readOnlyReason });
+  await writeState(dir, new Set(), s, { dirty: s.dirty, readOnlyReason: s.readOnlyReason, ...(s.protection ? { protection: { owner: s.protection.unlocked.owner, keep: s.protection.keep } } : {}) });
 }
 
 /** Passwords of the active document's sources, by source id (memory only: for the window that adopts it). */
@@ -289,7 +293,13 @@ async function restore(dir: string, crashed: boolean, passwords: Record<string, 
   );
   const dirty = crashed ? true : (st.dirty ?? true);
   const doc = { pages, objects: st.objects, fieldValues, outline: st.outline };
+  // The opened file's protection comes back with its source (decrypted again with the password asked for).
+  const sources = usePDFStore.getState().sources;
+  const primaryId = st.primary ? map.get(st.primary) : undefined;
+  const enc = (primaryId ? sources[primaryId]?.encryption : undefined) ?? [...map.values()].map((id) => sources[id]?.encryption).find(Boolean);
+  const protection = enc ? { ...protectionOf(enc.unlocked, enc.unlocked.owner || !!st.protection?.owner), keep: st.protection?.keep ?? true } : null;
   usePDFStore.setState({
+    protection,
     ...doc,
     docMeta: st.docMeta as never,
     fileName: st.fileName,

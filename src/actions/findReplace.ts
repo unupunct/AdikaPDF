@@ -6,7 +6,7 @@
  * new text uses a matching font family, size, weight and colour. Redacting
  * marks each match with a redaction box, applied with "Apply & save".
  */
-import { usePDFStore } from '@/store/usePDFStore';
+import { blockedReason, usePDFStore } from '@/store/usePDFStore';
 import { makeRedaction, makeText } from '@/lib/objectFactory';
 import { canvasMeasure, layoutText, TEXT_PADDING } from '@/lib/textLayout';
 import { normalizeAngle, normalizeRotation, totalRotation } from '@/lib/geometry';
@@ -70,8 +70,9 @@ function addAll(objs: EditorObject[]) {
  */
 export async function replaceAll(query: string, replacement: string, opts: SearchOptions = {}): Promise<{ replaced: number; approximate: number }> {
   const store = usePDFStore.getState();
-  if (store.readOnlyReason) {
-    store.toast(store.readOnlyReason, 'info');
+  const why = blockedReason(store, 'content');
+  if (why) {
+    store.toast(why, 'info');
     return { replaced: 0, approximate: 0 };
   }
   const matches = await queryMatches(query, opts);

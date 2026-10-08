@@ -31,6 +31,9 @@ import {
 import { openPdf, registerSource, releaseSource } from '@/lib/pdf/pdfService';
 import { uid } from '@/lib/uid';
 import type { StampTemplate } from '@/lib/objectFactory';
+import type { Unlocked } from '@/lib/crypto/decrypt';
+import { permissionsFromP } from '@/lib/crypto/permissions';
+import type { PdfPermissions } from '@/lib/crypto/encrypt';
 
 const HISTORY_LIMIT = 200;
 export const MIN_ZOOM = 0.1;
@@ -137,8 +140,10 @@ interface PDFState extends UndoableState {
   sources: Record<string, SourceDoc>;
   fileName: string | null;
   filePath: string | null;
-  /** Set when the file can be viewed but not re-written (e.g. opened with a password). */
+  /** Set when the file can be viewed but not re-written (e.g. encrypted in a way Adika cannot decrypt). */
   readOnlyReason: string | null;
+  /** The opened file was password-protected: its permissions, and how saving encrypts it again. */
+  protection: Protection | null;
   dirty: boolean;
   /** The document as last opened or saved (same object references), so undo back to it is clean again; null when unsaved changes lie outside the history. */
   savedDoc: UndoableState | null;
@@ -326,6 +331,57 @@ export const PASSWORD_READ_ONLY =
 export const OWNER_PASSWORD_READ_ONLY =
   'This PDF is protected by its author (an owner password restricts changes), so it opens read-only: Adika cannot save it without removing that protection. To edit it, use an unprotected copy from its author.';
 
+export interface Protection {
+  unlocked: Unlocked;
+  /** Every right: unlocked with the owner password, or the file restricts nothing. */
+  full: boolean;
+  permissions: PdfPermissions;
+  /** Saving encrypts the file again as it was (false once the user removes the protection). */
+  keep: boolean;
+}
+
+export function protectionOf(unlocked: Unlocked, owner = unlocked.owner): Protection {
+  const permissions = permissionsFromP(unlocked.security.p, unlocked.security.r);
+  const all = permissions.modify && permissions.annotate && permissions.fillForms && permissions.assemble && permissions.copy && permissions.print;
+  return { unlocked: { ...unlocked, owner }, full: owner || all, permissions, keep: true };
+}
+
+/** What a change touches, for the owner's restrictions: page content, pages, comments, form fields. */
+export type EditKind = 'content' | 'pages' | 'comments' | 'forms';
+
+export const RESTRICTED: Record<EditKind | 'print' | 'copy', string> = {
+  content: "This PDF's owner does not allow changing its content. Enter the owner password to unlock it.",
+  pages: "This PDF's owner does not allow adding, removing or moving pages. Enter the owner password to unlock it.",
+  comments: "This PDF's owner does not allow comments. Enter the owner password to unlock it.",
+  forms: "This PDF's owner does not allow filling in its form. Enter the owner password to unlock it.",
+  print: "This PDF's owner does not allow printing it. Enter the owner password to unlock it.",
+  copy: "This PDF's owner does not allow copying or converting its content. Enter the owner password to unlock it.",
+};
+
+/** Why a change of this kind is not allowed now (a read-only file, or the owner's restrictions), or null. */
+export function blockedReason(s: Pick<PDFState, 'readOnlyReason' | 'protection'>, kind: EditKind | 'print' | 'copy'): string | null {
+  if (s.readOnlyReason) return kind === 'print' || kind === 'copy' ? null : s.readOnlyReason;
+  const p = s.protection;
+  if (!p || p.full) return null;
+  const r = p.permissions;
+  // As Acrobat: assembling pages also comes with "modify", form filling also with "comments".
+  const ok = { content: r.modify, pages: r.modify || r.assemble, comments: r.annotate, forms: r.fillForms || r.annotate, print: r.print, copy: r.copy }[kind];
+  return ok ? null : RESTRICTED[kind];
+}
+
+const COMMENT_TOOLS = new Set<ToolId>([
+  'note', 'typewriter', 'markup-highlight', 'markup-underline', 'markup-strikeout', 'markup-squiggly', 'stamp',
+  'textbox', 'callout', 'cloud', 'polygon', 'polyline', 'attach', 'measure-distance', 'measure-perimeter', 'measure-area',
+]);
+
+/** The kind of change a tool makes (null: it only reads). */
+export function toolEditKind(tool: ToolId): EditKind | null {
+  if (tool === 'selectText' || tool === 'pan' || tool === 'select' || tool === 'snapshot') return null;
+  if (COMMENT_TOOLS.has(tool)) return 'comments';
+  if (tool === 'signature') return 'forms';
+  return 'content';
+}
+
 /** Sources whose pages were in the document at some point (a source loaded just now and not used yet is kept). */
 const usedSources = new Set<string>();
 
@@ -347,6 +403,7 @@ export const usePDFStore = create<PDFState>()((set, get) => ({
   fileName: null,
   filePath: null,
   readOnlyReason: null,
+  protection: null,
   dirty: false,
   savedDoc: EMPTY_DOC,
   past: [],
@@ -418,6 +475,19 @@ export const usePDFStore = create<PDFState>()((set, get) => ({
 
   addSource: async (bytes, name, password, original) => {
     const doc = await openPdf(bytes, password);
+    // Password-protected: edited and saved from a decrypted copy (pdf.js keeps the original).
+    let encryption: SourceDoc['encryption'];
+    const { isPdfEncrypted } = await import('@/lib/crypto/encrypt');
+    if (isPdfEncrypted(bytes)) {
+      try {
+        const { decryptPdf } = await import('@/lib/crypto/decrypt');
+        const res = await decryptPdf(bytes, password ?? '');
+        encryption = { file: bytes, unlocked: res.unlocked };
+        bytes = res.bytes;
+      } catch (e) {
+        console.warn(`${name}: not decrypted, it stays read-only`, e);
+      }
+    }
     const id = uid('src');
     registerSource(id, doc);
     const pages: PageRef[] = [];
@@ -441,7 +511,7 @@ export const usePDFStore = create<PDFState>()((set, get) => ({
       void releaseSource(id);
       throw e;
     }
-    const source: SourceDoc = { id, name, bytes, pageCount: doc.numPages, ...(password ? { password } : {}), ...(original ? { original } : {}) };
+    const source: SourceDoc = { id, name, bytes, pageCount: doc.numPages, ...(password ? { password } : {}), ...(original ? { original } : {}), ...(encryption ? { encryption } : {}) };
     set((s) => ({ sources: { ...s.sources, [id]: source } }));
     return { source, pages };
   },
@@ -462,9 +532,9 @@ export const usePDFStore = create<PDFState>()((set, get) => ({
   loadDocument: async (bytes, name, path = null, password, original = false) => {
     const previous = Object.keys(get().sources);
     const { isPdfEncrypted } = await import('@/lib/crypto/encrypt');
-    // Opened without a password but encrypted: an owner password limits changes, and saving cannot re-encrypt it.
-    const ownerLocked = !password && isPdfEncrypted(bytes);
-    const { pages } = await get().addSource(bytes, name, password, original && !!path);
+    const { source, pages } = await get().addSource(bytes, name, password, original && !!path);
+    // Still encrypted: a security handler Adika cannot decrypt, so it cannot be saved either.
+    const locked = isPdfEncrypted(source.bytes);
     for (const id of previous) {
       usedSources.delete(id);
       void releaseSource(id);
@@ -475,7 +545,8 @@ export const usePDFStore = create<PDFState>()((set, get) => ({
       sources: Object.fromEntries(Object.entries(s.sources).filter(([k]) => !previous.includes(k))),
       fileName: name,
       filePath: path,
-      readOnlyReason: password ? PASSWORD_READ_ONLY : ownerLocked ? OWNER_PASSWORD_READ_ONLY : null,
+      readOnlyReason: !locked ? null : password ? PASSWORD_READ_ONLY : OWNER_PASSWORD_READ_ONLY,
+      protection: source.encryption ? protectionOf(source.encryption.unlocked) : null,
       dirty: false,
       savedDoc: doc,
       past: [],
@@ -506,6 +577,7 @@ export const usePDFStore = create<PDFState>()((set, get) => ({
       fileName: null,
       filePath: null,
       readOnlyReason: null,
+      protection: null,
       dirty: false,
       savedDoc: EMPTY_DOC,
       past: [],

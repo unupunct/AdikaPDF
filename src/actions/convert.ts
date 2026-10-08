@@ -8,6 +8,7 @@ import { marked } from 'marked';
 import { usePDFStore } from '@/store/usePDFStore';
 import { exportCurrentPdf, openPdfBytes, saveDerived, suggestedName, withBusy, PDF_FILTER } from './document';
 import { saveFile } from './saveGuard';
+import { allowed, allowUnprotectedCopy } from './protection';
 import { openPdf, type PDFDocumentProxy } from '@/lib/pdf/pdfService';
 import { htmlToPdf, officeToPdf, pickFiles, pickPaths, readFile, scanPage, isDesktop } from '@/lib/platform';
 import { imageFileToDataUrl } from '@/lib/objectFactory';
@@ -364,6 +365,7 @@ const FORMAT_INFO: Record<ExportFormat, { ext: string; label: string }> = {
 };
 
 export async function exportAs(req: ExportRequest): Promise<void> {
+  if (!allowed('copy')) return;
   const info = FORMAT_INFO[req.format];
   const result = await withBusy(`Converting to ${info.label}…`, (progress, signal) =>
     withEditedDoc(async (pdf0, bytes0) => {
@@ -658,6 +660,7 @@ export async function splitBySize(maxMb: number): Promise<void> {
 }
 
 export async function splitDocument(ranges: number[][], names: Array<string | null> = []): Promise<void> {
+  if (!allowUnprotectedCopy()) return;
   const s = usePDFStore.getState();
   const base = baseName();
   const outputs = await withBusy('Splitting…', async (progress) => {

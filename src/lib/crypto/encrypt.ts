@@ -338,7 +338,7 @@ export async function encryptAllObjects(doc: PDFDocument, aesFileKey: CryptoKey)
   }
 }
 
-export { importAesKey };
+export { importAesKey, hash2B, passwordBytes };
 
 /**
  * Encrypts a PDF with AES-256 (V5/R6). Rejects input that is already encrypted.

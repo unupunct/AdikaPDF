@@ -4,7 +4,7 @@
  * rewritten, undoable) and becomes a drawing object that can be moved,
  * resized, recoloured, given another line width, or deleted.
  */
-import { usePDFStore } from '@/store/usePDFStore';
+import { blockedReason, usePDFStore } from '@/store/usePDFStore';
 import { uid } from '@/lib/uid';
 import { displayToPdfMatrix, totalRotation, type Matrix } from '@/lib/geometry';
 import type { PageRef, VectorObject } from '@/types';
@@ -18,8 +18,9 @@ function invert(m: Matrix): Matrix {
 /** Lifts the drawing under (x, y) (display space): the smallest one there, so a box inside a box can be picked. */
 export async function liftVector(page: PageRef, x: number, y: number): Promise<boolean> {
   const s0 = usePDFStore.getState();
-  if (s0.readOnlyReason) {
-    s0.toast(s0.readOnlyReason, 'info');
+  const why = blockedReason(s0, 'content');
+  if (why) {
+    s0.toast(why, 'info');
     return false;
   }
   if (page.kind !== 'source' || !page.sourceId || !s0.sources[page.sourceId]) {

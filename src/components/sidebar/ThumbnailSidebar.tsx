@@ -1,7 +1,7 @@
 /** Left sidebar: page thumbnails with drag-and-drop reordering and page actions. */
 import { useState } from 'react';
 import { Copy, FilePlus2, RotateCcw, RotateCw, Trash2 } from 'lucide-react';
-import { usePDFStore } from '@/store/usePDFStore';
+import { blockedReason, usePDFStore } from '@/store/usePDFStore';
 import { PageThumbnail } from './PageThumbnail';
 import { Tooltip } from '@/components/ui/primitives';
 import { cn } from '@/lib/cn';
@@ -12,7 +12,7 @@ const THUMB_WIDTH = 132;
 export function ThumbnailSidebar() {
   const pages = usePDFStore((s) => s.pages);
   const currentPageId = usePDFStore((s) => s.currentPageId);
-  const readOnly = usePDFStore((s) => s.readOnlyReason !== null);
+  const readOnly = usePDFStore((s) => blockedReason(s, 'pages') !== null);
   const labels = usePageLabels();
   const [dragId, setDragId] = useState<string | null>(null);
   const [dropIndex, setDropIndex] = useState<number | null>(null);

@@ -6,14 +6,15 @@
 import { useEffect, useState } from 'react';
 import { Copy, Highlighter, Strikethrough, Underline, Volume2, Waves } from 'lucide-react';
 import { readSelection } from '@/actions/readingAids';
-import { usePDFStore } from '@/store/usePDFStore';
+import { blockedReason, usePDFStore } from '@/store/usePDFStore';
 import { applyMarkupToSelection, selectionByPage } from '@/lib/selectionMarkup';
 import { markupKindOf } from '@/lib/tools';
 import type { MarkupKind } from '@/types';
 
 export function SelectionToolbar() {
   const tool = usePDFStore((s) => s.tool);
-  const readOnly = usePDFStore((s) => s.readOnlyReason !== null);
+  const readOnly = usePDFStore((s) => blockedReason(s, 'comments') !== null);
+  const noCopy = usePDFStore((s) => blockedReason(s, 'copy') !== null);
   const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
 
   useEffect(() => {
@@ -64,9 +65,11 @@ export function SelectionToolbar() {
       className="fixed z-[70] flex -translate-x-1/2 -translate-y-full items-center gap-0.5 rounded-lg border border-app bg-panel p-0.5 shadow-lg"
       style={{ left: pos.x, top: pos.y - 6 }}
     >
-      <Btn label="Copy" testId="sel-copy" onClick={() => void navigator.clipboard?.writeText(window.getSelection()?.toString() ?? '').then(() => usePDFStore.getState().toast('Copied.', 'success'))}>
-        <Copy size={14} />
-      </Btn>
+      {noCopy ? null : (
+        <Btn label="Copy" testId="sel-copy" onClick={() => void navigator.clipboard?.writeText(window.getSelection()?.toString() ?? '').then(() => usePDFStore.getState().toast('Copied.', 'success'))}>
+          <Copy size={14} />
+        </Btn>
+      )}
       <Btn label="Read aloud" testId="sel-read" onClick={readSelection}>
         <Volume2 size={14} />
       </Btn>
