@@ -69,6 +69,8 @@ export interface EInvoice {
   buyerReference: string;
   orderReference: string;
   contractReference: string;
+  /** The invoice this one corrects or credits (BT-25). */
+  precedingInvoice: string;
   notes: string[];
   seller: Party;
   buyer: Party;
@@ -178,6 +180,7 @@ function parseUbl(root: XEl, credit: boolean): EInvoice {
     buyerReference: t(kid(root, 'BuyerReference')),
     orderReference: t(path(root, 'OrderReference', 'ID')),
     contractReference: t(path(root, 'ContractDocumentReference', 'ID')),
+    precedingInvoice: t(path(root, 'BillingReference', 'InvoiceDocumentReference', 'ID')),
     notes: kids(root, 'Note').map((n) => t(n)).filter(Boolean),
     seller: ublParty(path(root, 'AccountingSupplierParty', 'Party')),
     buyer: ublParty(path(root, 'AccountingCustomerParty', 'Party')),
@@ -287,6 +290,7 @@ function parseCii(root: XEl): EInvoice {
     buyerReference: t(kid(agr, 'BuyerReference')),
     orderReference: t(path(agr, 'BuyerOrderReferencedDocument', 'IssuerAssignedID')),
     contractReference: t(path(agr, 'ContractReferencedDocument', 'IssuerAssignedID')),
+    precedingInvoice: t(path(set, 'InvoiceReferencedDocument', 'IssuerAssignedID')),
     notes: kids(doc, 'IncludedNote').map((n) => t(kid(n, 'Content'))).filter(Boolean),
     seller: ciiParty(kid(agr, 'SellerTradeParty')),
     buyer: ciiParty(kid(agr, 'BuyerTradeParty')),
