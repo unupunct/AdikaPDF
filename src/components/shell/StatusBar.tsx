@@ -79,7 +79,12 @@ export function StatusBar() {
       ) : null}
       {showUpdate && upd.latest ? (
         <span className="flex items-center gap-1 font-medium text-brand-700 dark:text-brand-300" data-testid="status-update">
-          <button type="button" className="flex items-center gap-1 hover:underline" onClick={() => void openExternal(upd.latest!.url)} title="Open the release page to download the installer">
+          <button
+            type="button"
+            className="flex items-center gap-1 hover:underline"
+            onClick={() => (upd.installable ? upd.setPrompt(true) : void openExternal(upd.latest!.url))}
+            title={upd.installable ? 'See what is new and install the update' : 'Open the release page to download the installer'}
+          >
             <ArrowUpCircle size={12} /> Update {upd.latest.version} available
           </button>
           <button type="button" aria-label="Dismiss" onClick={upd.dismiss} className="rounded p-0.5 hover-app">
