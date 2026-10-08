@@ -18,6 +18,7 @@ mod automation;
 mod spellcheck;
 mod shellops;
 mod pathguard;
+mod fonts;
 
 use percent_encoding::percent_decode_str;
 use std::path::PathBuf;
@@ -191,6 +192,8 @@ pub fn run() {
             spellcheck::spell_languages,
             spellcheck::spell_check,
             spellcheck::spell_add,
+            fonts::system_fonts,
+            fonts::system_font_read,
             shellops::launch_request,
             shellops::take_pending_launches,
             shellops::mail_prepare,

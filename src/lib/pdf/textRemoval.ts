@@ -20,12 +20,13 @@ import {
   PDFName,
   PDFNumber,
   PDFPage,
-  PDFRawStream,
   PDFRef,
   PDFStream,
-  decodePDFRawStream,
 } from 'pdf-lib';
-import { Encodings, Font as StdFont, FontNames } from '@pdf-lib/standard-fonts';
+import { Font as StdFont } from '@pdf-lib/standard-fonts';
+import { STD_ALIASES, glyphNameToUnicode, parseToUnicode, standardMaps, streamBytes } from './fontEncoding';
+
+export { parseToUnicode };
 
 type M = [number, number, number, number, number, number];
 const I: M = [1, 0, 0, 1, 0, 0];
@@ -265,114 +266,8 @@ export interface FontInfo {
   glyphBox?: (code: number) => [number, number, number, number] | null;
 }
 
-let stdMaps: { codeToName: Map<number, string>; codeToUni: Map<number, string>; nameToUni: Map<string, string> } | null = null;
-function standardMaps() {
-  if (stdMaps) return stdMaps;
-  const codeToName = new Map<number, string>();
-  const codeToUni = new Map<number, string>();
-  const nameToUni = new Map<string, string>();
-  for (const enc of [Encodings.Symbol, Encodings.ZapfDingbats, Encodings.WinAnsi]) {
-    for (const cp of enc.supportedCodePoints) {
-      const { code, name } = enc.encodeUnicodeCodePoint(cp);
-      nameToUni.set(name, String.fromCodePoint(cp));
-      if (enc === Encodings.WinAnsi) {
-        codeToName.set(code, name);
-        codeToUni.set(code, String.fromCodePoint(cp));
-      }
-    }
-  }
-  for (const [k, v] of Object.entries({ fi: 'fi', fl: 'fl', ff: 'ff', ffi: 'ffi', ffl: 'ffl', space: ' ', nbspace: ' ' })) nameToUni.set(k, v);
-  stdMaps = { codeToName, codeToUni, nameToUni };
-  return stdMaps;
-}
-
-function glyphNameToUnicode(name: string): string {
-  const m = standardMaps().nameToUni.get(name);
-  if (m) return m;
-  const uni = /^uni([0-9A-Fa-f]{4,})$/.exec(name);
-  if (uni) return String.fromCodePoint(...(uni[1].match(/.{4}/g) ?? []).map((h) => parseInt(h, 16)));
-  const u = /^u([0-9A-Fa-f]{4,6})$/.exec(name);
-  if (u) return String.fromCodePoint(parseInt(u[1], 16));
-  return '';
-}
-
-const STD_ALIASES: Record<string, FontNames> = {
-  helvetica: FontNames.Helvetica,
-  'helvetica-bold': FontNames.HelveticaBold,
-  'helvetica-oblique': FontNames.HelveticaOblique,
-  'helvetica-boldoblique': FontNames.HelveticaBoldOblique,
-  arial: FontNames.Helvetica,
-  'arial,bold': FontNames.HelveticaBold,
-  'arial-boldmt': FontNames.HelveticaBold,
-  arialmt: FontNames.Helvetica,
-  'times-roman': FontNames.TimesRoman,
-  'times-bold': FontNames.TimesRomanBold,
-  'times-italic': FontNames.TimesRomanItalic,
-  'times-bolditalic': FontNames.TimesRomanBoldItalic,
-  timesnewroman: FontNames.TimesRoman,
-  timesnewromanpsmt: FontNames.TimesRoman,
-  courier: FontNames.Courier,
-  'courier-bold': FontNames.CourierBold,
-  'courier-oblique': FontNames.CourierOblique,
-  'courier-boldoblique': FontNames.CourierBoldOblique,
-  couriernew: FontNames.Courier,
-  symbol: FontNames.Symbol,
-  zapfdingbats: FontNames.ZapfDingbats,
-};
-
 function num(v: unknown, dflt = 0): number {
   return v instanceof PDFNumber ? v.asNumber() : dflt;
-}
-
-function streamBytes(doc: PDFDocument, v: unknown): Uint8Array | null {
-  const s = v instanceof PDFRef ? doc.context.lookup(v) : v;
-  if (s instanceof PDFRawStream) return decodePDFRawStream(s).decode();
-  if (s instanceof PDFStream) {
-    const anyS = s as unknown as { getUnencodedContents?: () => Uint8Array; getContents: () => Uint8Array };
-    return anyS.getUnencodedContents ? anyS.getUnencodedContents() : anyS.getContents();
-  }
-  return null;
-}
-
-function hexToBytes(h: string): number[] {
-  const out: number[] = [];
-  for (let k = 0; k + 1 < h.length; k += 2) out.push(parseInt(h.slice(k, k + 2), 16));
-  return out;
-}
-
-function utf16(bytes: number[]): string {
-  let s = '';
-  for (let k = 0; k + 1 < bytes.length; k += 2) s += String.fromCharCode((bytes[k] << 8) | bytes[k + 1]);
-  if (bytes.length === 1) s += String.fromCharCode(bytes[0]);
-  return s;
-}
-
-/** bfchar / bfrange entries of a ToUnicode CMap. */
-export function parseToUnicode(text: string): Map<number, string> {
-  const map = new Map<number, string>();
-  const code = (h: string) => parseInt(h || '0', 16);
-  for (const block of text.matchAll(/beginbfchar([\s\S]*?)endbfchar/g)) {
-    for (const m of block[1].matchAll(/<([0-9A-Fa-f]*)>\s*<([0-9A-Fa-f]*)>/g)) map.set(code(m[1]), utf16(hexToBytes(m[2])));
-  }
-  for (const block of text.matchAll(/beginbfrange([\s\S]*?)endbfrange/g)) {
-    for (const m of block[1].matchAll(/<([0-9A-Fa-f]*)>\s*<([0-9A-Fa-f]*)>\s*(<[0-9A-Fa-f]*>|\[[^\]]*\])/g)) {
-      const lo = code(m[1]);
-      const hi = code(m[2]);
-      if (hi - lo > 0xffff) continue;
-      if (m[3].startsWith('[')) {
-        const items = [...m[3].matchAll(/<([0-9A-Fa-f]*)>/g)];
-        items.forEach((it, k) => map.set(lo + k, utf16(hexToBytes(it[1]))));
-      } else {
-        const base = hexToBytes(m[3].slice(1, -1));
-        for (let c = lo; c <= hi; c++) {
-          const b = base.slice();
-          b[b.length - 1] += c - lo;
-          map.set(c, utf16(b));
-        }
-      }
-    }
-  }
-  return map;
 }
 
 function loadFont(doc: PDFDocument, fontObj: unknown): FontInfo {
