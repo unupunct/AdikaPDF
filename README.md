@@ -26,11 +26,11 @@ OCR and convert PDFs entirely on your computer. Nothing is uploaded. The interfa
 | Print production | **Preflight** against PDF/X-4, PDF/X-1a:2003 or PDF/A-2b and **conversion to PDF/X** (trim boxes, output intent with an embedded CMYK profile, metadata; for X-1a CMYK colours and flattened transparency); colours to **grey or CMYK**; **output preview** of the separations and total ink; **bleed and printer marks** (crop, registration, colour bars, page information) |
 | Automation | **Command line** (`adika-pdf-editor.exe --batch --ocr --compress --out results *.pdf`, or a saved `--sequence`), exit codes for scripts; **watched folders**: PDFs copied into a folder are processed with a saved sequence while Adika runs; **Explorer menu**: Combine in Adika, Compress, Make searchable (OCR), Convert to PDF; **PDF thumbnails** in Explorer; **Send by e-mail** from your mail program; your own **Quick Access toolbar** and **keyboard shortcuts** |
 | Document properties | Title, authors, subject, keywords, **copyright** status, notice and URL, **custom properties**; written into the XMP metadata in step with the document information |
-| Updates | Optional update check (About → Check for updates, or once a week): asks GitHub for the latest version, nothing else is sent; **automatic backup** of every unsaved document every few seconds and recovery after a crash; asks before closing with unsaved changes; **signed documents are saved as an incremental update** (signatures stay valid when you add comments or fill in fields; a setting does this for all documents); warns when the file changed on disk or a save would break signatures; long operations can be **cancelled** |
+| Updates | Optional update check (About → Check for updates, or once a week): asks GitHub for the latest version, nothing else is sent; **one-click updates**: shows what is new, downloads the installer with progress, checks its signature against Adika's update key and installs it (asks first when documents are unsaved and keeps recovery copies); nothing is contacted unless you check or turned the weekly check on; **automatic backup** of every unsaved document every few seconds and recovery after a crash; asks before closing with unsaved changes; **signed documents are saved as an incremental update** (signatures stay valid when you add comments or fill in fields; a setting does this for all documents); warns when the file changed on disk or a save would break signatures; long operations can be **cancelled** |
 
 ## Install
 
-Download `Adika PDF Editor_x.y.z_x64-setup.exe` from Releases and run it. It adds Start-menu
+Download `AdikaPDF_x.y.z_x64-setup.exe` from Releases and run it. It adds Start-menu
 and desktop shortcuts and an "Open with" entry for PDF files. Requires Windows 10/11 (WebView2,
 installed automatically if missing).
 
@@ -56,6 +56,42 @@ npm install
 npm run desktop:build      # installer in src-tauri/target/release/bundle/nsis/
 npm run desktop:dev        # development window with hot reload
 ```
+
+### Releases and updates
+
+The in-app updater reads `latest.json` from the latest GitHub release and installs the NSIS setup
+only when its signature matches the public key in `tauri.conf.json` (`plugins.updater.pubkey`).
+
+```bash
+npm run desktop:build:release   # tauri build + updater signature (.sig); key from %USERPROFILE%\.tauri\adika-updater.key
+npm run release:assets -- --notes-file notes.md   # release-assets/v<version>/: AdikaPDF_<v>_x64-setup.exe, .sig, latest.json
+gh release create v<version> release-assets/v<version>/* --title "Adika PDF Editor <version>" --notes-file notes.md
+```
+
+The key can also come from `TAURI_SIGNING_PRIVATE_KEY` (key text) or `TAURI_SIGNING_PRIVATE_KEY_PATH`,
+with `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`. Keep the private key out of the repository; losing it
+means installed copies can no longer update themselves. Upload the installer under the name in
+`latest.json`. Releases without `latest.json` still work: the app then opens the release page.
+
+### Code signing
+
+Unsigned builds work, but Windows SmartScreen warns about them. `scripts/sign.mjs` is Tauri's
+`signCommand` (app, installer, uninstaller) and also signs `adika_thumbs.dll` in `build:thumbs`; it
+does nothing unless one of these is configured:
+
+- **Azure Trusted Signing** (about 10 USD/month; individuals and organisations with a verified
+  identity): `AZURE_TRUSTED_SIGNING_ENDPOINT` (e.g. `https://weu.codesigning.azure.net`),
+  `AZURE_TRUSTED_SIGNING_ACCOUNT`, `AZURE_TRUSTED_SIGNING_PROFILE`, plus `AZURE_TENANT_ID`,
+  `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET` (or `az login`). Signs with `trusted-signing-cli`
+  (`cargo install trusted-signing-cli`), or with signtool and the Azure Code Signing Dlib when
+  `AZURE_CODESIGNING_DLIB` points to `Azure.CodeSigning.Dlib.dll`.
+- **A code signing certificate in the Windows store** (OV/EV from a CA, roughly 200–600 USD/year,
+  usually on a hardware token): `ADIKA_SIGN_THUMBPRINT` (SHA-1 thumbprint), optional
+  `ADIKA_SIGN_STORE` (default `My`) and `ADIKA_SIGN_MACHINE_STORE=1`. Uses signtool from the
+  Windows SDK (or `SIGNTOOL`).
+
+Signatures get an RFC 3161 timestamp (`ADIKA_SIGN_TIMESTAMP_URL` overrides the default server),
+so they stay valid after the certificate expires.
 
 ## Tests
 
