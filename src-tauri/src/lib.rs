@@ -183,6 +183,7 @@ pub fn run() {
             scanner::wia_scan,
             automation::cli_args,
             automation::cli_cwd,
+            automation::cli_env,
             automation::cli_print,
             automation::cli_exit,
             automation::list_dir,

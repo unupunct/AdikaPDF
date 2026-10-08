@@ -346,6 +346,11 @@ export async function cliCwd(): Promise<string> {
   return invoke<string>('cli_cwd');
 }
 
+/** An ADIKA_* environment variable (null when unset or another name). */
+export async function cliEnv(name: string): Promise<string | null> {
+  return (await invoke<string | null>('cli_env', { name })) ?? null;
+}
+
 export async function cliPrint(line: string, error = false): Promise<void> {
   await invoke('cli_print', { line, error });
 }

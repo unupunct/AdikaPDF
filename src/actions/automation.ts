@@ -4,9 +4,9 @@
  * Adika runs; results go to an output folder, originals to "Processed").
  */
 import { runBatchOp, runSequence, sequenceProblem, sequenceSuffix, BATCH_OPS, BatchSkip, outputPath, type ActionSequence, type BatchOp } from '@/lib/batch';
-import { CLI_HELP, absolutePath, combineSteps, hasWildcard, parseCli, wildcard } from '@/lib/cli';
+import { CLI_HELP, absolutePath, combineSteps, hasWildcard, parseCli, wildcard, type CliSign } from '@/lib/cli';
 import { loadFontBytes } from '@/lib/fonts';
-import { cliArgs, cliCwd, cliExit, cliPrint, fileStamp, isDesktop, listDir, makeDir, moveFile, readFile, writeFile } from '@/lib/platform';
+import { cliArgs, cliCwd, cliEnv, cliExit, cliPrint, fileStamp, isDesktop, listDir, makeDir, moveFile, readFile, winstoreList, writeFile } from '@/lib/platform';
 import { loadSequences, ocrBytes } from './batch';
 
 const baseName = (p: string) => p.split(/[\\/]/).pop() ?? p;
@@ -85,6 +85,10 @@ export async function runCommandLine(): Promise<boolean> {
     return true;
   }
   const out = job.out ? absolutePath(job.out, cwd) : null;
+  if (job.sign) {
+    await cliExit(await signCommandLine(files, job.sign, out, cwd, print));
+    return true;
+  }
   let failed = 0;
   for (const f of files) {
     try {
@@ -101,6 +105,61 @@ export async function runCommandLine(): Promise<boolean> {
   await print(`${files.length - failed} of ${files.length} file(s) done.`);
   await cliExit(failed ? 1 : 0);
   return true;
+}
+
+/** `--batch --sign`: an invisible signature on every file; returns the exit code. */
+async function signCommandLine(files: string[], sign: CliSign, out: string | null, cwd: string, print: (s: string, err?: boolean) => Promise<void>): Promise<number> {
+  const { openBatchSigner, signFiles } = await import('./batchSign');
+  let opened: Awaited<ReturnType<typeof openBatchSigner>>;
+  try {
+    if (sign.pfx) {
+      const password = await cliEnv(sign.passwordEnv);
+      if (password === null) {
+        await print(`error: set the environment variable ${sign.passwordEnv} to the password of the digital ID.`, true);
+        return 2;
+      }
+      const { loadP12 } = await import('@/lib/crypto/digitalSignature');
+      opened = await openBatchSigner({ kind: 'pfx', identity: loadP12(await readFile(absolutePath(sign.pfx, cwd)), password) });
+    } else {
+      const cert = (await winstoreList()).find((c) => c.thumbprint.toUpperCase() === sign.thumbprint && c.hasPrivateKey);
+      if (!cert) {
+        await print(`error: no certificate with a private key and thumbprint ${sign.thumbprint} in the Windows store.`, true);
+        return 2;
+      }
+      opened = await openBatchSigner({ kind: 'store', cert });
+    }
+  } catch (e) {
+    await print(`error: ${e instanceof Error ? e.message : String(e)}`, true);
+    return 2;
+  }
+  if (out) await makeDir(out);
+  const level = sign.level;
+  const results = await signFiles(
+    files,
+    opened.signer,
+    { name: opened.name, issuer: opened.issuer },
+    {
+      reason: sign.reason,
+      location: sign.location,
+      contactInfo: '',
+      tsaUrl: sign.tsa,
+      pades: true,
+      certify: 0,
+      ltv: level === 'B-LT' || level === 'B-LTA',
+      archive: level === 'B-LTA',
+      appearance: { visible: false, page: 'first', corner: 'bottom-right', offsetX: 0, offsetY: 0, width: 0, height: 0, fieldName: sign.field ?? undefined },
+      output: out ? { mode: 'folder', folder: out, suffix: '-signed' } : { mode: 'suffix', suffix: '-signed' },
+    },
+    null,
+    {
+      onProgress: () => undefined,
+      onResult: (r) => void print(r.status === 'done' ? `done: ${r.input} -> ${r.output}${r.message ? ` (${r.message})` : ''}` : `${r.status}: ${r.input}: ${r.message ?? ''}`, r.status === 'failed'),
+      cancelled: () => false,
+    },
+  );
+  const failed = results.filter((r) => r.status === 'failed').length;
+  await print(`${results.filter((r) => r.status === 'done').length} of ${results.length} file(s) signed.`);
+  return failed ? 1 : 0;
 }
 
 // ---------------------------------------------------------------- watched folders
