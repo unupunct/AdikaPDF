@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 /**
  * Authenticode signing hook: tauri.conf.json bundle.windows.signCommand calls it
  * for the app exe, the NSIS installer and uninstaller; build:thumbs calls it for

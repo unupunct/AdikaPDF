@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 /**
  * Release build: `tauri build` with updater artifacts (the NSIS setup's .sig).
  * The updater signing key comes from TAURI_SIGNING_PRIVATE_KEY when set, else

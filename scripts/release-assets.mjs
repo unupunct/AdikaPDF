@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 /**
  * After a signed release build (npm run desktop:build:release): copies the NSIS
  * setup and its updater signature (.sig) to an output folder under the names the
