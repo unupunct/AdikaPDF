@@ -3,7 +3,10 @@
 //! The WebView builds the CMS structure; this module only ever receives the
 //! DER-encoded signed attributes, hashes them and asks the token to sign the
 //! hash. The private key never leaves the token, and the PIN is used for a
-//! single login and dropped (zeroised by `secrecy`) right after.
+//! single login and dropped (zeroised by `secrecy`) right after. Batch
+//! signing keeps one logged-in session open (`pkcs11_open_session` …
+//! `pkcs11_close_session`); only keys that demand the PIN for every
+//! signature make the session hold it until it is closed.
 
 use cryptoki::context::{CInitializeArgs, CInitializeFlags, Pkcs11};
 use cryptoki::mechanism::{Mechanism, MechanismType};
