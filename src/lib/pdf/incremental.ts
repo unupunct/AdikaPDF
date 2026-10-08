@@ -5,6 +5,7 @@
  * existing digital signatures remain valid.
  */
 import { PDFDocument, PDFName, PDFRef, type PDFObject } from 'pdf-lib';
+import type { Unlocked } from '@/lib/crypto/decrypt';
 
 const enc = new TextEncoder();
 
@@ -42,13 +43,20 @@ export interface IncrementalResult {
   start: number;
 }
 
+/** An encrypted original: its decrypted copy (same object numbers) and the file key. */
+export interface EncryptedOriginal {
+  plain: Uint8Array;
+  unlocked: Unlocked;
+}
+
 /**
  * Loads `original`, lets `edit` change it with pdf-lib, then appends only
- * what changed. Encrypted files are refused (their objects would need
- * encrypting).
+ * what changed. An encrypted original is edited through its decrypted copy
+ * (`encrypted`) and the appended objects are encrypted with its file key;
+ * without that, encrypted files are refused.
  */
-export async function incrementalUpdate(original: Uint8Array, edit: (doc: PDFDocument) => void | Promise<void>): Promise<IncrementalResult> {
-  const doc = await PDFDocument.load(original, { updateMetadata: false });
+export async function incrementalUpdate(original: Uint8Array, edit: (doc: PDFDocument) => void | Promise<void>, encrypted?: EncryptedOriginal): Promise<IncrementalResult> {
+  const doc = await PDFDocument.load(encrypted?.plain ?? original, { updateMetadata: false });
   if (doc.context.trailerInfo.Encrypt) throw new Error('Encrypted PDFs cannot be updated incrementally.');
   const prev = lastXref(original);
   // pdf-lib does not count object-stream containers or the xref stream itself:
@@ -59,11 +67,16 @@ export async function incrementalUpdate(original: Uint8Array, edit: (doc: PDFDoc
   await edit(doc);
   await doc.flush();
 
-  const changed: Array<[PDFRef, Uint8Array]> = [];
+  let changed: Array<[PDFRef, Uint8Array]> = [];
   for (const [ref, obj] of doc.context.enumerateIndirectObjects()) {
     const b = objBytes(obj);
     const old = before.get(ref.toString());
     if (!old || !sameBytes(old, b)) changed.push([ref, b]);
+  }
+  if (encrypted) {
+    const { encryptObjects } = await import('@/lib/crypto/decrypt');
+    await encryptObjects(doc.context, encrypted.unlocked, changed.map(([r]) => r));
+    changed = changed.map(([r]) => [r, objBytes(doc.context.lookup(r)!)]);
   }
   const parts: Uint8Array[] = [original];
   let pos = original.length;
@@ -84,7 +97,8 @@ export async function incrementalUpdate(original: Uint8Array, edit: (doc: PDFDoc
   const trailer = doc.context.trailerInfo;
   const refText = (v: unknown) => (v instanceof PDFRef ? `${v.objectNumber} ${v.generationNumber} R` : null);
   const idText = trailer.ID ? new TextDecoder('latin1').decode(objBytes(trailer.ID as PDFObject)) : null;
-  const common = [`/Root ${refText(trailer.Root)}`, trailer.Info ? `/Info ${refText(trailer.Info)}` : '', idText ? `/ID ${idText}` : '', `/Prev ${prev.offset}`].filter(Boolean).join(' ');
+  const encryptText = encrypted ? `/Encrypt ${encrypted.unlocked.security.entry}` : '';
+  const common = [`/Root ${refText(trailer.Root)}`, trailer.Info ? `/Info ${refText(trailer.Info)}` : '', idText ? `/ID ${idText}` : '', encryptText, `/Prev ${prev.offset}`].filter(Boolean).join(' ');
 
   const xrefAt = pos;
   if (!prev.stream) {

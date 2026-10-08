@@ -1,5 +1,5 @@
 /** Forms → Detect fields: turns a flat or scanned form into a fillable one. */
-import { usePDFStore } from '@/store/usePDFStore';
+import { blockedReason, usePDFStore } from '@/store/usePDFStore';
 import { makeField } from '@/lib/objectFactory';
 import type { FieldObject, PageRef } from '@/types';
 import type { Rect } from '@/lib/geometry';
@@ -25,8 +25,9 @@ async function existingWidgets(page: PageRef): Promise<Rect[]> {
 /** Detects fields on every page (or the given pages) and adds them in one undoable step. */
 export async function detectFormFields(pageIds?: string[]): Promise<{ text: number; checkbox: number }> {
   const s = usePDFStore.getState();
-  if (s.readOnlyReason) {
-    s.toast(s.readOnlyReason, 'info');
+  const why = blockedReason(s, 'content');
+  if (why) {
+    s.toast(why, 'info');
     return { text: 0, checkbox: 0 };
   }
   const pages = pageIds ? s.pages.filter((p) => pageIds.includes(p.id)) : s.pages;

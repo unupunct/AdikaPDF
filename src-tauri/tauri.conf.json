@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Adika PDF Editor",
-  "version": "1.11.0",
+  "version": "1.12.0",
   "identifier": "eu.unupunct.adikapdf",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -42,12 +42,20 @@
     ],
     "windows": {
       "webviewInstallMode": { "type": "embedBootstrapper" },
+      "signCommand": { "cmd": "node", "args": ["../scripts/sign.mjs", "%1"] },
       "nsis": {
         "installMode": "both",
         "displayLanguageSelector": false,
         "installerIcon": "icons/icon.ico",
         "installerHooks": "./windows/hooks.nsh"
       }
+    }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDlCRUIzRUY5RUZGMDkwMkYKUldRdmtQRHYrVDdybXpkWmo4UG1EWDhlcXpSM1Q4dEc0Ty95T0xEM1V0MWoyM2oxbGhuSkJyQmUK",
+      "endpoints": ["https://github.com/unupunct/AdikaPDF/releases/latest/download/latest.json"],
+      "windows": { "installMode": "passive" }
     }
   }
 }

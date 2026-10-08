@@ -1,6 +1,6 @@
 /** Ribbon menus of the Comment tab: stamps, and comment import / export / summary / compare. */
 import { ChevronDown, FileInput, FileOutput, GitCompare, ImageUp, ListChecks, MessagesSquare, Stamp } from 'lucide-react';
-import { usePDFStore } from '@/store/usePDFStore';
+import { blockedReason, usePDFStore } from '@/store/usePDFStore';
 import { DropdownContent, DropdownItem, DropdownMenu, DropdownSeparator, DropdownTrigger } from '@/components/ui/primitives';
 import { STAMP_PRESETS, stampDate, type StampTemplate } from '@/lib/objectFactory';
 import { pickImagesAsDataUrls } from '@/actions/convert';
@@ -42,7 +42,7 @@ function choose(t: StampTemplate) {
 
 export function StampMenu() {
   const active = usePDFStore((s) => s.tool === 'stamp');
-  const enabled = usePDFStore((s) => s.pages.length > 0 && !s.readOnlyReason);
+  const enabled = usePDFStore((s) => s.pages.length > 0 && !blockedReason(s, 'comments'));
   const author = getAuthor();
   return (
     <DropdownMenu>
@@ -86,7 +86,7 @@ export function StampMenu() {
 
 export function CommentFileMenu() {
   const hasDoc = usePDFStore((s) => s.pages.length > 0);
-  const editable = usePDFStore((s) => s.pages.length > 0 && !s.readOnlyReason);
+  const editable = usePDFStore((s) => s.pages.length > 0 && !blockedReason(s, 'comments'));
   return (
     <DropdownMenu>
       <MenuButton icon={<MessagesSquare size={I} />} label="Share" disabled={!hasDoc} testId="btn-comments-io" tip="Import, export and summarise comments; compare two versions" />

@@ -23,7 +23,7 @@ vi.mock('@/lib/pdf/pdfService', () => ({
   releaseSource: async (id: string) => void released.push(id),
 }));
 
-import { usePDFStore, sameDoc, OWNER_PASSWORD_READ_ONLY } from '@/store/usePDFStore';
+import { usePDFStore, sameDoc, OWNER_PASSWORD_READ_ONLY, RESTRICTED, blockedReason, protectionOf, toolEditKind } from '@/store/usePDFStore';
 import { newTab, switchTab, tabWithPath, useTabs } from '@/store/tabs';
 import type { EditorObject } from '@/types';
 
@@ -146,6 +146,39 @@ describe('sources', () => {
     enc[1] = 0;
     await S().loadDocument(enc, 'locked.pdf', null);
     expect(S().readOnlyReason).toBe(OWNER_PASSWORD_READ_ONLY);
+  });
+
+  it('a protected file it can decrypt opens editable within its owner restrictions', async () => {
+    const { PDFDocument } = await import('pdf-lib');
+    const { encryptFixture } = await import('./helpers/pdfEncryptor');
+    const { isPdfEncrypted, permissionsToP } = await import('@/lib/crypto/encrypt');
+    const doc = await PDFDocument.create();
+    doc.addPage();
+    const p = permissionsToP({ print: false, printHighQuality: false, modify: false, copy: false, annotate: true, fillForms: true, extractForAccessibility: true, assemble: false });
+    const f = await encryptFixture(await doc.save(), { handler: 'aesv2', userPassword: '', ownerPassword: 'owner456', p });
+    await S().loadDocument(f.bytes, 'restricted.pdf', 'C:\\r.pdf', undefined, true);
+    const src = Object.values(S().sources)[0];
+    expect(S().readOnlyReason).toBeNull();
+    expect(isPdfEncrypted(src.bytes)).toBe(false);
+    expect(src.encryption?.file).toBe(f.bytes);
+    expect(src.original).toBe(true);
+    const prot = S().protection!;
+    expect(prot.full).toBe(false);
+    expect(prot.keep).toBe(true);
+    expect(blockedReason(S(), 'content')).toBe(RESTRICTED.content);
+    expect(blockedReason(S(), 'pages')).toBe(RESTRICTED.pages);
+    expect(blockedReason(S(), 'print')).toBe(RESTRICTED.print);
+    expect(blockedReason(S(), 'copy')).toBe(RESTRICTED.copy);
+    expect(blockedReason(S(), 'comments')).toBeNull();
+    expect(blockedReason(S(), 'forms')).toBeNull();
+    expect(toolEditKind('note')).toBe('comments');
+    expect(toolEditKind('rect')).toBe('content');
+    expect(toolEditKind('selectText')).toBeNull();
+    // The owner password lifts every restriction.
+    usePDFStore.setState({ protection: protectionOf(prot.unlocked, true) });
+    for (const k of ['content', 'pages', 'print', 'copy'] as const) expect(blockedReason(S(), k)).toBeNull();
+    await S().closeDocument();
+    expect(S().protection).toBeNull();
   });
 });
 

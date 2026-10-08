@@ -6,7 +6,7 @@
  */
 import { memo, useEffect, useRef, useState } from 'react';
 import type { PageRef } from '@/types';
-import { usePDFStore, type FieldValue } from '@/store/usePDFStore';
+import { blockedReason, usePDFStore, type FieldValue } from '@/store/usePDFStore';
 import { useFormView } from '@/store/formView';
 import { getAnnotations, getPdfPage } from '@/lib/pdf/pdfService';
 import { totalRotation } from '@/lib/geometry';
@@ -86,7 +86,7 @@ export const FormFillLayer = memo(function FormFillLayer({ page, zoom, active }:
 function Widget({ box, zoom, sourceId, field }: { box: Box; zoom: number; sourceId: string; field: FormFieldInfo }) {
   const key = `${sourceId}::${field.name}`;
   const stored = usePDFStore((s) => (key in s.fieldValues ? s.fieldValues[key] : undefined));
-  const readOnly = usePDFStore((s) => s.readOnlyReason !== null);
+  const readOnly = usePDFStore((s) => blockedReason(s, 'forms') !== null);
   const hidden = useFormView((v) => v.hidden[key] === true);
   const formatted = useFormView((v) => v.formatted[key]);
   const value: FieldValue = stored !== undefined ? stored : field.value;

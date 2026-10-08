@@ -18,6 +18,7 @@ import { useFileDrop } from '@/hooks/useFileDrop';
 import { useAutoReload } from '@/hooks/useAutoReload';
 import { useViewPrefs } from '@/hooks/useViewPrefs';
 import { TabBar } from '@/components/shell/TabBar';
+import { ProtectionBar } from '@/components/shell/ProtectionBar';
 import { PresentationView } from '@/components/viewer/PresentationView';
 import { SelectionToolbar } from '@/components/viewer/SelectionToolbar';
 import { dirtyTabCount } from '@/store/tabs';
@@ -143,6 +144,7 @@ export default function App() {
             <TopBar />
             <Ribbon />
             <TabBar />
+            {hasDoc ? <ProtectionBar /> : null}
           </>
         )}
         <div className="relative flex min-h-0 flex-1">

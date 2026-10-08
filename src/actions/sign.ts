@@ -5,7 +5,7 @@
  */
 import forge from 'node-forge';
 import { usePDFStore } from '@/store/usePDFStore';
-import { exportCurrentPdf, primarySourceBytes, refreshSignatureStatus, saveDerived, withBusy } from './document';
+import { exportCurrentPdf, primarySourceFile, refreshSignatureStatus, saveDerived, withBusy } from './document';
 import {
   identityFromCertificateDer,
   signPdf,
@@ -153,6 +153,7 @@ async function signWith(
   meta: SignMeta,
   inkSrc: string | null,
   consumeId: string | null,
+  onAbort?: () => void,
 ): Promise<void> {
   const store = usePDFStore.getState();
   const hadSignatures = store.signatureStatus.length > 0;
@@ -161,8 +162,8 @@ async function signWith(
       'This PDF already carries digital signatures and has unsaved edits. Editing a signed PDF invalidates its signatures; save a copy first if that is intended.',
     );
   }
-  const out = await withBusy('Signing…', async (progress) => {
-    const bytes = hadSignatures && !store.dirty ? primarySourceBytes()! : await exportCurrentPdf({}, progress, consumeId ? [consumeId] : []);
+  const run = async (progress: (msg: string, fraction: number | null) => void) => {
+    const bytes = hadSignatures && !store.dirty ? primarySourceFile()! : await exportCurrentPdf({}, progress, consumeId ? [consumeId] : []);
     const when = new Date();
     const size = placement.rect ?? { width: 0, height: 0 };
     const appearancePng = placement.rect
@@ -185,7 +186,17 @@ async function signWith(
       certify: meta.certify && !hadSignatures ? meta.certify : undefined,
       pades: !!meta.pades,
     });
-  });
+  };
+  // Remote signing waits for the browser: that wait can be cancelled.
+  const out = await withBusy(
+    'Signing…',
+    onAbort
+      ? (progress, signal) => {
+          signal.addEventListener('abort', onAbort);
+          return run(progress);
+        }
+      : (progress) => run(progress),
+  );
   if (!out) return;
   let final = out;
   if (meta.ltv) {
@@ -225,7 +236,7 @@ async function signWith(
  */
 export async function addArchiveTimestamp(tsaUrl: string): Promise<void> {
   const store = usePDFStore.getState();
-  const bytes = primarySourceBytes();
+  const bytes = primarySourceFile();
   if (!bytes || !store.signatureStatus.length) return;
   if (store.dirty) {
     store.toast('Save or undo the changes first: the timestamp is added to the signed file as it is.', 'info');
@@ -246,7 +257,7 @@ export async function addArchiveTimestamp(tsaUrl: string): Promise<void> {
 /** Verify → Add long-term validation: stores the validation data in an already signed PDF (the signatures stay valid). */
 export async function addLongTermValidation(): Promise<void> {
   const store = usePDFStore.getState();
-  const bytes = primarySourceBytes();
+  const bytes = primarySourceFile();
   if (!bytes || !store.signatureStatus.length) return;
   if (store.dirty) {
     store.toast('Save or undo the changes first: validation data is added to the signed file as it is.', 'info');
@@ -307,6 +318,21 @@ export async function signWithStoreCert(cert: StoreCertificate, placement: SignP
     sign: (data) => winstoreSign(cert.thumbprint, data),
   };
   await signWith({ signer }, { name: info.name, issuer: cnOf(info.issuer) }, placement, meta, inkSrc, consumeId);
+}
+
+/** Signs with a key held elsewhere (remote signing service); the chain is completed from Windows when the signer has none. */
+export async function signWithExternalSigner(
+  signer: ExternalSigner,
+  placement: SignPlacement,
+  meta: SignMeta,
+  inkSrc: string | null,
+  consumeId: string | null = null,
+  onAbort?: () => void,
+): Promise<void> {
+  const chain = signer.chain.length ? signer.chain : await issuerChain(signer.certificate);
+  const subject = signer.certificate.subject.getField('CN')?.value as string | undefined;
+  const issuer = signer.certificate.issuer.getField('CN')?.value as string | undefined;
+  await signWith({ signer: { ...signer, chain } }, { name: subject ?? 'Signer', issuer: issuer ?? '' }, placement, meta, inkSrc, consumeId, onAbort);
 }
 
 /** Intermediate certificates from the Windows CA store, so verifiers can build the chain. */
@@ -402,7 +428,7 @@ async function trustedRoots(): Promise<forge.pki.Certificate[]> {
 
 /** Full verification (chain against the Windows trust store, OCSP/CRL online). */
 export async function verifyCurrentSignatures(checkRevocation: boolean): Promise<SignatureValidation[] | undefined> {
-  const bytes = primarySourceBytes();
+  const bytes = primarySourceFile();
   if (!bytes) return undefined;
   const result = await withBusy('Verifying signatures…', async () =>
     verifyPdfSignatures(bytes, {

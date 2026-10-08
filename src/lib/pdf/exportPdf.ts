@@ -1432,11 +1432,13 @@ function isAnnotationObject(o: EditorObject): boolean {
  * order (no page content, page changes, redactions, text edits or new fields).
  * Returns why not, or null when they can.
  */
-export function incrementalBlocker(input: ExportInput, meta?: import('@/store/usePDFStore').DocMeta | null): string | null {
+export function incrementalBlocker(input: ExportInput, meta?: import('@/store/usePDFStore').DocMeta | null, removingProtection = false): string | null {
   const base = baseSourceOf(input.pages, input.baseSourceId);
   const src = base ? input.sources[base] : undefined;
   if (!src || !src.original) return 'The document was rewritten since it was opened.';
-  if (src.password) return 'The document is encrypted.';
+  // An encrypted file is updated with objects encrypted like its own; one Adika could not decrypt is not.
+  if (src.password && !src.encryption) return 'The document is encrypted.';
+  if (removingProtection) return 'The password protection is being removed.';
   if (input.pages.length !== src.pageCount || input.pages.some((p, i) => p.kind !== 'source' || p.sourceId !== base || p.sourceIndex !== i || p.userRotation !== 0)) {
     return 'Pages were added, removed, moved or rotated.';
   }
@@ -1459,7 +1461,9 @@ export async function buildIncrementalPdf(input: ExportInput, options: ExportOpt
   const baseSourceId = baseSourceOf(input.pages, input.baseSourceId)!;
   const opts = { measure: options.measure ?? canvasMeasure, loadFont: options.loadFont ?? loadFontBytes };
   const { incrementalUpdate } = await import('./incremental');
-  const res = await incrementalUpdate(input.sources[baseSourceId].bytes, async (doc) => {
+  const src = input.sources[baseSourceId];
+  const encrypted = src.encryption ? { plain: src.bytes, unlocked: src.encryption.unlocked } : undefined;
+  const res = await incrementalUpdate(src.encryption?.file ?? src.bytes, async (doc) => {
     doc.registerFontkit(fontkit);
     if (xfaKindOf(doc)) throw new ExportError('XFA forms are saved in full.');
     const docPages = doc.getPages();
@@ -1531,7 +1535,7 @@ export async function buildIncrementalPdf(input: ExportInput, options: ExportOpt
         else dict.delete(DA);
       }
     }
-  });
+  }, encrypted);
   return res.bytes;
 }
 

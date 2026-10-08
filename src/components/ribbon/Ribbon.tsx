@@ -5,6 +5,7 @@
 import { useEffect, useRef, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react';
 import {
   ArrowUpRight,
+  Cloud,
   Scaling,
   Spline,
   Receipt,
@@ -81,7 +82,7 @@ import {
   EyeOff,
 } from 'lucide-react';
 import { useXfa } from '@/actions/xfaForms';
-import { usePDFStore } from '@/store/usePDFStore';
+import { blockedReason, toolEditKind, usePDFStore, type EditKind } from '@/store/usePDFStore';
 import { useStorePick, type StoreState } from '@/hooks/useStorePick';
 import type { RibbonTab, ToolId } from '@/types';
 import { Tooltip, DropdownMenu, DropdownTrigger, DropdownContent, DropdownItem } from '@/components/ui/primitives';
@@ -282,7 +283,7 @@ function Stack({ children }: { children: ReactNode }) {
 
 function ToolBtn({ tool, icon, label, tip, big = true }: { tool: ToolId; icon: ReactNode; label: string; tip?: string; big?: boolean }) {
   const active = usePDFStore((s) => s.tool === tool);
-  const hasDoc = usePDFStore((s) => s.pages.length > 0 && !s.readOnlyReason);
+  const hasDoc = usePDFStore((s) => s.pages.length > 0 && !blockedReason(s, toolEditKind(tool) ?? 'content'));
   const setTool = usePDFStore((s) => s.setTool);
   const B = big ? Big : Small;
   return <B icon={icon} label={label} tip={tip} active={active} disabled={!hasDoc} onClick={() => setTool(active ? 'select' : tool)} testId={`tool-${tool}`} />;
@@ -291,8 +292,13 @@ function ToolBtn({ tool, icon, label, tip, big = true }: { tool: ToolId; icon: R
 /** Document state for a ribbon tab; `s` holds only the named store fields, so the tab re-renders only when they change. */
 function useDoc<K extends keyof StoreState>(...keys: K[]) {
   const hasDoc = usePDFStore((st) => st.pages.length > 0);
-  const editable = usePDFStore((st) => st.pages.length > 0 && !st.readOnlyReason);
+  const editable = useAllowed('content');
   return { hasDoc, editable, s: useStorePick(...keys) };
+}
+
+/** A document is open and the owner's restrictions (if any) allow this kind of change. */
+function useAllowed(kind: EditKind): boolean {
+  return usePDFStore((st) => st.pages.length > 0 && !blockedReason(st, kind));
 }
 
 const I = 22;
@@ -385,17 +391,19 @@ function EditTab() {
 }
 
 function SignTab() {
-  const { hasDoc, editable, s } = useDoc('openModal');
+  const { hasDoc, s } = useDoc('openModal');
+  const canSign = useAllowed('forms');
   return (
     <>
       <Group label="Electronic signature">
-        <Big icon={<Signature size={I} />} label="Sign" disabled={!editable} onClick={() => s.openModal('signature')} tip="Draw, type or upload your signature and place it" testId="btn-sign" />
+        <Big icon={<Signature size={I} />} label="Sign" disabled={!canSign} onClick={() => s.openModal('signature')} tip="Draw, type or upload your signature and place it" testId="btn-sign" />
         <SavedSignaturesMenu />
       </Group>
       <Group label="Digital signature (certificate)">
         <Big icon={<FileKey2 size={I} />} label="Certificate ID" disabled={!hasDoc} onClick={() => s.openModal('certificate')} tip="Sign with a .pfx/.p12 certificate or create a self-signed ID" testId="btn-cert-sign" />
         <Big icon={<Usb size={I} />} label="Token / smart card" disabled={!hasDoc} onClick={() => s.openModal('token')} tip="Sign with a USB token or smart card (PKCS#11)" testId="btn-token-sign" />
         <Big icon={<KeyRound size={I} />} label="Windows certificate" disabled={!hasDoc} onClick={() => s.openModal('winstore')} tip="Sign with a certificate installed in Windows (qualified certificates, imported .pfx)" testId="btn-winstore-sign" />
+        <Big icon={<Cloud size={I} />} label="Cloud signature" disabled={!hasDoc} onClick={() => s.openModal('cloudsign')} tip="Remote qualified signature with a provider's signing service (Cloud Signature Consortium API): sign in through your browser" testId="btn-cloud-sign" />
         <ToolBtn tool="field-signature" icon={<PenLine size={I} />} label="Signature field" tip="Draw an empty signature field for someone else to sign" />
       </Group>
       <Group label="Validation">
@@ -407,7 +415,7 @@ function SignTab() {
 
 function SavedSignaturesMenu() {
   const saved = usePDFStore((s) => s.savedSignatures);
-  const editable = usePDFStore((s) => s.pages.length > 0 && !s.readOnlyReason);
+  const editable = useAllowed('forms');
   const setPending = usePDFStore((s) => s.setPendingSignature);
   const toast = usePDFStore((s) => s.toast);
   return (
@@ -442,19 +450,20 @@ function OrganizeTab() {
   const { editable, s } = useDoc('currentPageId', 'deletePages', 'duplicatePages', 'insertBlankPage', 'openModal', 'pages', 'rotatePages');
   const current = s.currentPageId;
   const idx = s.pages.findIndex((p) => p.id === current);
+  const pagesOk = useAllowed('pages');
   return (
     <>
       <Group label="Pages">
-        <Big icon={<LayoutGrid size={I} />} label="Organizer" disabled={!editable} onClick={() => s.openModal('organizer')} tip="Grid view: drag, rotate, delete, insert pages" testId="btn-organizer" />
+        <Big icon={<LayoutGrid size={I} />} label="Organizer" disabled={!pagesOk} onClick={() => s.openModal('organizer')} tip="Grid view: drag, rotate, delete, insert pages" testId="btn-organizer" />
         <Stack>
-          <Small icon={<RotateCcw size={i} />} label="Rotate left" disabled={!editable || !current} onClick={() => current && s.rotatePages([current], 270)} />
-          <Small icon={<RotateCw size={i} />} label="Rotate right" disabled={!editable || !current} onClick={() => current && s.rotatePages([current], 90)} testId="btn-rotate-right" />
-          <Small icon={<Trash2 size={i} />} label="Delete page" disabled={!editable || !current || s.pages.length < 2} onClick={() => current && s.deletePages([current])} />
+          <Small icon={<RotateCcw size={i} />} label="Rotate left" disabled={!pagesOk || !current} onClick={() => current && s.rotatePages([current], 270)} />
+          <Small icon={<RotateCw size={i} />} label="Rotate right" disabled={!pagesOk || !current} onClick={() => current && s.rotatePages([current], 90)} testId="btn-rotate-right" />
+          <Small icon={<Trash2 size={i} />} label="Delete page" disabled={!pagesOk || !current || s.pages.length < 2} onClick={() => current && s.deletePages([current])} />
         </Stack>
         <Stack>
-          <Small icon={<FilePlus2 size={i} />} label="Insert blank" disabled={!editable} onClick={() => s.insertBlankPage(idx + 1)} testId="btn-insert-blank" />
-          <Small icon={<SquareStack size={i} />} label="Duplicate page" disabled={!editable || !current} onClick={() => current && s.duplicatePages([current])} />
-          <Small icon={<Replace size={i} />} label="Replace pages" disabled={!editable} onClick={() => s.openModal('replacePages')} testId="btn-replace-pages" />
+          <Small icon={<FilePlus2 size={i} />} label="Insert blank" disabled={!pagesOk} onClick={() => s.insertBlankPage(idx + 1)} testId="btn-insert-blank" />
+          <Small icon={<SquareStack size={i} />} label="Duplicate page" disabled={!pagesOk || !current} onClick={() => current && s.duplicatePages([current])} />
+          <Small icon={<Replace size={i} />} label="Replace pages" disabled={!pagesOk} onClick={() => s.openModal('replacePages')} testId="btn-replace-pages" />
         </Stack>
       </Group>
       <Group label="Structure">
@@ -482,7 +491,7 @@ function OrganizeTab() {
         </Stack>
       </Group>
       <Group label="Combine & split">
-        <Big icon={<Merge size={I} />} label="Merge PDFs" disabled={!editable} onClick={() => void mergeDialog()} tip="Append other PDF files" testId="btn-merge" />
+        <Big icon={<Merge size={I} />} label="Merge PDFs" disabled={!pagesOk} onClick={() => void mergeDialog()} tip="Append other PDF files" testId="btn-merge" />
         <Big icon={<Scissors size={I} />} label="Split / Extract" disabled={!editable} onClick={() => s.openModal('split')} testId="btn-split" />
         <Big icon={<Package size={I} />} label="Portfolio" onClick={() => s.openModal('portfolio')} tip="One PDF that carries files of any kind, each with a description" testId="btn-portfolio" />
       </Group>

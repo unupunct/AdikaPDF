@@ -15,7 +15,7 @@ OCR and convert PDFs entirely on your computer. Nothing is uploaded. The interfa
 | Print | Print dialog with page ranges, **several pages per sheet** (2–16), **booklet** (fold and staple) and **poster** (enlarged over several sheets, with cut marks); also saved as PDF |
 | Print to PDF | A **"Adika PDF Editor" virtual printer**: print from a browser or any program and the pages open in Adika as a PDF (saved in `%LOCALAPPDATA%\Adika PDF Editor\Printed`) |
 | Edit | **Paragraph editing**: Edit text opens the whole paragraph as one box that rewraps while typing; **Edit image**: move, resize, rotate, replace or delete pictures already in the PDF; **Find & replace** (Ctrl+H) across the document: the old letters are deleted from the page, the new text uses the document's own font when it has the letters and the rest of the line moves to make room; click-to-edit existing text (the original run is removed, not covered), text boxes (Noto fonts, full Unicode incl. ă â î ș ț), images with crop, rectangles, ellipses, lines, arrows, freehand ink, highlights, snapping guides, undo/redo; **links** to web pages or pages; **watermark** (text or picture), **header & footer** with page numbers, date and file name, **Bates numbering**, **background**, all removable; **Edit drawing**: lines, boxes and shapes already in the PDF can be moved, resized, recoloured or deleted; restyled text (colour, size) keeps the **document's own font**; **pen pressure** (Windows Ink) for ink |
-| Sign | Draw / type / upload signatures and initials; digital signatures (PAdES-style `adbe.pkcs7.detached`, SHA-256) with a `.pfx/.p12` ID, a self-signed ID, or a **USB token / smart card over PKCS#11**; optional RFC 3161 timestamp; **several signatures** on one document (each added as an incremental update, so earlier ones stay valid); **certify** a document (no changes / forms and signing / also comments); **long-term validation** (certificate chains and OCSP/CRL answers saved in the file); **EU format (PAdES baseline, eIDAS)**: levels B-B, B-T (timestamp), B-LT (validation data, also for the timestamp authority) and B-LTA (archive document timestamp); sign with **certificates installed in Windows** (qualified certificates from card drivers, imported .pfx; Windows asks for the PIN) |
+| Sign | Draw / type / upload signatures and initials; digital signatures (PAdES-style `adbe.pkcs7.detached`, SHA-256) with a `.pfx/.p12` ID, a self-signed ID, or a **USB token / smart card over PKCS#11**; optional RFC 3161 timestamp; **several signatures** on one document (each added as an incremental update, so earlier ones stay valid); **certify** a document (no changes / forms and signing / also comments); **long-term validation** (certificate chains and OCSP/CRL answers saved in the file); **EU format (PAdES baseline, eIDAS)**: levels B-B, B-T (timestamp), B-LT (validation data, also for the timestamp authority) and B-LTA (archive document timestamp); sign with **certificates installed in Windows** (qualified certificates from card drivers, imported .pfx; Windows asks for the PIN); **remote / cloud qualified signatures** via the Cloud Signature Consortium API: any provider offering it, sign in through your browser (PIN / one-time code or confirmation at the provider) |
 | Verify | Integrity, whole-file coverage, certificate chain against the Windows trust store, OCSP/CRL revocation; recognises the changes allowed after signing (validation data, signatures, form filling, comments) and the certification level, and flags anything else, including tampering tricks that hide changes in later updates; certificate purposes, timestamp tokens and OCSP/CRL answers are themselves verified, and weak algorithms (SHA-1, short keys) are flagged; uses saved validation data offline; shows the **PAdES level**; **EU Trusted Lists** (downloaded from the European Commission, kept offline) recognise qualified certificate authorities and timestamp authorities (the lists' own signatures are not verified), and **qualified electronic signatures** (QcStatements); document timestamps verified; the checks can be saved as a **validation report** (PDF) |
 | Organize | Drag-and-drop page grid, rotate, delete, duplicate, insert blank, merge, split, extract, **crop pages**, **edit bookmarks** (add, rename, move, nest); **Replace pages** from another PDF (comments and bookmarks kept); **bookmarks from headings**; **links from web and e-mail addresses**; split at **top-level bookmarks** (named parts), by **file size**, or at **blank pages and separator sheets**; **page size**: pages to A4, Letter… (content scaled to fit, or the page grown around it); **contents page** from the bookmarks, with links; **PDF Portfolios** (one PDF carrying files of any kind); **layers**: rename, delete with their content, merge, flatten; objects can be saved in a layer |
 | Forms | **Smart fields**: number, currency, percent and date formats, minimum / maximum, totals and formulas (Qty * Price), saved as standard Acrobat form actions and calculated live while filling; **Detect fields**: turns a flat or scanned form into a fillable one (fill-in lines, empty boxes, checkboxes, named after their labels); create text, checkbox, radio, dropdown and signature fields; fill existing forms; CSV export (single or batch); **Mail merge**: fill the form once per row of a CSV or Excel table, one PDF per row (file names from the columns) or one combined PDF; **buttons** (e-mail the filled form, clear, print, open a web page, show / hide fields, go to a page) and **barcode fields** (QR or Code 128 made from the field values); existing fields are **filled on the page**; the form's own **JavaScript** (calculations, checks, formats, messages) runs in a sandbox; **XFA forms**: static ones keep their XFA data, dynamic ones (government and bank forms that show "Please wait…") are laid out and filled, and saving keeps them XFA forms; XFA data as XML |
@@ -26,11 +26,11 @@ OCR and convert PDFs entirely on your computer. Nothing is uploaded. The interfa
 | Print production | **Preflight** against PDF/X-4, PDF/X-1a:2003 or PDF/A-2b and **conversion to PDF/X** (trim boxes, output intent with an embedded CMYK profile, metadata; for X-1a CMYK colours and flattened transparency); colours to **grey or CMYK**; **output preview** of the separations and total ink; **bleed and printer marks** (crop, registration, colour bars, page information) |
 | Automation | **Command line** (`adika-pdf-editor.exe --batch --ocr --compress --out results *.pdf`, or a saved `--sequence`), exit codes for scripts; **watched folders**: PDFs copied into a folder are processed with a saved sequence while Adika runs; **Explorer menu**: Combine in Adika, Compress, Make searchable (OCR), Convert to PDF; **PDF thumbnails** in Explorer; **Send by e-mail** from your mail program; your own **Quick Access toolbar** and **keyboard shortcuts** |
 | Document properties | Title, authors, subject, keywords, **copyright** status, notice and URL, **custom properties**; written into the XMP metadata in step with the document information |
-| Updates | Optional update check (About → Check for updates, or once a week): asks GitHub for the latest version, nothing else is sent; **automatic backup** of every unsaved document every few seconds and recovery after a crash; asks before closing with unsaved changes; **signed documents are saved as an incremental update** (signatures stay valid when you add comments or fill in fields; a setting does this for all documents); warns when the file changed on disk or a save would break signatures; long operations can be **cancelled** |
+| Updates | Optional update check (About → Check for updates, or once a week): asks GitHub for the latest version, nothing else is sent; **one-click updates**: shows what is new, downloads the installer with progress, checks its signature against Adika's update key and installs it (asks first when documents are unsaved and keeps recovery copies); nothing is contacted unless you check or turned the weekly check on; **automatic backup** of every unsaved document every few seconds and recovery after a crash; asks before closing with unsaved changes; **signed documents are saved as an incremental update** (signatures stay valid when you add comments or fill in fields; a setting does this for all documents); warns when the file changed on disk or a save would break signatures; long operations can be **cancelled** |
 
 ## Install
 
-Download `Adika PDF Editor_x.y.z_x64-setup.exe` from Releases and run it. It adds Start-menu
+Download `AdikaPDF_x.y.z_x64-setup.exe` from Releases and run it. It adds Start-menu
 and desktop shortcuts and an "Open with" entry for PDF files. Requires Windows 10/11 (WebView2,
 installed automatically if missing).
 
@@ -57,6 +57,42 @@ npm run desktop:build      # installer in src-tauri/target/release/bundle/nsis/
 npm run desktop:dev        # development window with hot reload
 ```
 
+### Releases and updates
+
+The in-app updater reads `latest.json` from the latest GitHub release and installs the NSIS setup
+only when its signature matches the public key in `tauri.conf.json` (`plugins.updater.pubkey`).
+
+```bash
+npm run desktop:build:release   # tauri build + updater signature (.sig); key from %USERPROFILE%\.tauri\adika-updater.key
+npm run release:assets -- --notes-file notes.md   # release-assets/v<version>/: AdikaPDF_<v>_x64-setup.exe, .sig, latest.json
+gh release create v<version> release-assets/v<version>/* --title "Adika PDF Editor <version>" --notes-file notes.md
+```
+
+The key can also come from `TAURI_SIGNING_PRIVATE_KEY` (key text) or `TAURI_SIGNING_PRIVATE_KEY_PATH`,
+with `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`. Keep the private key out of the repository; losing it
+means installed copies can no longer update themselves. Upload the installer under the name in
+`latest.json`. Releases without `latest.json` still work: the app then opens the release page.
+
+### Code signing
+
+Unsigned builds work, but Windows SmartScreen warns about them. `scripts/sign.mjs` is Tauri's
+`signCommand` (app, installer, uninstaller) and also signs `adika_thumbs.dll` in `build:thumbs`; it
+does nothing unless one of these is configured:
+
+- **Azure Trusted Signing** (about 10 USD/month; individuals and organisations with a verified
+  identity): `AZURE_TRUSTED_SIGNING_ENDPOINT` (e.g. `https://weu.codesigning.azure.net`),
+  `AZURE_TRUSTED_SIGNING_ACCOUNT`, `AZURE_TRUSTED_SIGNING_PROFILE`, plus `AZURE_TENANT_ID`,
+  `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET` (or `az login`). Signs with `trusted-signing-cli`
+  (`cargo install trusted-signing-cli`), or with signtool and the Azure Code Signing Dlib when
+  `AZURE_CODESIGNING_DLIB` points to `Azure.CodeSigning.Dlib.dll`.
+- **A code signing certificate in the Windows store** (OV/EV from a CA, roughly 200–600 USD/year,
+  usually on a hardware token): `ADIKA_SIGN_THUMBPRINT` (SHA-1 thumbprint), optional
+  `ADIKA_SIGN_STORE` (default `My`) and `ADIKA_SIGN_MACHINE_STORE=1`. Uses signtool from the
+  Windows SDK (or `SIGNTOOL`).
+
+Signatures get an RFC 3161 timestamp (`ADIKA_SIGN_TIMESTAMP_URL` overrides the default server),
+so they stay valid after the certificate expires.
+
 ## Tests
 
 ```bash
@@ -74,8 +110,9 @@ output file independently with pdf-lib and pdf.js.
 - Hardware-token signing is tested end to end against a SoftHSM2 token (RSA-2048 and ECDSA P-256, verified independently with pyHanko): `bash tests/token/setup-softhsm.sh && node tests/e2e/token.mjs`.
 - Self-signed signatures prove integrity, not identity; for eIDAS qualified signatures use a
   certificate from a qualified provider on a token.
+- Cloud signatures need an account with a trust service provider that offers the Cloud Signature Consortium (CSC) API, and an application registration there: the provider gives you the service URL and a client ID (sometimes a client secret and a fixed redirect URI such as `http://127.0.0.1:<port>/callback`). Sign-in tokens are kept in memory only, for the session.
 - Redacted pages are rebuilt as images (run OCR afterwards to make them searchable again).
-- Password-protected PDFs open read-only, and so do PDFs restricted by an owner password.
+- Password-protected PDFs (RC4 40–128-bit, AES-128 and AES-256) can be edited and are saved with the same passwords and permissions, also as incremental updates. Opened without the owner password, the owner's restrictions apply as in Acrobat (for example: comments and form filling allowed, page content locked; printing and copying as permitted); "Enter owner password…" lifts them, and with the owner password the protection can also be removed. PDFs encrypted with another security handler still open read-only.
 - PDF/A output carries the required markers and warns about what it cannot fix (e.g. CMYK content); validate critical archives with veraPDF.
 - Form scripts that run too long are stopped and turned off for that document.
 - OCR is statistical: on clean scans most words come out exactly, but check important text (e.g. a capital Ș at the start of a line can be read as S).

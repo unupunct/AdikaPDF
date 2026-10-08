@@ -69,6 +69,8 @@ export interface SourceDoc {
   password?: string;
   /** The bytes are the file as opened from disk (not rewritten), so an incremental update can be appended. */
   original?: boolean;
+  /** A password-protected file: `bytes` are its decrypted copy, `file` the encrypted file itself (memory only). */
+  encryption?: { file: Uint8Array; unlocked: import('@/lib/crypto/decrypt').Unlocked };
 }
 
 /** One page of the working document, pointing at a page of a source (or blank). */

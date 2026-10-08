@@ -79,6 +79,8 @@ export async function issue(opts: {
   ocspUrl?: string;
   crlUrl?: string;
   bits?: number;
+  /** More forge extensions (e.g. QcStatements). */
+  extensions?: object[];
 }): Promise<TestCa> {
   const key = opts.bits ? forge.pki.rsa.generateKeyPair({ bits: opts.bits, e: 0x10001 }).privateKey : await generateRsaKey();
   const c = forge.pki.createCertificate();
@@ -96,6 +98,7 @@ export async function issue(opts: {
   if (opts.eku) ext.push({ id: '2.5.29.37', value: bin(der(0x30, ...opts.eku.map(oid))) });
   if (opts.ocspUrl) ext.push({ id: '1.3.6.1.5.5.7.1.1', value: bin(der(0x30, der(0x30, oid('1.3.6.1.5.5.7.48.1'), der(0x86, unbin(opts.ocspUrl))))) });
   if (opts.crlUrl) ext.push({ id: '2.5.29.31', value: bin(der(0x30, der(0x30, der(0xa0, der(0xa0, der(0x86, unbin(opts.crlUrl))))))) });
+  if (opts.extensions) ext.push(...opts.extensions);
   c.setExtensions(ext);
   c.sign(opts.issuer?.key ?? key, forge.md.sha256.create());
   return { cert: identityFromCertificateDer(toDer(forge.pki.certificateToAsn1(c))).certificate, key };

@@ -5,7 +5,7 @@
  */
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { AlignCenter, AlignLeft, AlignRight, BadgeCheck, BadgeX, Bold, Italic, Lock, Unlock } from 'lucide-react';
-import { usePDFStore, type FieldValue } from '@/store/usePDFStore';
+import { blockedReason, usePDFStore, type FieldValue } from '@/store/usePDFStore';
 import type { EditorObject, FieldObject, FontFamily, ImageObject, LinkObject, MeasureObject, TextObject } from '@/types';
 import { measureValue } from '@/lib/measure';
 import { checkInput, displayValue, formulaFields, type FieldLogic } from '@/lib/formLogic';
@@ -922,7 +922,7 @@ function ToolDefaults() {
 function FormFill() {
   const sources = usePDFStore((s) => s.sources);
   const fieldValues = usePDFStore((s) => s.fieldValues);
-  const readOnly = usePDFStore((s) => s.readOnlyReason !== null);
+  const readOnly = usePDFStore((s) => blockedReason(s, 'forms') !== null);
   const formatted = useFormView((v) => v.formatted);
   const [fields, setFields] = useState<Array<{ sourceId: string; field: FormFieldInfo }>>([]);
 

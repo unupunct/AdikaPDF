@@ -8,6 +8,7 @@ mod convert;
 mod logging;
 mod print_watcher;
 mod net;
+mod oauth;
 mod pkcs11;
 mod recovery;
 mod appdata;
@@ -150,6 +151,8 @@ pub fn run() {
         })
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
+        // Contacts the release server only when the interface asks (opt-in check or "Check for updates").
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .invoke_handler(tauri::generate_handler![
             read_file,
             write_file,
@@ -196,6 +199,10 @@ pub fn run() {
             shellops::open_document_window,
             net::http_request,
             net::system_certificates,
+            net::api_request,
+            oauth::oauth_loopback_start,
+            oauth::oauth_loopback_wait,
+            oauth::oauth_loopback_cancel,
             pkcs11::pkcs11_detect_modules,
             pkcs11::pkcs11_list_tokens,
             pkcs11::pkcs11_sign,

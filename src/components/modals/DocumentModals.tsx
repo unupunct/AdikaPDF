@@ -15,7 +15,16 @@ import { openExternal } from '@/lib/platform';
 import { useSaveSettings } from '@/lib/saveSettings';
 
 function UpdateInfo() {
-  const { status, latest, error, auto, setAuto } = useUpdates();
+  const { status, latest, error, auto, setAuto, installable } = useUpdates();
+  // A signed update opens its own dialog (version, notes, install); About closes for it.
+  const showPrompt = () => {
+    usePDFStore.getState().openModal(null);
+    useUpdates.getState().setPrompt(true);
+  };
+  const check = async () => {
+    const found = await checkForUpdates();
+    if (found && useUpdates.getState().installable) showPrompt();
+  };
   return (
     <div className="mt-4 rounded-lg border border-app px-3 py-2 text-[11.5px]" data-testid="update-info">
       <div className="flex items-center gap-2">
@@ -33,12 +42,16 @@ function UpdateInfo() {
                     : 'Asks GitHub for the latest version; nothing else is sent.'}
           </span>
         </span>
-        {status === 'available' && latest ? (
+        {status === 'available' && latest && installable ? (
+          <Button size="sm" variant="primary" onClick={showPrompt} data-testid="update-install-open">
+            Update…
+          </Button>
+        ) : status === 'available' && latest ? (
           <Button size="sm" variant="primary" onClick={() => void openExternal(latest.url)} data-testid="update-download">
             Download
           </Button>
         ) : (
-          <Button size="sm" disabled={status === 'checking'} onClick={() => void checkForUpdates()} data-testid="update-check">
+          <Button size="sm" disabled={status === 'checking'} onClick={() => void check()} data-testid="update-check">
             Check for updates
           </Button>
         )}

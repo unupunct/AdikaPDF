@@ -380,6 +380,45 @@ export async function httpPost(url: string, contentType: string, body: Uint8Arra
   return new Uint8Array(buf);
 }
 
+/** JSON / form request to a web service (remote signing; https only). Error statuses come back with their body. */
+export async function apiRequest(req: { url: string; method: 'GET' | 'POST'; authorization?: string; contentType?: string; body?: string }): Promise<{ status: number; body: string }> {
+  if (!isDesktop) {
+    const headers: Record<string, string> = { Accept: 'application/json' };
+    if (req.authorization) headers.Authorization = req.authorization;
+    if (req.contentType) headers['Content-Type'] = req.contentType;
+    const r = await fetch(req.url, { method: req.method, headers, body: req.method === 'POST' ? (req.body ?? '') : undefined });
+    return { status: r.status, body: await r.text() };
+  }
+  return invoke<{ status: number; body: string }>('api_request', {
+    url: req.url,
+    method: req.method,
+    authorization: req.authorization ?? null,
+    contentType: req.contentType ?? null,
+    body: req.body ?? null,
+  });
+}
+
+export interface LoopbackResult {
+  code?: string | null;
+  state?: string | null;
+  error?: string | null;
+  errorDescription?: string | null;
+}
+
+/** Opens a one-shot listener on 127.0.0.1 for an OAuth redirect (port 0: any free port). */
+export async function oauthLoopbackStart(port: number, path: string): Promise<{ id: number; port: number }> {
+  if (!isDesktop) throw new DesktopOnlyError('Signing in to a signing service');
+  return invoke<{ id: number; port: number }>('oauth_loopback_start', { port, path });
+}
+
+export async function oauthLoopbackWait(id: number, timeoutSecs = 300): Promise<LoopbackResult> {
+  return invoke<LoopbackResult>('oauth_loopback_wait', { id, timeoutSecs });
+}
+
+export async function oauthLoopbackCancel(id: number): Promise<void> {
+  await invoke('oauth_loopback_cancel', { id });
+}
+
 export interface SystemCertificates {
   roots: string[];
   intermediates: string[];

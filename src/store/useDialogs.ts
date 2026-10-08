@@ -7,6 +7,7 @@ import { create } from 'zustand';
 interface PasswordPrompt {
   fileName: string;
   incorrect: boolean;
+  owner?: boolean;
   resolve: (password: string | null) => void;
 }
 
@@ -66,11 +67,13 @@ export function askCertificateKey(fileName: string, recipients: string[], error:
   });
 }
 
-export function askPassword(fileName: string, incorrect: boolean): Promise<string | null> {
+/** `owner`: asks for the owner (permissions) password of an open document, to lift its restrictions. */
+export function askPassword(fileName: string, incorrect: boolean, owner = false): Promise<string | null> {
   return new Promise((resolve) => {
     show('password', {
       fileName,
       incorrect,
+      ...(owner ? { owner } : {}),
       resolve: (v) => {
         next('password');
         resolve(v);

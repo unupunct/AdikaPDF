@@ -119,7 +119,7 @@ interface ObjHeader {
   body: number;
 }
 
-interface Scan {
+export interface Scan {
   headers: ObjHeader[];
   /** Offsets just after each `trailer` keyword. */
   trailers: number[];
@@ -129,7 +129,7 @@ interface Scan {
  * One linear pass over the file collecting `N G obj` headers and `trailer`
  * keywords. Walks backwards from each `obj` so `endobj` never matches.
  */
-function scanFile(bytes: Uint8Array): Scan {
+export function scanFile(bytes: Uint8Array): Scan {
   const headers: ObjHeader[] = [];
   const trailers: number[] = [];
   const len = bytes.length;
@@ -245,14 +245,16 @@ function directLength(obj: PDFObject): number | undefined {
   return len instanceof PDFNumber ? len.asNumber() : undefined;
 }
 
-interface Entry {
+export interface Entry {
   gen: number;
   offset: number;
   obj: PDFObject;
 }
 
-interface Collected {
+export interface Collected {
   entries: Map<number, Entry>;
+  /** Object streams found (unpacked by `expandObjectStreams`). */
+  objStms: { offset: number; num: number; gen: number; stream: PDFRawStream }[];
   damaged: number;
   truncatedStreams: number;
   objStmExpanded: number;
@@ -270,17 +272,19 @@ function firstHeaderAtOrAfter(headers: ObjHeader[], pos: number, fromIdx: number
   return lo;
 }
 
-function collectObjects(bytes: Uint8Array, headers: ObjHeader[], context: PDFContext): Collected {
+/** When an object number occurs more than once, the copy furthest into the file wins. */
+function putEntry(entries: Map<number, Entry>, num: number, e: Entry): void {
+  const prev = entries.get(num);
+  if (!prev || prev.offset <= e.offset) entries.set(num, e);
+}
+
+/** Parses every object found by `scanFile`; object streams are gathered, not unpacked. */
+export function gatherObjects(bytes: Uint8Array, headers: ObjHeader[], context: PDFContext): Collected {
   const entries = new Map<number, Entry>();
   let damaged = 0;
   let truncatedStreams = 0;
   let consumedTo = 0;
-  const objStms: { offset: number; stream: PDFRawStream }[] = [];
-
-  const put = (num: number, e: Entry): void => {
-    const prev = entries.get(num);
-    if (!prev || prev.offset <= e.offset) entries.set(num, e);
-  };
+  const objStms: Collected['objStms'] = [];
 
   for (let i = 0; i < headers.length; i++) {
     const h = headers[i];
@@ -322,26 +326,32 @@ function collectObjects(bytes: Uint8Array, headers: ObjHeader[], context: PDFCon
     if (obj instanceof PDFRawStream) {
       const type = obj.dict.get(N('Type'));
       if (type === N('ObjStm')) {
-        objStms.push({ offset: h.start, stream: obj });
+        objStms.push({ offset: h.start, num: h.num, gen: h.gen, stream: obj });
         continue;
       }
     }
-    put(h.num, { gen: h.gen, offset: h.start, obj });
+    putEntry(entries, h.num, { gen: h.gen, offset: h.start, obj });
   }
+  return { entries, objStms, damaged, truncatedStreams, objStmExpanded: 0, objStmLost: 0 };
+}
 
-  let objStmExpanded = 0;
-  let objStmLost = 0;
-  for (const { offset, stream } of objStms) {
+/** Unpacks the gathered object streams into the entries. */
+export function expandObjectStreams(collected: Collected, context: PDFContext): void {
+  for (const { offset, stream } of collected.objStms) {
     const got = expandObjectStream(stream, context);
     if (got === null) {
-      objStmLost++;
+      collected.objStmLost++;
       continue;
     }
-    objStmExpanded++;
-    for (const [num, obj] of got) put(num, { gen: 0, offset, obj });
+    collected.objStmExpanded++;
+    for (const [num, obj] of got) putEntry(collected.entries, num, { gen: 0, offset, obj });
   }
+}
 
-  return { entries, damaged, truncatedStreams, objStmExpanded, objStmLost };
+function collectObjects(bytes: Uint8Array, headers: ObjHeader[], context: PDFContext): Collected {
+  const collected = gatherObjects(bytes, headers, context);
+  expandObjectStreams(collected, context);
+  return collected;
 }
 
 /** Reads a direct /Length out of a stream dict without needing the stream data. */
@@ -406,13 +416,16 @@ function expandObjectStream(stream: PDFRawStream, context: PDFContext): Map<numb
 // Trailer / encryption
 // ---------------------------------------------------------------------------
 
-interface TrailerInfo {
+export interface TrailerInfo {
   root?: PDFRef;
   info?: PDFRef;
   encrypted: boolean;
+  /** The latest /Encrypt entry (a reference or a dictionary) and /ID. */
+  encrypt?: PDFObject;
+  id?: PDFArray;
 }
 
-function readTrailers(bytes: Uint8Array, scan: Scan, collected: Collected, context: PDFContext): TrailerInfo {
+export function readTrailers(bytes: Uint8Array, scan: Scan, collected: Collected, context: PDFContext): TrailerInfo {
   const found: { offset: number; dict: PDFDict }[] = [];
   for (const at of scan.trailers) {
     let p = at;
@@ -434,7 +447,13 @@ function readTrailers(bytes: Uint8Array, scan: Scan, collected: Collected, conte
     const inf = dict.get(N('Info'));
     if (root instanceof PDFRef) info.root = root;
     if (inf instanceof PDFRef) info.info = inf;
-    if (dict.get(N('Encrypt')) !== undefined) info.encrypted = true;
+    const enc = dict.get(N('Encrypt'));
+    if (enc !== undefined) {
+      info.encrypted = true;
+      info.encrypt = enc;
+    }
+    const id = dict.get(N('ID'));
+    if (id instanceof PDFArray) info.id = id;
   }
   if (!info.encrypted) {
     // The trailer may be gone while the encryption dictionary survived.

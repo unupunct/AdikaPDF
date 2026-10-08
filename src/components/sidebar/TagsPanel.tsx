@@ -6,7 +6,7 @@
  */
 import { useEffect, useState } from 'react';
 import { ArrowDown, ArrowUp, ChevronDown, ChevronRight, CornerLeftUp, FileText, Trash2 } from 'lucide-react';
-import { usePDFStore } from '@/store/usePDFStore';
+import { blockedReason, usePDFStore } from '@/store/usePDFStore';
 import { Input, Select } from '@/components/ui/primitives';
 import { cn } from '@/lib/cn';
 import type { TagNode } from '@/lib/pdf/structTree';
@@ -16,7 +16,7 @@ const TAG_TYPES = ['Document', 'Part', 'Sect', 'Div', 'P', 'H', 'H1', 'H2', 'H3'
 export function TagsPanel() {
   const sourceId = usePDFStore((s) => s.pages.find((p) => p.kind === 'source')?.sourceId ?? null);
   const bytes = usePDFStore((s) => (sourceId ? s.sources[sourceId]?.bytes : undefined));
-  const readOnly = usePDFStore((s) => s.readOnlyReason !== null);
+  const readOnly = usePDFStore((s) => blockedReason(s, 'content') !== null);
   const [tree, setTree] = useState<TagNode[] | null | undefined>(undefined);
   const [selected, setSelected] = useState<string | null>(null);
   const [open, setOpen] = useState<Set<string>>(new Set());

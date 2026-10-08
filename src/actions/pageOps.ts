@@ -4,6 +4,7 @@
  */
 import { usePDFStore } from '@/store/usePDFStore';
 import { withBusy } from './document';
+import { allowed } from './protection';
 import { makeLink } from '@/lib/objectFactory';
 import { saveFile } from './saveGuard';
 import type { BookmarkItem, LinkObject, PageRef } from '@/types';
@@ -26,10 +27,7 @@ async function currentOutline(pages: PageRef[]): Promise<BookmarkItem[]> {
  */
 export async function replacePages(targets: number[], other: { bytes: Uint8Array; name: string }, from: number): Promise<boolean> {
   const s0 = usePDFStore.getState();
-  if (s0.readOnlyReason) {
-    s0.toast(s0.readOnlyReason, 'info');
-    return false;
-  }
+  if (!allowed('pages')) return false;
   const done = await withBusy('Replacing pages…', async () => {
     const outline = await currentOutline(s0.pages);
     const { pages: fresh } = await usePDFStore.getState().addSource(other.bytes, other.name);
@@ -72,10 +70,7 @@ async function pageLines(page: PageRef) {
 /** Builds bookmarks from the document's headings (replaces the current bookmarks after asking). */
 export async function bookmarksFromHeadings(): Promise<number> {
   const s = usePDFStore.getState();
-  if (s.readOnlyReason) {
-    s.toast(s.readOnlyReason, 'info');
-    return 0;
-  }
+  if (!allowed('content')) return 0;
   const tree = await withBusy('Looking for headings…', async (progress) => {
     const { headingTree } = await import('@/lib/docStructure');
     const lines = [];
@@ -113,10 +108,7 @@ const overlap = (a: Rect, b: Rect) => {
 /** Makes every web / e-mail address in the text a clickable link (skips ones already linked). */
 export async function linksFromUrls(): Promise<number> {
   const s = usePDFStore.getState();
-  if (s.readOnlyReason) {
-    s.toast(s.readOnlyReason, 'info');
-    return 0;
-  }
+  if (!allowed('content')) return 0;
   const links = await withBusy('Looking for web addresses…', async (progress) => {
     const [{ pageTextRuns }, { runMatches }, { findUrls }, { getAnnotations, pageViewport }] = await Promise.all([
       import('@/lib/pdf/textGeometry'),
@@ -165,6 +157,7 @@ export async function linksFromUrls(): Promise<number> {
 /** Saves every picture in the document into one ZIP file. */
 export async function exportImages(): Promise<number> {
   const s = usePDFStore.getState();
+  if (!allowed('copy')) return 0;
   const result = await withBusy('Collecting images…', async (progress) => {
     const [{ extractImages }, { default: JSZip }] = await Promise.all([import('@/lib/pdf/imageExport'), import('jszip')]);
     const zip = new JSZip();
@@ -216,10 +209,7 @@ export async function exportImages(): Promise<number> {
  */
 export async function insertContentsPage(maxLevel = 2): Promise<boolean> {
   const s0 = usePDFStore.getState();
-  if (s0.readOnlyReason) {
-    s0.toast(s0.readOnlyReason, 'info');
-    return false;
-  }
+  if (!allowed('pages')) return false;
   const outline = await currentOutline(s0.pages);
   const entries: Array<{ title: string; level: number; target: number; pageId: string }> = [];
   const walk = (items: BookmarkItem[], level: number) => {
