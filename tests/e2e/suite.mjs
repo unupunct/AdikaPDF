@@ -35,6 +35,7 @@ import { registerAutomationTests } from './automation.part.mjs';
 import { registerForms2Tests } from './forms2.part.mjs';
 import { registerForms3Tests } from './forms3.part.mjs';
 import { registerEInvoiceTests } from './einvoice.part.mjs';
+import { registerAnafTests } from './anaf.part.mjs';
 import { registerEditing3Tests } from './editing3.part.mjs';
 import { registerUx4Tests } from './ux4.part.mjs';
 import { registerExtrasTests } from './extras.part.mjs';
@@ -863,6 +864,7 @@ registerAutomationTests(test, { S, page, dir, open, idle, savedFile, assert, pdf
 registerForms2Tests(test, { S, page, dir, open, idle, savedFile, assert, join, writeFileSync, drag, setTool, FONT_DATA, pfxPath: process.env.ADIKA_WINSTORE_TEST_PFX });
 registerForms3Tests(test, { S, page, dir, open, idle, savedFile, assert, join, writeFileSync });
 registerEInvoiceTests(test, { S, page, dir, open, idle, savedFile, assert, join, writeFileSync, pdfText });
+registerAnafTests(test, { S, page, idle, assert, join });
 registerEditing3Tests(test, { S, page, dir, open, idle, savedFile, assert, join, writeFileSync, pageBox });
 registerUx4Tests(test, { S, page, dir, open, idle, savedFile, assert, join, writeFileSync, pageBox });
 registerExtrasTests(test, { S, page, dir, open, idle, savedFile, assert, join, writeFileSync, pdfText });
