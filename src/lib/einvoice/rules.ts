@@ -92,16 +92,31 @@ export function defaultEndpoint(p: DraftParty): { id: string; scheme: string } {
   return { id: '', scheme: '' };
 }
 
-/** CIUS-RO maximum lengths: [business term, max, message]. */
-const RO_LENGTHS: Array<[string, number, string]> = [
-  ['BT-1', 200, 'The invoice number is longer than 200 characters.'],
-  ['BT-27', 200, "The seller's name is longer than 200 characters."],
-  ['BT-44', 200, "The buyer's name is longer than 200 characters."],
-  ['BT-35', 150, "The seller's street is longer than 150 characters."],
-  ['BT-50', 150, "The buyer's street is longer than 150 characters."],
-  ['BT-37', 50, "The seller's city is longer than 50 characters."],
-  ['BT-52', 50, "The buyer's city is longer than 50 characters."],
-  ['BT-20', 100, 'The payment terms are longer than 100 characters.'],
+/**
+ * CIUS-RO maximum lengths (ANAF schematron 1.0.8, CIUS-RO 1.0.1): the rule
+ * ANAF reports ("BR-RO-L200" = at most 200 characters), the business term, the
+ * limit and the message.
+ */
+const RO_LENGTHS: Array<[string, string, number, string]> = [
+  ['BR-RO-L200', 'BT-1', 200, 'The invoice number is longer than 200 characters.'],
+  ['BR-RO-L200', 'BT-27', 200, "The seller's name is longer than 200 characters."],
+  ['BR-RO-L200', 'BT-44', 200, "The buyer's name is longer than 200 characters."],
+  ['BR-RO-L150', 'BT-35', 150, "The seller's street is longer than 150 characters."],
+  ['BR-RO-L150', 'BT-50', 150, "The buyer's street is longer than 150 characters."],
+  ['BR-RO-L050', 'BT-37', 50, "The seller's city is longer than 50 characters."],
+  ['BR-RO-L050', 'BT-52', 50, "The buyer's city is longer than 50 characters."],
+  ['BR-RO-L020', 'BT-38', 20, "The seller's postal code is longer than 20 characters."],
+  ['BR-RO-L020', 'BT-53', 20, "The buyer's postal code is longer than 20 characters."],
+  ['BR-RO-L100', 'BT-43', 100, "The seller's e-mail address is longer than 100 characters."],
+  ['BR-RO-L100', 'BT-58', 100, "The buyer's e-mail address is longer than 100 characters."],
+  ['BR-RO-L100', 'BT-42', 100, "The seller's phone number is longer than 100 characters."],
+  ['BR-RO-L100', 'BT-57', 100, "The buyer's phone number is longer than 100 characters."],
+  ['BR-RO-L300', 'BT-20', 300, 'The payment terms are longer than 300 characters.'],
+  ['BR-RO-L140', 'BT-83', 140, 'The payment reference is longer than 140 characters.'],
+  ['BR-RO-L200', 'BT-85', 200, 'The account name is longer than 200 characters.'],
+  ['BR-RO-L200', 'BT-13', 200, 'The order number is longer than 200 characters.'],
+  ['BR-RO-L200', 'BT-12', 200, 'The contract reference is longer than 200 characters.'],
+  ['BR-RO-L200', 'BT-25', 200, 'The number of the corrected invoice is longer than 200 characters.'],
 ];
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -192,36 +207,41 @@ function validateRo(c: CalcInvoice, err: (r: string, m: string) => void, warn: (
   if (!['380', '381', '384', '389', '751'].includes(d.typeCode)) err('BR-RO-020', 'e-Factura accepts the invoice types 380, 381, 384, 389 and 751.');
   if (d.currency && d.currency !== 'RON' && !(d.exchangeRate > 0)) err('BR-RO-030', 'An invoice in another currency needs the exchange rate to RON for the VAT total in RON.');
   if (['381', '384'].includes(d.typeCode) && !d.precedingNumber.trim()) warn('BT-25', 'Give the number of the invoice being corrected or credited.');
-  if (d.notes.length > 20) err('CIUS-RO BT-22', 'e-Factura allows at most 20 notes.');
-  d.notes.forEach((n, i) => n.length > 300 && err('CIUS-RO BT-22', `Note ${i + 1} is longer than 300 characters.`));
-  if (c.lines.length > 999) err('CIUS-RO BG-25', 'e-Factura allows at most 999 lines.');
+  if (d.notes.length > 20) err('BR-RO-A020', 'e-Factura allows at most 20 notes.');
+  d.notes.forEach((n, i) => n.length > 300 && err('BR-RO-L300', `Note ${i + 1} is longer than 300 characters.`));
   const values: Record<string, string> = {
     'BT-1': d.number, 'BT-27': d.seller.name, 'BT-44': d.buyer.name, 'BT-35': d.seller.street, 'BT-50': d.buyer.street,
-    'BT-37': d.seller.city, 'BT-52': d.buyer.city, 'BT-20': d.payment.terms,
+    'BT-37': d.seller.city, 'BT-52': d.buyer.city, 'BT-38': d.seller.postalCode, 'BT-53': d.buyer.postalCode,
+    'BT-43': d.seller.email, 'BT-58': d.buyer.email, 'BT-42': d.seller.phone, 'BT-57': d.buyer.phone,
+    'BT-20': d.payment.terms, 'BT-83': d.payment.reference, 'BT-85': d.payment.accountName,
+    'BT-13': d.orderReference, 'BT-12': d.contractReference, 'BT-25': d.precedingNumber,
   };
-  for (const [bt, max, message] of RO_LENGTHS) if ((values[bt] ?? '').length > max) err(`CIUS-RO ${bt}`, message);
+  for (const [rule, bt, max, message] of RO_LENGTHS) if ((values[bt] ?? '').trim().length > max) err(rule, message);
   c.lines.forEach((l, i) => {
-    if (l.name.length > 100) err('CIUS-RO BT-153', `Line ${i + 1}: the item name is longer than 100 characters.`);
-    if (l.description.length > 200) err('CIUS-RO BT-154', `Line ${i + 1}: the item description is longer than 200 characters.`);
+    if (l.name.length > 100) err('BR-RO-L100', `Line ${i + 1}: the item name is longer than 100 characters.`);
+    if (l.description.length > 200) err('BR-RO-L200', `Line ${i + 1}: the item description is longer than 200 characters.`);
   });
+  d.allowances.forEach((a, i) => a.reason.length > 100 && err('BR-RO-L100', a.charge ? `Document charge ${i + 1}: the reason is longer than 100 characters.` : `Document discount ${i + 1}: the reason is longer than 100 characters.`));
+  for (const v of c.vat) if (v.exemptionReason.length > 100) err('BR-RO-L100', `VAT category ${v.category}: the exemption reason is longer than 100 characters.`);
+  if (!d.buyer.vatId.trim() && !d.buyer.companyId.trim()) err('BR-RO-120', 'The buyer needs a VAT number or a registration number (CUI, CNP).');
 
   // Addresses: street and city always; the county (ISO 3166-2:RO) in Romania, Bucharest by sector.
   const address = (p: DraftParty, who: 'seller' | 'buyer') => {
     const S = who === 'seller';
-    if (!p.street.trim()) err(S ? 'CIUS-RO BT-35' : 'CIUS-RO BT-50', S ? 'The seller needs a street address.' : 'The buyer needs a street address.');
-    if (!p.city.trim()) err(S ? 'CIUS-RO BT-37' : 'CIUS-RO BT-52', S ? 'The seller needs a city.' : 'The buyer needs a city.');
+    if (!p.street.trim()) err('BR-RO-080', S ? 'The seller needs a street address.' : 'The buyer needs a street address.');
+    if (!p.city.trim()) err('BR-RO-090', S ? 'The seller needs a city.' : 'The buyer needs a city.');
     if (p.country.toUpperCase() !== 'RO') return;
     const county = p.region.trim().toUpperCase();
-    const rule = S ? 'CIUS-RO BT-39' : 'CIUS-RO BT-54';
+    const rule = 'BR-RO-110';
     if (!county) err(rule, S ? 'The seller needs a county (e.g. RO-CJ; RO-B for Bucharest).' : 'The buyer needs a county (e.g. RO-CJ; RO-B for Bucharest).');
     else if (!RO_COUNTIES[county]) err(rule, S ? `The seller's county must be an ISO 3166-2:RO code such as RO-CJ or RO-B, not "${p.region}".` : `The buyer's county must be an ISO 3166-2:RO code such as RO-CJ or RO-B, not "${p.region}".`);
     else if (county === 'RO-B' && !BUCHAREST_SECTORS.includes(p.city.trim().toUpperCase()))
-      err(S ? 'CIUS-RO BT-37' : 'CIUS-RO BT-52', S ? "In Bucharest the seller's city must be the sector: SECTOR1 to SECTOR6." : "In Bucharest the buyer's city must be the sector: SECTOR1 to SECTOR6.");
+      err('BR-RO-100', S ? "In Bucharest the seller's city must be the sector: SECTOR1 to SECTOR6." : "In Bucharest the buyer's city must be the sector: SECTOR1 to SECTOR6.");
   };
   address(d.seller, 'seller');
   address(d.buyer, 'buyer');
 
-  // Fiscal codes.
+  // Fiscal codes: Adika's own checks of the CUI / CNP check digits (no CIUS-RO rule id).
   const s = d.seller;
   if (s.country.toUpperCase() === 'RO') {
     const vat = s.vatId.replace(/\s+/g, '').toUpperCase();

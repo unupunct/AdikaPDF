@@ -1,0 +1,986 @@
+{
+  "ANAF e-Factura": {
+    "ro": "ANAF e-Factura",
+    "de": "ANAF e-Factura",
+    "fr": "ANAF e-Factura",
+    "hu": "ANAF e-Factura",
+    "it": "ANAF e-Factura",
+    "es": "ANAF e-Factura"
+  },
+  "Send e-Factura invoices to ANAF's SPV, follow their status, list and download received invoices (needs an application registered with ANAF)": {
+    "ro": "Trimite facturi e-Factura în SPV-ul ANAF, urmărește starea lor, listează și descarcă facturile primite (necesită o aplicație înregistrată la ANAF)",
+    "de": "e-Factura-Rechnungen an das SPV der ANAF senden, ihren Status verfolgen, empfangene Rechnungen auflisten und herunterladen (erfordert eine bei der ANAF registrierte Anwendung)",
+    "fr": "Envoyer des factures e-Factura au SPV de l'ANAF, suivre leur état, lister et télécharger les factures reçues (nécessite une application enregistrée auprès de l'ANAF)",
+    "hu": "e-Factura számlák küldése az ANAF SPV-be, állapotuk követése, a beérkezett számlák listázása és letöltése (az ANAF-nál regisztrált alkalmazás szükséges)",
+    "it": "Invia fatture e-Factura allo SPV dell'ANAF, segui il loro stato, elenca e scarica le fatture ricevute (richiede un'applicazione registrata presso l'ANAF)",
+    "es": "Enviar facturas e-Factura al SPV de la ANAF, seguir su estado, listar y descargar las facturas recibidas (requiere una aplicación registrada en la ANAF)"
+  },
+  "Uploads and downloads through ANAF's SPV, only when you press a button. Your certificate is used by the browser during sign-in; Adika never sees it.": {
+    "ro": "Încărcări și descărcări prin SPV-ul ANAF, doar când apăsați un buton. Certificatul dumneavoastră este folosit de browser la autentificare; Adika nu îl vede niciodată.",
+    "de": "Hoch- und Herunterladen über das SPV der ANAF, nur wenn Sie eine Schaltfläche drücken. Ihr Zertifikat wird beim Anmelden vom Browser verwendet; Adika sieht es nie.",
+    "fr": "Envois et téléchargements via le SPV de l'ANAF, uniquement quand vous appuyez sur un bouton. Votre certificat est utilisé par le navigateur lors de la connexion ; Adika ne le voit jamais.",
+    "hu": "Feltöltés és letöltés az ANAF SPV-n keresztül, csak ha megnyom egy gombot. A tanúsítványát a böngésző használja a bejelentkezéskor; az Adika soha nem látja.",
+    "it": "Caricamenti e download tramite lo SPV dell'ANAF, solo quando premi un pulsante. Il tuo certificato viene usato dal browser durante l'accesso; Adika non lo vede mai.",
+    "es": "Cargas y descargas a través del SPV de la ANAF, solo cuando pulsa un botón. Su certificado lo usa el navegador al iniciar sesión; Adika nunca lo ve."
+  },
+  "Connected to ANAF (test environment).": {
+    "ro": "Conectat la ANAF (mediul de test).",
+    "de": "Mit der ANAF verbunden (Testumgebung).",
+    "fr": "Connecté à l'ANAF (environnement de test).",
+    "hu": "Csatlakozva az ANAF-hoz (tesztkörnyezet).",
+    "it": "Connesso all'ANAF (ambiente di test).",
+    "es": "Conectado a la ANAF (entorno de pruebas)."
+  },
+  "Connected to ANAF.": {
+    "ro": "Conectat la ANAF.",
+    "de": "Mit der ANAF verbunden.",
+    "fr": "Connecté à l'ANAF.",
+    "hu": "Csatlakozva az ANAF-hoz.",
+    "it": "Connesso all'ANAF.",
+    "es": "Conectado a la ANAF."
+  },
+  "Not connected to ANAF.": {
+    "ro": "Neconectat la ANAF.",
+    "de": "Nicht mit der ANAF verbunden.",
+    "fr": "Non connecté à l'ANAF.",
+    "hu": "Nincs kapcsolat az ANAF-fal.",
+    "it": "Non connesso all'ANAF.",
+    "es": "No conectado a la ANAF."
+  },
+  "Disconnect": {
+    "ro": "Deconectare",
+    "de": "Trennen",
+    "fr": "Se déconnecter",
+    "hu": "Kapcsolat bontása",
+    "it": "Disconnetti",
+    "es": "Desconectar"
+  },
+  "Connect…": {
+    "ro": "Conectare…",
+    "de": "Verbinden…",
+    "fr": "Se connecter…",
+    "hu": "Csatlakozás…",
+    "it": "Connetti…",
+    "es": "Conectar…"
+  },
+  "Send": {
+    "ro": "Trimitere",
+    "de": "Senden",
+    "fr": "Envoyer",
+    "hu": "Küldés",
+    "it": "Invia",
+    "es": "Enviar"
+  },
+  "Messages": {
+    "ro": "Mesaje",
+    "de": "Nachrichten",
+    "fr": "Messages",
+    "hu": "Üzenetek",
+    "it": "Messaggi",
+    "es": "Mensajes"
+  },
+  "Sent log": {
+    "ro": "Jurnal trimiteri",
+    "de": "Sendeprotokoll",
+    "fr": "Journal des envois",
+    "hu": "Küldési napló",
+    "it": "Registro invii",
+    "es": "Registro de envíos"
+  },
+  "Settings": {
+    "ro": "Setări",
+    "de": "Einstellungen",
+    "fr": "Paramètres",
+    "hu": "Beállítások",
+    "it": "Impostazioni",
+    "es": "Ajustes"
+  },
+  "ANAF test environment: invoices sent here have no legal effect.": {
+    "ro": "Mediul de test ANAF: facturile trimise aici nu au efect juridic.",
+    "de": "ANAF-Testumgebung: Hier gesendete Rechnungen haben keine rechtliche Wirkung.",
+    "fr": "Environnement de test de l'ANAF : les factures envoyées ici n'ont aucun effet juridique.",
+    "hu": "ANAF tesztkörnyezet: az ide küldött számláknak nincs jogi hatása.",
+    "it": "Ambiente di test ANAF: le fatture inviate qui non hanno effetto legale.",
+    "es": "Entorno de pruebas de la ANAF: las facturas enviadas aquí no tienen efecto legal."
+  },
+  "Sign in to ANAF in the browser. When it ends on your callback page, copy the whole address from the browser's address bar and paste it here.": {
+    "ro": "Autentificați-vă la ANAF în browser. Când ajunge pe pagina de callback, copiați adresa completă din bara de adrese a browserului și lipiți-o aici.",
+    "de": "Melden Sie sich im Browser bei der ANAF an. Wenn er auf Ihrer Callback-Seite endet, kopieren Sie die vollständige Adresse aus der Adressleiste des Browsers und fügen Sie sie hier ein.",
+    "fr": "Connectez-vous à l'ANAF dans le navigateur. Lorsqu'il arrive sur votre page de rappel, copiez l'adresse complète de la barre d'adresse du navigateur et collez-la ici.",
+    "hu": "Jelentkezzen be az ANAF-hoz a böngészőben. Amikor a visszahívási oldalra ér, másolja ki a teljes címet a böngésző címsorából, és illessze be ide.",
+    "it": "Accedi all'ANAF nel browser. Quando arriva alla tua pagina di callback, copia l'indirizzo completo dalla barra degli indirizzi del browser e incollalo qui.",
+    "es": "Inicie sesión en la ANAF en el navegador. Cuando llegue a su página de retorno, copie la dirección completa de la barra de direcciones del navegador y péguela aquí."
+  },
+  "Sign in to ANAF in the browser. When it ends on your callback page, copy the whole address from the browser&apos;s address bar and paste it here.": {
+    "ro": "Autentificați-vă la ANAF în browser. Când ajunge pe pagina de callback, copiați adresa completă din bara de adrese a browserului și lipiți-o aici.",
+    "de": "Melden Sie sich im Browser bei der ANAF an. Wenn er auf Ihrer Callback-Seite endet, kopieren Sie die vollständige Adresse aus der Adressleiste des Browsers und fügen Sie sie hier ein.",
+    "fr": "Connectez-vous à l'ANAF dans le navigateur. Lorsqu'il arrive sur votre page de rappel, copiez l'adresse complète de la barre d'adresse du navigateur et collez-la ici.",
+    "hu": "Jelentkezzen be az ANAF-hoz a böngészőben. Amikor a visszahívási oldalra ér, másolja ki a teljes címet a böngésző címsorából, és illessze be ide.",
+    "it": "Accedi all'ANAF nel browser. Quando arriva alla tua pagina di callback, copia l'indirizzo completo dalla barra degli indirizzi del browser e incollalo qui.",
+    "es": "Inicie sesión en la ANAF en el navegador. Cuando llegue a su página de retorno, copie la dirección completa de la barra de direcciones del navegador y péguela aquí."
+  },
+  "Waiting for the sign-in in the browser…": {
+    "ro": "Se așteaptă autentificarea în browser…",
+    "de": "Warten auf die Anmeldung im Browser…",
+    "fr": "En attente de la connexion dans le navigateur…",
+    "hu": "Várakozás a bejelentkezésre a böngészőben…",
+    "it": "In attesa dell'accesso nel browser…",
+    "es": "Esperando el inicio de sesión en el navegador…"
+  },
+  "Choose XML…": {
+    "ro": "Alegeți XML…",
+    "de": "XML auswählen…",
+    "fr": "Choisir un XML…",
+    "hu": "XML kiválasztása…",
+    "it": "Scegli XML…",
+    "es": "Elegir XML…"
+  },
+  "CUI (SPV)": {
+    "ro": "CUI (SPV)",
+    "de": "CUI (SPV)",
+    "fr": "CUI (SPV)",
+    "hu": "CUI (SPV)",
+    "it": "CUI (SPV)",
+    "es": "CUI (SPV)"
+  },
+  "CUI": {
+    "ro": "CUI",
+    "de": "CUI",
+    "fr": "CUI",
+    "hu": "CUI",
+    "it": "CUI",
+    "es": "CUI"
+  },
+  "Check with ANAF": {
+    "ro": "Verificare la ANAF",
+    "de": "Bei der ANAF prüfen",
+    "fr": "Vérifier auprès de l'ANAF",
+    "hu": "Ellenőrzés az ANAF-nál",
+    "it": "Verifica presso l'ANAF",
+    "es": "Comprobar en la ANAF"
+  },
+  "Send to ANAF": {
+    "ro": "Trimitere la ANAF",
+    "de": "An die ANAF senden",
+    "fr": "Envoyer à l'ANAF",
+    "hu": "Küldés az ANAF-nak",
+    "it": "Invia all'ANAF",
+    "es": "Enviar a la ANAF"
+  },
+  "Send to ANAF (test)": {
+    "ro": "Trimitere la ANAF (test)",
+    "de": "An die ANAF senden (Test)",
+    "fr": "Envoyer à l'ANAF (test)",
+    "hu": "Küldés az ANAF-nak (teszt)",
+    "it": "Invia all'ANAF (test)",
+    "es": "Enviar a la ANAF (prueba)"
+  },
+  "Then send to ANAF…": {
+    "ro": "Apoi trimitere la ANAF…",
+    "de": "Danach an die ANAF senden…",
+    "fr": "Puis envoyer à l'ANAF…",
+    "hu": "Utána küldés az ANAF-nak…",
+    "it": "Poi invia all'ANAF…",
+    "es": "Después enviar a la ANAF…"
+  },
+  "Check status": {
+    "ro": "Verificare stare",
+    "de": "Status prüfen",
+    "fr": "Vérifier l'état",
+    "hu": "Állapot ellenőrzése",
+    "it": "Verifica stato",
+    "es": "Comprobar estado"
+  },
+  "Upload index": {
+    "ro": "Index încărcare",
+    "de": "Upload-Index",
+    "fr": "Index d'envoi",
+    "hu": "Feltöltési index",
+    "it": "Indice di caricamento",
+    "es": "Índice de carga"
+  },
+  "ANAF is processing the invoice. The status is checked every 30 seconds while this window is open (at most 10 minutes).": {
+    "ro": "ANAF prelucrează factura. Starea este verificată la fiecare 30 de secunde cât timp această fereastră este deschisă (cel mult 10 minute).",
+    "de": "Die ANAF verarbeitet die Rechnung. Der Status wird alle 30 Sekunden geprüft, solange dieses Fenster geöffnet ist (höchstens 10 Minuten).",
+    "fr": "L'ANAF traite la facture. L'état est vérifié toutes les 30 secondes tant que cette fenêtre est ouverte (10 minutes au plus).",
+    "hu": "Az ANAF feldolgozza a számlát. Az állapotot 30 másodpercenként ellenőrizzük, amíg ez az ablak nyitva van (legfeljebb 10 percig).",
+    "it": "L'ANAF sta elaborando la fattura. Lo stato viene verificato ogni 30 secondi finché questa finestra è aperta (al massimo 10 minuti).",
+    "es": "La ANAF está procesando la factura. El estado se comprueba cada 30 segundos mientras esta ventana esté abierta (como máximo 10 minutos)."
+  },
+  "Connect to ANAF to send invoices. Checking with ANAF needs no connection.": {
+    "ro": "Conectați-vă la ANAF pentru a trimite facturi. Verificarea la ANAF nu necesită conectare.",
+    "de": "Verbinden Sie sich mit der ANAF, um Rechnungen zu senden. Die Prüfung bei der ANAF braucht keine Verbindung.",
+    "fr": "Connectez-vous à l'ANAF pour envoyer des factures. La vérification auprès de l'ANAF ne nécessite pas de connexion.",
+    "hu": "Számlák küldéséhez csatlakozzon az ANAF-hoz. Az ANAF-nál történő ellenőrzéshez nem kell csatlakozni.",
+    "it": "Connettiti all'ANAF per inviare fatture. La verifica presso l'ANAF non richiede la connessione.",
+    "es": "Conéctese a la ANAF para enviar facturas. La comprobación en la ANAF no requiere conexión."
+  },
+  "Last days (1–60)": {
+    "ro": "Ultimele zile (1–60)",
+    "de": "Letzte Tage (1–60)",
+    "fr": "Derniers jours (1–60)",
+    "hu": "Utolsó napok (1–60)",
+    "it": "Ultimi giorni (1–60)",
+    "es": "Últimos días (1–60)"
+  },
+  "Show messages": {
+    "ro": "Afișare mesaje",
+    "de": "Nachrichten anzeigen",
+    "fr": "Afficher les messages",
+    "hu": "Üzenetek megjelenítése",
+    "it": "Mostra messaggi",
+    "es": "Mostrar mensajes"
+  },
+  "No messages in this period.": {
+    "ro": "Niciun mesaj în această perioadă.",
+    "de": "Keine Nachrichten in diesem Zeitraum.",
+    "fr": "Aucun message sur cette période.",
+    "hu": "Nincs üzenet ebben az időszakban.",
+    "it": "Nessun messaggio in questo periodo.",
+    "es": "No hay mensajes en este período."
+  },
+  "Invoices you sent, invoices you received and error reports from ANAF, kept by ANAF for 60 days.": {
+    "ro": "Facturile trimise, facturile primite și rapoartele de erori de la ANAF, păstrate de ANAF timp de 60 de zile.",
+    "de": "Gesendete und empfangene Rechnungen sowie Fehlerberichte der ANAF, von der ANAF 60 Tage lang aufbewahrt.",
+    "fr": "Factures envoyées, factures reçues et rapports d'erreurs de l'ANAF, conservés par l'ANAF pendant 60 jours.",
+    "hu": "Elküldött és fogadott számlák, valamint az ANAF hibajelentései, amelyeket az ANAF 60 napig őriz.",
+    "it": "Fatture inviate, fatture ricevute e rapporti di errore dell'ANAF, conservati dall'ANAF per 60 giorni.",
+    "es": "Facturas enviadas, facturas recibidas e informes de errores de la ANAF, conservados por la ANAF durante 60 días."
+  },
+  "Date": {
+    "ro": "Data",
+    "de": "Datum",
+    "fr": "Date",
+    "hu": "Dátum",
+    "it": "Data",
+    "es": "Fecha"
+  },
+  "Status": {
+    "ro": "Stare",
+    "de": "Status",
+    "fr": "État",
+    "hu": "Állapot",
+    "it": "Stato",
+    "es": "Estado"
+  },
+  "(test)": {
+    "ro": "(test)",
+    "de": "(Test)",
+    "fr": "(test)",
+    "hu": "(teszt)",
+    "it": "(test)",
+    "es": "(prueba)"
+  },
+  "Nothing sent to ANAF from this computer yet.": {
+    "ro": "Nimic trimis încă la ANAF de pe acest calculator.",
+    "de": "Von diesem Computer wurde noch nichts an die ANAF gesendet.",
+    "fr": "Rien n'a encore été envoyé à l'ANAF depuis cet ordinateur.",
+    "hu": "Erről a számítógépről még semmit sem küldtek az ANAF-nak.",
+    "it": "Nulla è stato ancora inviato all'ANAF da questo computer.",
+    "es": "Todavía no se ha enviado nada a la ANAF desde este equipo."
+  },
+  "Sending to SPV needs an application registered by you in ANAF's portal (anaf.ro → Servicii online → Înregistrare utilizatori → Dezvoltatori aplicații) for the e-Factura service. Enter its client ID, client secret and callback URL exactly as registered. A callback of the form http://localhost:<port>/callback lets Adika receive the sign-in directly; with any other callback you paste the final address back.": {
+    "ro": "Trimiterea în SPV necesită o aplicație înregistrată de dumneavoastră în portalul ANAF (anaf.ro → Servicii online → Înregistrare utilizatori → Dezvoltatori aplicații) pentru serviciul e-Factura. Introduceți Client ID, Client Secret și Callback URL exact ca la înregistrare. Un callback de forma http://localhost:<port>/callback permite ca Adika să primească direct autentificarea; cu orice alt callback lipiți înapoi adresa finală.",
+    "de": "Das Senden an das SPV erfordert eine von Ihnen im ANAF-Portal registrierte Anwendung (anaf.ro → Servicii online → Înregistrare utilizatori → Dezvoltatori aplicații) für den Dienst e-Factura. Geben Sie Client-ID, Client-Secret und Callback-URL genau wie registriert ein. Mit einem Callback der Form http://localhost:<port>/callback empfängt Adika die Anmeldung direkt; bei jedem anderen Callback fügen Sie die endgültige Adresse wieder ein.",
+    "fr": "L'envoi au SPV nécessite une application que vous avez enregistrée sur le portail de l'ANAF (anaf.ro → Servicii online → Înregistrare utilizatori → Dezvoltatori aplicații) pour le service e-Factura. Saisissez son identifiant client, son secret client et son URL de rappel exactement comme enregistrés. Un rappel de la forme http://localhost:<port>/callback permet à Adika de recevoir directement la connexion ; avec tout autre rappel, vous recollez l'adresse finale.",
+    "hu": "Az SPV-be küldéshez az ANAF portálján (anaf.ro → Servicii online → Înregistrare utilizatori → Dezvoltatori aplicații) az e-Factura szolgáltatáshoz Ön által regisztrált alkalmazás szükséges. Adja meg az ügyfélazonosítót, az ügyféltitkot és a visszahívási URL-t pontosan úgy, ahogy regisztrálta. A http://localhost:<port>/callback alakú visszahívással az Adika közvetlenül megkapja a bejelentkezést; bármely más visszahívásnál a végső címet kell visszamásolnia.",
+    "it": "L'invio allo SPV richiede un'applicazione registrata da te nel portale ANAF (anaf.ro → Servicii online → Înregistrare utilizatori → Dezvoltatori aplicații) per il servizio e-Factura. Inserisci client ID, client secret e URL di callback esattamente come registrati. Un callback della forma http://localhost:<port>/callback consente ad Adika di ricevere direttamente l'accesso; con qualsiasi altro callback incolli di nuovo l'indirizzo finale.",
+    "es": "El envío al SPV requiere una aplicación registrada por usted en el portal de la ANAF (anaf.ro → Servicii online → Înregistrare utilizatori → Dezvoltatori aplicații) para el servicio e-Factura. Introduzca su ID de cliente, secreto de cliente y URL de retorno exactamente como los registró. Un retorno de la forma http://localhost:<port>/callback permite a Adika recibir el inicio de sesión directamente; con cualquier otro retorno pega de nuevo la dirección final."
+  },
+  "Sending to SPV needs an application registered by you in ANAF&apos;s portal (anaf.ro → Servicii online → Înregistrare utilizatori → Dezvoltatori aplicații) for the e-Factura service. Enter its client ID, client secret and callback URL exactly as registered. A callback of the form http://localhost:&lt;port&gt;/callback lets Adika receive the sign-in directly; with any other callback you paste the final address back.": {
+    "ro": "Trimiterea în SPV necesită o aplicație înregistrată de dumneavoastră în portalul ANAF (anaf.ro → Servicii online → Înregistrare utilizatori → Dezvoltatori aplicații) pentru serviciul e-Factura. Introduceți Client ID, Client Secret și Callback URL exact ca la înregistrare. Un callback de forma http://localhost:<port>/callback permite ca Adika să primească direct autentificarea; cu orice alt callback lipiți înapoi adresa finală.",
+    "de": "Das Senden an das SPV erfordert eine von Ihnen im ANAF-Portal registrierte Anwendung (anaf.ro → Servicii online → Înregistrare utilizatori → Dezvoltatori aplicații) für den Dienst e-Factura. Geben Sie Client-ID, Client-Secret und Callback-URL genau wie registriert ein. Mit einem Callback der Form http://localhost:<port>/callback empfängt Adika die Anmeldung direkt; bei jedem anderen Callback fügen Sie die endgültige Adresse wieder ein.",
+    "fr": "L'envoi au SPV nécessite une application que vous avez enregistrée sur le portail de l'ANAF (anaf.ro → Servicii online → Înregistrare utilizatori → Dezvoltatori aplicații) pour le service e-Factura. Saisissez son identifiant client, son secret client et son URL de rappel exactement comme enregistrés. Un rappel de la forme http://localhost:<port>/callback permet à Adika de recevoir directement la connexion ; avec tout autre rappel, vous recollez l'adresse finale.",
+    "hu": "Az SPV-be küldéshez az ANAF portálján (anaf.ro → Servicii online → Înregistrare utilizatori → Dezvoltatori aplicații) az e-Factura szolgáltatáshoz Ön által regisztrált alkalmazás szükséges. Adja meg az ügyfélazonosítót, az ügyféltitkot és a visszahívási URL-t pontosan úgy, ahogy regisztrálta. A http://localhost:<port>/callback alakú visszahívással az Adika közvetlenül megkapja a bejelentkezést; bármely más visszahívásnál a végső címet kell visszamásolnia.",
+    "it": "L'invio allo SPV richiede un'applicazione registrata da te nel portale ANAF (anaf.ro → Servicii online → Înregistrare utilizatori → Dezvoltatori aplicații) per il servizio e-Factura. Inserisci client ID, client secret e URL di callback esattamente come registrati. Un callback della forma http://localhost:<port>/callback consente ad Adika di ricevere direttamente l'accesso; con qualsiasi altro callback incolli di nuovo l'indirizzo finale.",
+    "es": "El envío al SPV requiere una aplicación registrada por usted en el portal de la ANAF (anaf.ro → Servicii online → Înregistrare utilizatori → Dezvoltatori aplicații) para el servicio e-Factura. Introduzca su ID de cliente, secreto de cliente y URL de retorno exactamente como los registró. Un retorno de la forma http://localhost:<port>/callback permite a Adika recibir el inicio de sesión directamente; con cualquier otro retorno pega de nuevo la dirección final."
+  },
+  "Client secret": {
+    "ro": "Client Secret",
+    "de": "Client-Secret",
+    "fr": "Secret client",
+    "hu": "Ügyféltitok",
+    "it": "Client secret",
+    "es": "Secreto de cliente"
+  },
+  "Kept in Windows Credential Manager.": {
+    "ro": "Păstrat în Windows Credential Manager.",
+    "de": "In der Windows-Anmeldeinformationsverwaltung gespeichert.",
+    "fr": "Conservé dans le Gestionnaire d’identification Windows.",
+    "hu": "A Windows Hitelesítőadat-kezelőben tárolva.",
+    "it": "Conservato in Gestione credenziali di Windows.",
+    "es": "Guardado en el Administrador de credenciales de Windows."
+  },
+  "Kept in this browser's storage (the desktop app uses Windows Credential Manager).": {
+    "ro": "Păstrat în stocarea acestui browser (aplicația desktop folosește Windows Credential Manager).",
+    "de": "Im Speicher dieses Browsers gespeichert (die Desktop-App verwendet die Windows-Anmeldeinformationsverwaltung).",
+    "fr": "Conservé dans le stockage de ce navigateur (l'application de bureau utilise le Gestionnaire d’identification Windows).",
+    "hu": "Ennek a böngészőnek a tárolójában tárolva (az asztali alkalmazás a Windows Hitelesítőadat-kezelőt használja).",
+    "it": "Conservato nella memoria di questo browser (l'app desktop usa Gestione credenziali di Windows).",
+    "es": "Guardado en el almacenamiento de este navegador (la aplicación de escritorio usa el Administrador de credenciales de Windows)."
+  },
+  "Callback URL": {
+    "ro": "Callback URL",
+    "de": "Callback-URL",
+    "fr": "URL de rappel",
+    "hu": "Visszahívási URL",
+    "it": "URL di callback",
+    "es": "URL de retorno"
+  },
+  "Use ANAF's test environment": {
+    "ro": "Folosire mediu de test ANAF",
+    "de": "Testumgebung der ANAF verwenden",
+    "fr": "Utiliser l'environnement de test de l'ANAF",
+    "hu": "Az ANAF tesztkörnyezetének használata",
+    "it": "Usa l'ambiente di test dell'ANAF",
+    "es": "Usar el entorno de pruebas de la ANAF"
+  },
+  "Stay connected: keep ANAF's refresh token in Windows Credential Manager (valid up to a year; anyone using this Windows account could send invoices)": {
+    "ro": "Rămâneți conectat: păstrare refresh token ANAF în Windows Credential Manager (valabil până la un an; oricine folosește acest cont Windows ar putea trimite facturi)",
+    "de": "Verbunden bleiben: das Refresh-Token der ANAF in der Windows-Anmeldeinformationsverwaltung speichern (bis zu einem Jahr gültig; jeder mit diesem Windows-Konto könnte Rechnungen senden)",
+    "fr": "Rester connecté : conserver le jeton d'actualisation de l'ANAF dans le Gestionnaire d’identification Windows (valable jusqu'à un an ; toute personne utilisant ce compte Windows pourrait envoyer des factures)",
+    "hu": "Maradjon csatlakozva: az ANAF frissítési tokenjének tárolása a Windows Hitelesítőadat-kezelőben (legfeljebb egy évig érvényes; bárki, aki ezt a Windows-fiókot használja, küldhet számlákat)",
+    "it": "Resta connesso: conserva il refresh token dell'ANAF in Gestione credenziali di Windows (valido fino a un anno; chiunque usi questo account Windows potrebbe inviare fatture)",
+    "es": "Mantener la conexión: guardar el token de actualización de la ANAF en el Administrador de credenciales de Windows (válido hasta un año; cualquiera que use esta cuenta de Windows podría enviar facturas)"
+  },
+  "Save settings": {
+    "ro": "Salvare setări",
+    "de": "Einstellungen speichern",
+    "fr": "Enregistrer les paramètres",
+    "hu": "Beállítások mentése",
+    "it": "Salva impostazioni",
+    "es": "Guardar ajustes"
+  },
+  "Environment": {
+    "ro": "Mediu",
+    "de": "Umgebung",
+    "fr": "Environnement",
+    "hu": "Környezet",
+    "it": "Ambiente",
+    "es": "Entorno"
+  },
+  "test": {
+    "ro": "test",
+    "de": "Test",
+    "fr": "test",
+    "hu": "teszt",
+    "it": "test",
+    "es": "prueba"
+  },
+  "production": {
+    "ro": "producție",
+    "de": "Produktion",
+    "fr": "production",
+    "hu": "éles",
+    "it": "produzione",
+    "es": "producción"
+  },
+  "ANAF found no errors in the XML.": {
+    "ro": "ANAF nu a găsit erori în XML.",
+    "de": "Die ANAF hat keine Fehler im XML gefunden.",
+    "fr": "L'ANAF n'a trouvé aucune erreur dans le XML.",
+    "hu": "Az ANAF nem talált hibát az XML-ben.",
+    "it": "L'ANAF non ha trovato errori nell'XML.",
+    "es": "La ANAF no encontró errores en el XML."
+  },
+  "ANAF found errors in the XML:": {
+    "ro": "ANAF a găsit erori în XML:",
+    "de": "Die ANAF hat Fehler im XML gefunden:",
+    "fr": "L'ANAF a trouvé des erreurs dans le XML :",
+    "hu": "Az ANAF hibákat talált az XML-ben:",
+    "it": "L'ANAF ha trovato errori nell'XML:",
+    "es": "La ANAF encontró errores en el XML:"
+  },
+  "ANAF settings saved.": {
+    "ro": "Setările ANAF au fost salvate.",
+    "de": "ANAF-Einstellungen gespeichert.",
+    "fr": "Paramètres ANAF enregistrés.",
+    "hu": "ANAF-beállítások mentve.",
+    "it": "Impostazioni ANAF salvate.",
+    "es": "Ajustes de ANAF guardados."
+  },
+  "Connected to ANAF e-Factura.": {
+    "ro": "Conectat la ANAF e-Factura.",
+    "de": "Mit ANAF e-Factura verbunden.",
+    "fr": "Connecté à ANAF e-Factura.",
+    "hu": "Csatlakozva az ANAF e-Factura szolgáltatáshoz.",
+    "it": "Connesso ad ANAF e-Factura.",
+    "es": "Conectado a ANAF e-Factura."
+  },
+  "e-Factura XML": {
+    "ro": "XML e-Factura",
+    "de": "e-Factura-XML",
+    "fr": "XML e-Factura",
+    "hu": "e-Factura XML",
+    "it": "XML e-Factura",
+    "es": "XML e-Factura"
+  },
+  "Sent to ANAF: upload index {0}.": {
+    "ro": "Trimis la ANAF: index încărcare {0}.",
+    "de": "An die ANAF gesendet: Upload-Index {0}.",
+    "fr": "Envoyé à l'ANAF : index d'envoi {0}.",
+    "hu": "Elküldve az ANAF-nak: feltöltési index {0}.",
+    "it": "Inviato all'ANAF: indice di caricamento {0}.",
+    "es": "Enviado a la ANAF: índice de carga {0}."
+  },
+  "Sent": {
+    "ro": "Trimisă",
+    "de": "Gesendet",
+    "fr": "Envoyée",
+    "hu": "Elküldve",
+    "it": "Inviata",
+    "es": "Enviada"
+  },
+  "Received": {
+    "ro": "Primită",
+    "de": "Empfangen",
+    "fr": "Reçue",
+    "hu": "Beérkezett",
+    "it": "Ricevuta",
+    "es": "Recibida"
+  },
+  "Errors": {
+    "ro": "Erori",
+    "de": "Fehler",
+    "fr": "Erreurs",
+    "hu": "Hibák",
+    "it": "Errori",
+    "es": "Errores"
+  },
+  "Buyer message": {
+    "ro": "Mesaj cumpărător",
+    "de": "Käufernachricht",
+    "fr": "Message de l'acheteur",
+    "hu": "Vevői üzenet",
+    "it": "Messaggio dell'acquirente",
+    "es": "Mensaje del comprador"
+  },
+  "Other": {
+    "ro": "Altul",
+    "de": "Sonstiges",
+    "fr": "Autre",
+    "hu": "Egyéb",
+    "it": "Altro",
+    "es": "Otro"
+  },
+  "Being processed": {
+    "ro": "În prelucrare",
+    "de": "In Bearbeitung",
+    "fr": "En cours de traitement",
+    "hu": "Feldolgozás alatt",
+    "it": "In elaborazione",
+    "es": "En proceso"
+  },
+  "Accepted": {
+    "ro": "Acceptată",
+    "de": "Angenommen",
+    "fr": "Acceptée",
+    "hu": "Elfogadva",
+    "it": "Accettata",
+    "es": "Aceptada"
+  },
+  "Rejected (errors)": {
+    "ro": "Respinsă (erori)",
+    "de": "Abgelehnt (Fehler)",
+    "fr": "Rejetée (erreurs)",
+    "hu": "Elutasítva (hibák)",
+    "it": "Respinta (errori)",
+    "es": "Rechazada (errores)"
+  },
+  "Rejected at upload": {
+    "ro": "Respinsă la încărcare",
+    "de": "Beim Hochladen abgelehnt",
+    "fr": "Rejetée à l'envoi",
+    "hu": "Feltöltéskor elutasítva",
+    "it": "Respinta al caricamento",
+    "es": "Rechazada al cargar"
+  },
+  "The download holds no invoice.": {
+    "ro": "Descărcarea nu conține nicio factură.",
+    "de": "Der Download enthält keine Rechnung.",
+    "fr": "Le téléchargement ne contient aucune facture.",
+    "hu": "A letöltés nem tartalmaz számlát.",
+    "it": "Il download non contiene alcuna fattura.",
+    "es": "La descarga no contiene ninguna factura."
+  },
+  "Enter a valid CUI first.": {
+    "ro": "Introduceți mai întâi un CUI valid.",
+    "de": "Geben Sie zuerst einen gültigen CUI ein.",
+    "fr": "Saisissez d'abord un CUI valide.",
+    "hu": "Előbb adjon meg egy érvényes CUI-t.",
+    "it": "Inserisci prima un CUI valido.",
+    "es": "Introduzca primero un CUI válido."
+  },
+  "Fill in the name, address and VAT status from ANAF's public register (sends the CUI to ANAF)": {
+    "ro": "Completează denumirea, adresa și starea TVA din registrul public ANAF (trimite CUI-ul la ANAF)",
+    "de": "Name, Adresse und USt-Status aus dem öffentlichen Register der ANAF übernehmen (sendet den CUI an die ANAF)",
+    "fr": "Remplir le nom, l'adresse et le statut TVA depuis le registre public de l'ANAF (envoie le CUI à l'ANAF)",
+    "hu": "A név, a cím és az áfa-státusz kitöltése az ANAF nyilvános nyilvántartásából (elküldi a CUI-t az ANAF-nak)",
+    "it": "Compila nome, indirizzo e stato IVA dal registro pubblico dell'ANAF (invia il CUI all'ANAF)",
+    "es": "Rellenar el nombre, la dirección y el estado del IVA desde el registro público de la ANAF (envía el CUI a la ANAF)"
+  },
+  "Asking ANAF…": {
+    "ro": "Se interoghează ANAF…",
+    "de": "ANAF wird abgefragt…",
+    "fr": "Interrogation de l'ANAF…",
+    "hu": "ANAF lekérdezése…",
+    "it": "Interrogazione dell'ANAF…",
+    "es": "Consultando a la ANAF…"
+  },
+  "Look up the CUI at ANAF": {
+    "ro": "Căutare CUI la ANAF",
+    "de": "CUI bei der ANAF nachschlagen",
+    "fr": "Rechercher le CUI auprès de l'ANAF",
+    "hu": "CUI keresése az ANAF-nál",
+    "it": "Cerca il CUI presso l'ANAF",
+    "es": "Buscar el CUI en la ANAF"
+  },
+  "Made on this computer. ANAF is contacted only when you look up a CUI, check with ANAF or send the invoice.": {
+    "ro": "Creată pe acest calculator. ANAF este contactat doar când căutați un CUI, verificați la ANAF sau trimiteți factura.",
+    "de": "Auf diesem Computer erstellt. Die ANAF wird nur kontaktiert, wenn Sie einen CUI nachschlagen, bei der ANAF prüfen oder die Rechnung senden.",
+    "fr": "Créée sur cet ordinateur. L'ANAF n'est contactée que lorsque vous recherchez un CUI, vérifiez auprès de l'ANAF ou envoyez la facture.",
+    "hu": "Ezen a számítógépen készült. Az ANAF-ot csak akkor keressük meg, ha CUI-t keres, az ANAF-nál ellenőriz vagy elküldi a számlát.",
+    "it": "Creata su questo computer. L'ANAF viene contattata solo quando cerchi un CUI, verifichi presso l'ANAF o invii la fattura.",
+    "es": "Creada en este equipo. Solo se contacta con la ANAF cuando busca un CUI, comprueba en la ANAF o envía la factura."
+  },
+  "Send the XML to ANAF's public validation service": {
+    "ro": "Trimite XML-ul la serviciul public de validare ANAF",
+    "de": "Das XML an den öffentlichen Validierungsdienst der ANAF senden",
+    "fr": "Envoyer le XML au service public de validation de l'ANAF",
+    "hu": "Az XML elküldése az ANAF nyilvános ellenőrző szolgáltatásának",
+    "it": "Invia l'XML al servizio pubblico di validazione dell'ANAF",
+    "es": "Enviar el XML al servicio público de validación de la ANAF"
+  },
+  "The invoice changed after ANAF checked it.": {
+    "ro": "Factura s-a modificat după verificarea ANAF.",
+    "de": "Die Rechnung wurde nach der Prüfung durch die ANAF geändert.",
+    "fr": "La facture a changé après la vérification de l'ANAF.",
+    "hu": "A számla megváltozott az ANAF ellenőrzése óta.",
+    "it": "La fattura è cambiata dopo la verifica dell'ANAF.",
+    "es": "La factura cambió después de que la ANAF la comprobara."
+  },
+  "ANAF has no company with this CUI.": {
+    "ro": "ANAF nu are nicio firmă cu acest CUI.",
+    "de": "Die ANAF kennt kein Unternehmen mit diesem CUI.",
+    "fr": "L'ANAF n'a aucune société avec ce CUI.",
+    "hu": "Az ANAF-nál nincs cég ezzel a CUI-val.",
+    "it": "L'ANAF non ha alcuna società con questo CUI.",
+    "es": "La ANAF no tiene ninguna empresa con este CUI."
+  },
+  "Registered for VAT.": {
+    "ro": "Înregistrat în scopuri de TVA.",
+    "de": "Für die Umsatzsteuer registriert.",
+    "fr": "Immatriculée à la TVA.",
+    "hu": "Áfa-nyilvántartásba vett.",
+    "it": "Registrata ai fini IVA.",
+    "es": "Registrada a efectos del IVA."
+  },
+  "Not registered for VAT: the VAT number was left empty.": {
+    "ro": "Neînregistrat în scopuri de TVA: codul de TVA a rămas necompletat.",
+    "de": "Nicht für die Umsatzsteuer registriert: die USt-IdNr. bleibt leer.",
+    "fr": "Non immatriculée à la TVA : le numéro de TVA est resté vide.",
+    "hu": "Nem áfa-nyilvántartásba vett: az áfaszám üresen maradt.",
+    "it": "Non registrata ai fini IVA: la partita IVA è rimasta vuota.",
+    "es": "No registrada a efectos del IVA: el número de IVA se dejó vacío."
+  },
+  "In the RO e-Factura register.": {
+    "ro": "În Registrul RO e-Factura.",
+    "de": "Im Register RO e-Factura.",
+    "fr": "Inscrite au registre RO e-Factura.",
+    "hu": "Szerepel a RO e-Factura nyilvántartásban.",
+    "it": "Nel registro RO e-Factura.",
+    "es": "En el registro RO e-Factura."
+  },
+  "Not in the RO e-Factura register.": {
+    "ro": "Nu figurează în Registrul RO e-Factura.",
+    "de": "Nicht im Register RO e-Factura.",
+    "fr": "Non inscrite au registre RO e-Factura.",
+    "hu": "Nem szerepel a RO e-Factura nyilvántartásban.",
+    "it": "Non presente nel registro RO e-Factura.",
+    "es": "No figura en el registro RO e-Factura."
+  },
+  "Applies VAT on cash accounting (TVA la încasare).": {
+    "ro": "Aplică TVA la încasare.",
+    "de": "Wendet die Ist-Versteuerung an (TVA la încasare).",
+    "fr": "Applique la TVA sur les encaissements (TVA la încasare).",
+    "hu": "Pénzforgalmi áfát alkalmaz (TVA la încasare).",
+    "it": "Applica l'IVA per cassa (TVA la încasare).",
+    "es": "Aplica el IVA de caja (TVA la încasare)."
+  },
+  "ANAF's firewall rejected the request. Try again later.": {
+    "ro": "Firewall-ul ANAF a respins cererea. Încercați din nou mai târziu.",
+    "de": "Die Firewall der ANAF hat die Anfrage abgelehnt. Versuchen Sie es später erneut.",
+    "fr": "Le pare-feu de l'ANAF a rejeté la demande. Réessayez plus tard.",
+    "hu": "Az ANAF tűzfala elutasította a kérést. Próbálja újra később.",
+    "it": "Il firewall dell'ANAF ha respinto la richiesta. Riprova più tardi.",
+    "es": "El cortafuegos de la ANAF rechazó la solicitud. Inténtelo de nuevo más tarde."
+  },
+  "ANAF answered: {0}": {
+    "ro": "ANAF a răspuns: {0}",
+    "de": "Die ANAF antwortete: {0}",
+    "fr": "L'ANAF a répondu : {0}",
+    "hu": "Az ANAF válasza: {0}",
+    "it": "L'ANAF ha risposto: {0}",
+    "es": "La ANAF respondió: {0}"
+  },
+  "ANAF lists the company as deregistered (radiată) since {0}.": {
+    "ro": "ANAF înregistrează firma ca radiată din {0}.",
+    "de": "Die ANAF führt das Unternehmen seit {0} als gelöscht (radiată).",
+    "fr": "L'ANAF indique la société comme radiée (radiată) depuis le {0}.",
+    "hu": "Az ANAF szerint a cég {0} óta törölve van (radiată).",
+    "it": "L'ANAF indica la società come cancellata (radiată) dal {0}.",
+    "es": "La ANAF registra la empresa como dada de baja (radiată) desde {0}."
+  },
+  "ANAF lists the company as deregistered (radiată).": {
+    "ro": "ANAF înregistrează firma ca radiată.",
+    "de": "Die ANAF führt das Unternehmen als gelöscht (radiată).",
+    "fr": "L'ANAF indique la société comme radiée (radiată).",
+    "hu": "Az ANAF szerint a cég törölve van (radiată).",
+    "it": "L'ANAF indica la società come cancellata (radiată).",
+    "es": "La ANAF registra la empresa como dada de baja (radiată)."
+  },
+  "ANAF lists the company as inactive since {0}.": {
+    "ro": "ANAF înregistrează firma ca inactivă din {0}.",
+    "de": "Die ANAF führt das Unternehmen seit {0} als inaktiv.",
+    "fr": "L'ANAF indique la société comme inactive depuis le {0}.",
+    "hu": "Az ANAF szerint a cég {0} óta inaktív.",
+    "it": "L'ANAF indica la società come inattiva dal {0}.",
+    "es": "La ANAF registra la empresa como inactiva desde {0}."
+  },
+  "ANAF lists the company as inactive.": {
+    "ro": "ANAF înregistrează firma ca inactivă.",
+    "de": "Die ANAF führt das Unternehmen als inaktiv.",
+    "fr": "L'ANAF indique la société comme inactive.",
+    "hu": "Az ANAF szerint a cég inaktív.",
+    "it": "L'ANAF indica la società come inattiva.",
+    "es": "La ANAF registra la empresa como inactiva."
+  },
+  "ANAF gave no usable address; check the address fields.": {
+    "ro": "ANAF nu a furnizat o adresă utilizabilă; verificați câmpurile adresei.",
+    "de": "Die ANAF lieferte keine brauchbare Adresse; prüfen Sie die Adressfelder.",
+    "fr": "L'ANAF n'a fourni aucune adresse exploitable ; vérifiez les champs d'adresse.",
+    "hu": "Az ANAF nem adott használható címet; ellenőrizze a címmezőket.",
+    "it": "L'ANAF non ha fornito un indirizzo utilizzabile; controlla i campi dell'indirizzo.",
+    "es": "La ANAF no proporcionó una dirección utilizable; revise los campos de la dirección."
+  },
+  "Not a valid CUI: {0}": {
+    "ro": "CUI invalid: {0}",
+    "de": "Kein gültiger CUI: {0}",
+    "fr": "CUI non valide : {0}",
+    "hu": "Érvénytelen CUI: {0}",
+    "it": "CUI non valido: {0}",
+    "es": "CUI no válido: {0}"
+  },
+  "ANAF limits how often its register can be asked. Wait a moment and try again.": {
+    "ro": "ANAF limitează frecvența interogărilor registrului. Așteptați puțin și încercați din nou.",
+    "de": "Die ANAF begrenzt, wie oft ihr Register abgefragt werden kann. Warten Sie kurz und versuchen Sie es erneut.",
+    "fr": "L'ANAF limite la fréquence des interrogations de son registre. Patientez un instant et réessayez.",
+    "hu": "Az ANAF korlátozza, milyen gyakran kérdezhető le a nyilvántartása. Várjon egy kicsit, és próbálja újra.",
+    "it": "L'ANAF limita la frequenza delle interrogazioni del suo registro. Attendi un momento e riprova.",
+    "es": "La ANAF limita la frecuencia de consulta de su registro. Espere un momento e inténtelo de nuevo."
+  },
+  "ANAF's register answered HTTP {0}.": {
+    "ro": "Registrul ANAF a răspuns HTTP {0}.",
+    "de": "Das Register der ANAF antwortete mit HTTP {0}.",
+    "fr": "Le registre de l'ANAF a répondu HTTP {0}.",
+    "hu": "Az ANAF nyilvántartása HTTP {0} választ adott.",
+    "it": "Il registro dell'ANAF ha risposto HTTP {0}.",
+    "es": "El registro de la ANAF respondió HTTP {0}."
+  },
+  "ANAF's firewall rejected the XML (it sometimes blocks valid invoices). Try again later.": {
+    "ro": "Firewall-ul ANAF a respins XML-ul (uneori blochează facturi valide). Încercați din nou mai târziu.",
+    "de": "Die Firewall der ANAF hat das XML abgelehnt (sie blockiert manchmal gültige Rechnungen). Versuchen Sie es später erneut.",
+    "fr": "Le pare-feu de l'ANAF a rejeté le XML (il bloque parfois des factures valides). Réessayez plus tard.",
+    "hu": "Az ANAF tűzfala elutasította az XML-t (néha érvényes számlákat is blokkol). Próbálja újra később.",
+    "it": "Il firewall dell'ANAF ha respinto l'XML (a volte blocca fatture valide). Riprova più tardi.",
+    "es": "El cortafuegos de la ANAF rechazó el XML (a veces bloquea facturas válidas). Inténtelo de nuevo más tarde."
+  },
+  "ANAF's validation answered HTTP {0}.": {
+    "ro": "Validarea ANAF a răspuns HTTP {0}.",
+    "de": "Die Validierung der ANAF antwortete mit HTTP {0}.",
+    "fr": "La validation de l'ANAF a répondu HTTP {0}.",
+    "hu": "Az ANAF ellenőrzése HTTP {0} választ adott.",
+    "it": "La validazione dell'ANAF ha risposto HTTP {0}.",
+    "es": "La validación de la ANAF respondió HTTP {0}."
+  },
+  "Enter the client ID of the application registered with ANAF.": {
+    "ro": "Introduceți Client ID-ul aplicației înregistrate la ANAF.",
+    "de": "Geben Sie die Client-ID der bei der ANAF registrierten Anwendung ein.",
+    "fr": "Saisissez l'identifiant client de l'application enregistrée auprès de l'ANAF.",
+    "hu": "Adja meg az ANAF-nál regisztrált alkalmazás ügyfélazonosítóját.",
+    "it": "Inserisci il client ID dell'applicazione registrata presso l'ANAF.",
+    "es": "Introduzca el ID de cliente de la aplicación registrada en la ANAF."
+  },
+  "Enter the client secret of the application registered with ANAF.": {
+    "ro": "Introduceți Client Secret-ul aplicației înregistrate la ANAF.",
+    "de": "Geben Sie das Client-Secret der bei der ANAF registrierten Anwendung ein.",
+    "fr": "Saisissez le secret client de l'application enregistrée auprès de l'ANAF.",
+    "hu": "Adja meg az ANAF-nál regisztrált alkalmazás ügyféltitkát.",
+    "it": "Inserisci il client secret dell'applicazione registrata presso l'ANAF.",
+    "es": "Introduzca el secreto de cliente de la aplicación registrada en la ANAF."
+  },
+  "The callback URL must be https:// or http://localhost:<port>/…, exactly as registered with ANAF.": {
+    "ro": "Callback URL-ul trebuie să fie https:// sau http://localhost:<port>/…, exact ca la înregistrarea la ANAF.",
+    "de": "Die Callback-URL muss https:// oder http://localhost:<port>/… sein, genau wie bei der ANAF registriert.",
+    "fr": "L'URL de rappel doit être https:// ou http://localhost:<port>/…, exactement comme enregistrée auprès de l'ANAF.",
+    "hu": "A visszahívási URL-nek https:// vagy http://localhost:<port>/… alakúnak kell lennie, pontosan úgy, ahogy az ANAF-nál regisztrálta.",
+    "it": "L'URL di callback deve essere https:// o http://localhost:<port>/…, esattamente come registrata presso l'ANAF.",
+    "es": "La URL de retorno debe ser https:// o http://localhost:<port>/…, exactamente como se registró en la ANAF."
+  },
+  "Enter the callback URL registered with ANAF.": {
+    "ro": "Introduceți Callback URL-ul înregistrat la ANAF.",
+    "de": "Geben Sie die bei der ANAF registrierte Callback-URL ein.",
+    "fr": "Saisissez l'URL de rappel enregistrée auprès de l'ANAF.",
+    "hu": "Adja meg az ANAF-nál regisztrált visszahívási URL-t.",
+    "it": "Inserisci l'URL di callback registrata presso l'ANAF.",
+    "es": "Introduzca la URL de retorno registrada en la ANAF."
+  },
+  "ANAF's upload answered HTTP {0}.": {
+    "ro": "Încărcarea ANAF a răspuns HTTP {0}.",
+    "de": "Der Upload der ANAF antwortete mit HTTP {0}.",
+    "fr": "L'envoi à l'ANAF a répondu HTTP {0}.",
+    "hu": "Az ANAF feltöltése HTTP {0} választ adott.",
+    "it": "Il caricamento dell'ANAF ha risposto HTTP {0}.",
+    "es": "La carga de la ANAF respondió HTTP {0}."
+  },
+  "ANAF refused the upload: {0}": {
+    "ro": "ANAF a refuzat încărcarea: {0}",
+    "de": "Die ANAF hat den Upload abgelehnt: {0}",
+    "fr": "L'ANAF a refusé l'envoi : {0}",
+    "hu": "Az ANAF elutasította a feltöltést: {0}",
+    "it": "L'ANAF ha rifiutato il caricamento: {0}",
+    "es": "La ANAF rechazó la carga: {0}"
+  },
+  "ANAF refused the upload.": {
+    "ro": "ANAF a refuzat încărcarea.",
+    "de": "Die ANAF hat den Upload abgelehnt.",
+    "fr": "L'ANAF a refusé l'envoi.",
+    "hu": "Az ANAF elutasította a feltöltést.",
+    "it": "L'ANAF ha rifiutato il caricamento.",
+    "es": "La ANAF rechazó la carga."
+  },
+  "ANAF's status answered HTTP {0}.": {
+    "ro": "Starea ANAF a răspuns HTTP {0}.",
+    "de": "Die Statusabfrage der ANAF antwortete mit HTTP {0}.",
+    "fr": "L'état de l'ANAF a répondu HTTP {0}.",
+    "hu": "Az ANAF állapotlekérdezése HTTP {0} választ adott.",
+    "it": "Lo stato dell'ANAF ha risposto HTTP {0}.",
+    "es": "El estado de la ANAF respondió HTTP {0}."
+  },
+  "ANAF sent no status.": {
+    "ro": "ANAF nu a trimis nicio stare.",
+    "de": "Die ANAF hat keinen Status gesendet.",
+    "fr": "L'ANAF n'a envoyé aucun état.",
+    "hu": "Az ANAF nem küldött állapotot.",
+    "it": "L'ANAF non ha inviato alcuno stato.",
+    "es": "La ANAF no envió ningún estado."
+  },
+  "ANAF's message list answered HTTP {0}.": {
+    "ro": "Lista de mesaje ANAF a răspuns HTTP {0}.",
+    "de": "Die Nachrichtenliste der ANAF antwortete mit HTTP {0}.",
+    "fr": "La liste des messages de l'ANAF a répondu HTTP {0}.",
+    "hu": "Az ANAF üzenetlistája HTTP {0} választ adott.",
+    "it": "L'elenco dei messaggi dell'ANAF ha risposto HTTP {0}.",
+    "es": "La lista de mensajes de la ANAF respondió HTTP {0}."
+  },
+  "Connect to ANAF again: {0}": {
+    "ro": "Conectați-vă din nou la ANAF: {0}",
+    "de": "Verbinden Sie sich erneut mit der ANAF: {0}",
+    "fr": "Reconnectez-vous à l'ANAF : {0}",
+    "hu": "Csatlakozzon újra az ANAF-hoz: {0}",
+    "it": "Connettiti di nuovo all'ANAF: {0}",
+    "es": "Vuelva a conectarse a la ANAF: {0}"
+  },
+  "ANAF's sign-in answered: {0}": {
+    "ro": "Autentificarea ANAF a răspuns: {0}",
+    "de": "Die Anmeldung der ANAF antwortete: {0}",
+    "fr": "La connexion de l'ANAF a répondu : {0}",
+    "hu": "Az ANAF bejelentkezése ezt válaszolta: {0}",
+    "it": "L'accesso ANAF ha risposto: {0}",
+    "es": "El inicio de sesión de la ANAF respondió: {0}"
+  },
+  "ANAF refused the sign-in: {0}": {
+    "ro": "ANAF a refuzat autentificarea: {0}",
+    "de": "Die ANAF hat die Anmeldung abgelehnt: {0}",
+    "fr": "L'ANAF a refusé la connexion : {0}",
+    "hu": "Az ANAF elutasította a bejelentkezést: {0}",
+    "it": "L'ANAF ha rifiutato l'accesso: {0}",
+    "es": "La ANAF rechazó el inicio de sesión: {0}"
+  },
+  "Connect to ANAF first.": {
+    "ro": "Conectați-vă mai întâi la ANAF.",
+    "de": "Verbinden Sie sich zuerst mit der ANAF.",
+    "fr": "Connectez-vous d'abord à l'ANAF.",
+    "hu": "Előbb csatlakozzon az ANAF-hoz.",
+    "it": "Connettiti prima all'ANAF.",
+    "es": "Conéctese primero a la ANAF."
+  },
+  "ANAF no longer accepts the sign-in. Connect again.": {
+    "ro": "ANAF nu mai acceptă autentificarea. Conectați-vă din nou.",
+    "de": "Die ANAF akzeptiert die Anmeldung nicht mehr. Verbinden Sie sich erneut.",
+    "fr": "L'ANAF n'accepte plus la connexion. Reconnectez-vous.",
+    "hu": "Az ANAF már nem fogadja el a bejelentkezést. Csatlakozzon újra.",
+    "it": "L'ANAF non accetta più l'accesso. Connettiti di nuovo.",
+    "es": "La ANAF ya no acepta el inicio de sesión. Vuelva a conectarse."
+  },
+  "ANAF refused access: the certificate used to connect needs SPV rights for this CUI, and the application must be registered for e-Factura.": {
+    "ro": "ANAF a refuzat accesul: certificatul folosit la conectare trebuie să aibă drepturi SPV pentru acest CUI, iar aplicația trebuie înregistrată pentru e-Factura.",
+    "de": "Die ANAF hat den Zugriff verweigert: Das zum Verbinden verwendete Zertifikat braucht SPV-Rechte für diesen CUI, und die Anwendung muss für e-Factura registriert sein.",
+    "fr": "L'ANAF a refusé l'accès : le certificat utilisé pour se connecter doit avoir des droits SPV pour ce CUI, et l'application doit être enregistrée pour e-Factura.",
+    "hu": "Az ANAF megtagadta a hozzáférést: a csatlakozáshoz használt tanúsítványnak SPV-jogosultsággal kell rendelkeznie ehhez a CUI-hoz, és az alkalmazást regisztrálni kell az e-Factura szolgáltatáshoz.",
+    "it": "L'ANAF ha negato l'accesso: il certificato usato per connettersi deve avere i diritti SPV per questo CUI e l'applicazione deve essere registrata per e-Factura.",
+    "es": "La ANAF denegó el acceso: el certificado usado para conectarse necesita derechos SPV para este CUI y la aplicación debe estar registrada para e-Factura."
+  },
+  "ANAF limits how often its services can be called. Wait a little and try again.": {
+    "ro": "ANAF limitează frecvența apelurilor către serviciile sale. Așteptați puțin și încercați din nou.",
+    "de": "Die ANAF begrenzt, wie oft ihre Dienste aufgerufen werden können. Warten Sie etwas und versuchen Sie es erneut.",
+    "fr": "L'ANAF limite la fréquence des appels à ses services. Patientez un peu et réessayez.",
+    "hu": "Az ANAF korlátozza szolgáltatásai hívásának gyakoriságát. Várjon egy kicsit, és próbálja újra.",
+    "it": "L'ANAF limita la frequenza delle chiamate ai suoi servizi. Attendi un po' e riprova.",
+    "es": "La ANAF limita la frecuencia de llamadas a sus servicios. Espere un poco e inténtelo de nuevo."
+  },
+  "ANAF's e-Factura service answered HTTP {0}. Try again later.": {
+    "ro": "Serviciul e-Factura ANAF a răspuns HTTP {0}. Încercați din nou mai târziu.",
+    "de": "Der e-Factura-Dienst der ANAF antwortete mit HTTP {0}. Versuchen Sie es später erneut.",
+    "fr": "Le service e-Factura de l'ANAF a répondu HTTP {0}. Réessayez plus tard.",
+    "hu": "Az ANAF e-Factura szolgáltatása HTTP {0} választ adott. Próbálja újra később.",
+    "it": "Il servizio e-Factura dell'ANAF ha risposto HTTP {0}. Riprova più tardi.",
+    "es": "El servicio e-Factura de la ANAF respondió HTTP {0}. Inténtelo de nuevo más tarde."
+  },
+  "ANAF's download answered HTTP {0}.": {
+    "ro": "Descărcarea ANAF a răspuns HTTP {0}.",
+    "de": "Der Download der ANAF antwortete mit HTTP {0}.",
+    "fr": "Le téléchargement de l'ANAF a répondu HTTP {0}.",
+    "hu": "Az ANAF letöltése HTTP {0} választ adott.",
+    "it": "Il download dell'ANAF ha risposto HTTP {0}.",
+    "es": "La descarga de la ANAF respondió HTTP {0}."
+  },
+  "The seller's postal code is longer than 20 characters.": {
+    "ro": "Codul poștal al vânzătorului depășește 20 de caractere.",
+    "de": "Die Postleitzahl des Verkäufers ist länger als 20 Zeichen.",
+    "fr": "Le code postal du vendeur dépasse 20 caractères.",
+    "hu": "Az eladó irányítószáma hosszabb 20 karakternél.",
+    "it": "Il codice postale del venditore supera i 20 caratteri.",
+    "es": "El código postal del vendedor supera los 20 caracteres."
+  },
+  "The buyer's postal code is longer than 20 characters.": {
+    "ro": "Codul poștal al cumpărătorului depășește 20 de caractere.",
+    "de": "Die Postleitzahl des Käufers ist länger als 20 Zeichen.",
+    "fr": "Le code postal de l'acheteur dépasse 20 caractères.",
+    "hu": "A vevő irányítószáma hosszabb 20 karakternél.",
+    "it": "Il codice postale dell'acquirente supera i 20 caratteri.",
+    "es": "El código postal del comprador supera los 20 caracteres."
+  },
+  "The seller's e-mail address is longer than 100 characters.": {
+    "ro": "Adresa de e-mail a vânzătorului depășește 100 de caractere.",
+    "de": "Die E-Mail-Adresse des Verkäufers ist länger als 100 Zeichen.",
+    "fr": "L'adresse e-mail du vendeur dépasse 100 caractères.",
+    "hu": "Az eladó e-mail-címe hosszabb 100 karakternél.",
+    "it": "L'indirizzo e-mail del venditore supera i 100 caratteri.",
+    "es": "La dirección de correo del vendedor supera los 100 caracteres."
+  },
+  "The buyer's e-mail address is longer than 100 characters.": {
+    "ro": "Adresa de e-mail a cumpărătorului depășește 100 de caractere.",
+    "de": "Die E-Mail-Adresse des Käufers ist länger als 100 Zeichen.",
+    "fr": "L'adresse e-mail de l'acheteur dépasse 100 caractères.",
+    "hu": "A vevő e-mail-címe hosszabb 100 karakternél.",
+    "it": "L'indirizzo e-mail dell'acquirente supera i 100 caratteri.",
+    "es": "La dirección de correo del comprador supera los 100 caracteres."
+  },
+  "The seller's phone number is longer than 100 characters.": {
+    "ro": "Numărul de telefon al vânzătorului depășește 100 de caractere.",
+    "de": "Die Telefonnummer des Verkäufers ist länger als 100 Zeichen.",
+    "fr": "Le numéro de téléphone du vendeur dépasse 100 caractères.",
+    "hu": "Az eladó telefonszáma hosszabb 100 karakternél.",
+    "it": "Il numero di telefono del venditore supera i 100 caratteri.",
+    "es": "El teléfono del vendedor supera los 100 caracteres."
+  },
+  "The buyer's phone number is longer than 100 characters.": {
+    "ro": "Numărul de telefon al cumpărătorului depășește 100 de caractere.",
+    "de": "Die Telefonnummer des Käufers ist länger als 100 Zeichen.",
+    "fr": "Le numéro de téléphone de l'acheteur dépasse 100 caractères.",
+    "hu": "A vevő telefonszáma hosszabb 100 karakternél.",
+    "it": "Il numero di telefono dell'acquirente supera i 100 caratteri.",
+    "es": "El teléfono del comprador supera los 100 caracteres."
+  },
+  "The payment terms are longer than 300 characters.": {
+    "ro": "Termenii de plată depășesc 300 de caractere.",
+    "de": "Die Zahlungsbedingungen sind länger als 300 Zeichen.",
+    "fr": "Les conditions de paiement dépassent 300 caractères.",
+    "hu": "A fizetési feltételek hosszabbak 300 karakternél.",
+    "it": "I termini di pagamento superano i 300 caratteri.",
+    "es": "Las condiciones de pago superan los 300 caracteres."
+  },
+  "The payment reference is longer than 140 characters.": {
+    "ro": "Referința plății depășește 140 de caractere.",
+    "de": "Der Verwendungszweck ist länger als 140 Zeichen.",
+    "fr": "La référence de paiement dépasse 140 caractères.",
+    "hu": "A fizetési hivatkozás hosszabb 140 karakternél.",
+    "it": "Il riferimento di pagamento supera i 140 caratteri.",
+    "es": "La referencia de pago supera los 140 caracteres."
+  },
+  "The account name is longer than 200 characters.": {
+    "ro": "Numele contului depășește 200 de caractere.",
+    "de": "Der Kontoname ist länger als 200 Zeichen.",
+    "fr": "Le nom du compte dépasse 200 caractères.",
+    "hu": "A számla neve hosszabb 200 karakternél.",
+    "it": "Il nome del conto supera i 200 caratteri.",
+    "es": "El nombre de la cuenta supera los 200 caracteres."
+  },
+  "The order number is longer than 200 characters.": {
+    "ro": "Numărul comenzii depășește 200 de caractere.",
+    "de": "Die Bestellnummer ist länger als 200 Zeichen.",
+    "fr": "Le numéro de commande dépasse 200 caractères.",
+    "hu": "A rendelésszám hosszabb 200 karakternél.",
+    "it": "Il numero d'ordine supera i 200 caratteri.",
+    "es": "El número de pedido supera los 200 caracteres."
+  },
+  "The contract reference is longer than 200 characters.": {
+    "ro": "Referința contractului depășește 200 de caractere.",
+    "de": "Die Vertragsreferenz ist länger als 200 Zeichen.",
+    "fr": "La référence du contrat dépasse 200 caractères.",
+    "hu": "A szerződés hivatkozása hosszabb 200 karakternél.",
+    "it": "Il riferimento del contratto supera i 200 caratteri.",
+    "es": "La referencia del contrato supera los 200 caracteres."
+  },
+  "The number of the corrected invoice is longer than 200 characters.": {
+    "ro": "Numărul facturii corectate depășește 200 de caractere.",
+    "de": "Die Nummer der korrigierten Rechnung ist länger als 200 Zeichen.",
+    "fr": "Le numéro de la facture corrigée dépasse 200 caractères.",
+    "hu": "A helyesbített számla száma hosszabb 200 karakternél.",
+    "it": "Il numero della fattura corretta supera i 200 caratteri.",
+    "es": "El número de la factura corregida supera los 200 caracteres."
+  },
+  "Document charge {0}: the reason is longer than 100 characters.": {
+    "ro": "Majorarea {0} la nivelul documentului: motivul depășește 100 de caractere.",
+    "de": "Zuschlag {0} auf Belegebene: Der Grund ist länger als 100 Zeichen.",
+    "fr": "Majoration {0} du document : le motif dépasse 100 caractères.",
+    "hu": "{0}. dokumentumszintű pótdíj: az ok hosszabb 100 karakternél.",
+    "it": "Maggiorazione {0} del documento: il motivo supera i 100 caratteri.",
+    "es": "Recargo {0} del documento: el motivo supera los 100 caracteres."
+  },
+  "Document discount {0}: the reason is longer than 100 characters.": {
+    "ro": "Reducerea {0} la nivelul documentului: motivul depășește 100 de caractere.",
+    "de": "Nachlass {0} auf Belegebene: Der Grund ist länger als 100 Zeichen.",
+    "fr": "Remise {0} du document : le motif dépasse 100 caractères.",
+    "hu": "{0}. dokumentumszintű engedmény: az ok hosszabb 100 karakternél.",
+    "it": "Sconto {0} del documento: il motivo supera i 100 caratteri.",
+    "es": "Descuento {0} del documento: el motivo supera los 100 caracteres."
+  },
+  "VAT category {0}: the exemption reason is longer than 100 characters.": {
+    "ro": "Categoria de TVA {0}: motivul scutirii depășește 100 de caractere.",
+    "de": "USt-Kategorie {0}: Der Befreiungsgrund ist länger als 100 Zeichen.",
+    "fr": "Catégorie de TVA {0} : le motif d'exonération dépasse 100 caractères.",
+    "hu": "{0} áfakategória: a mentesség oka hosszabb 100 karakternél.",
+    "it": "Categoria IVA {0}: il motivo di esenzione supera i 100 caratteri.",
+    "es": "Categoría de IVA {0}: el motivo de exención supera los 100 caracteres."
+  },
+  "The buyer needs a VAT number or a registration number (CUI, CNP).": {
+    "ro": "Cumpărătorul are nevoie de un cod de TVA sau de un cod de înregistrare (CUI, CNP).",
+    "de": "Der Käufer braucht eine USt-IdNr. oder eine Registrierungsnummer (CUI, CNP).",
+    "fr": "L'acheteur doit avoir un numéro de TVA ou un numéro d'immatriculation (CUI, CNP).",
+    "hu": "A vevőnek áfaszám vagy nyilvántartási szám (CUI, CNP) szükséges.",
+    "it": "L'acquirente deve avere una partita IVA o un numero di registrazione (CUI, CNP).",
+    "es": "El comprador necesita un número de IVA o un número de registro (CUI, CNP)."
+  }
+}

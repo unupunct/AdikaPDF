@@ -148,9 +148,9 @@ describe('CIUS-RO rules (e-Factura)', () => {
 
   it('checks counties (ISO 3166-2:RO) and Bucharest sectors', () => {
     const d = roDraft();
-    expect(rules({ ...d, seller: { ...d.seller, region: 'Cluj' } })).toContain('CIUS-RO BT-39');
-    expect(rules({ ...d, seller: { ...d.seller, region: '' } })).toContain('CIUS-RO BT-39');
-    expect(rules({ ...d, buyer: { ...d.buyer, city: 'București' } })).toContain('CIUS-RO BT-52');
+    expect(rules({ ...d, seller: { ...d.seller, region: 'Cluj' } })).toContain('BR-RO-110');
+    expect(rules({ ...d, seller: { ...d.seller, region: '' } })).toContain('BR-RO-110');
+    expect(rules({ ...d, buyer: { ...d.buyer, city: 'București' } })).toContain('BR-RO-100');
     expect(rules({ ...d, buyer: { ...d.buyer, country: 'DE', region: '', vatId: 'DE123456789', city: 'Berlin' } })).toEqual([]);
     expect([normalizeRoCounty('Cluj'), normalizeRoCounty('jud. Iași'), normalizeRoCounty('CJ'), normalizeRoCounty('Bucuresti'), normalizeRoCounty('Atlantis')]).toEqual(['RO-CJ', 'RO-IS', 'RO-CJ', 'RO-B', '']);
     expect([normalizeSector('Sector 3'), normalizeSector('sectorul 6'), normalizeSector('Cluj-Napoca')]).toEqual(['SECTOR3', 'SECTOR6', 'Cluj-Napoca']);
@@ -160,8 +160,8 @@ describe('CIUS-RO rules (e-Factura)', () => {
     const d = roDraft();
     expect(rules({ ...d, number: 'ABC' })).toContain('BR-RO-010');
     expect(rules({ ...d, typeCode: '383' })).toContain('BR-RO-020');
-    expect(rules({ ...d, lines: [line({ name: 'x'.repeat(101), price: 1 })] })).toContain('CIUS-RO BT-153');
-    expect(rules({ ...d, notes: Array(21).fill('n') })).toContain('CIUS-RO BT-22');
+    expect(rules({ ...d, lines: [line({ name: 'x'.repeat(101), price: 1 })] })).toContain('BR-RO-L100');
+    expect(rules({ ...d, notes: Array(21).fill('n') })).toContain('BR-RO-A020');
     expect(rules({ ...d, payment: { ...d.payment, iban: '' } })).toContain('BR-61');
     expect(rules({ ...d, payment: { ...d.payment, iban: 'RO49AAAA1B31007593840001' } })).toContain('BT-84');
     expect(rules({ ...d, dueDate: '', payment: { ...d.payment, terms: '' } })).toContain('BR-CO-25');

@@ -10,6 +10,7 @@ import {
   Spline,
   Receipt,
   ReceiptText,
+  Landmark,
   Package,
   ListOrdered,
   BadgeCheck,
@@ -621,6 +622,7 @@ function ConvertTab() {
       <Group label="E-invoice">
         <Big icon={<Receipt size={I} />} label="E-invoice" onClick={() => s.openModal('einvoice')} tip="e-Factura, UBL and Factur-X / ZUGFeRD: open invoice XML as a readable PDF, show the invoice inside a PDF, embed an invoice XML" testId="btn-einvoice" />
         <Big icon={<ReceiptText size={I} />} label="New e-invoice" onClick={() => void import('@/actions/einvoiceCreate').then((m) => m.openNewEInvoice())} tip="Issue an e-Factura (ANAF), Peppol or Factur-X invoice: saved sellers, customers and products, live totals and checks" testId="btn-einvoice-new" />
+        <Big icon={<Landmark size={I} />} label="ANAF e-Factura" onClick={() => void import('@/actions/anaf').then((m) => m.openAnafDialog())} tip="Send e-Factura invoices to ANAF's SPV, follow their status, list and download received invoices (needs an application registered with ANAF)" testId="btn-anaf" />
       </Group>
       <Group label="Many files">
         <Big icon={<FileStack size={I} />} label="Batch" onClick={() => s.openModal('batch')} tip="OCR, compress, watermark, page numbers, PDF/A, protect, sanitize or flatten many PDFs at once, one operation or a saved sequence of steps" testId="btn-batch" />
