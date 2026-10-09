@@ -9,6 +9,7 @@ mod logging;
 mod print_watcher;
 mod net;
 mod oauth;
+mod credentials;
 mod pkcs11;
 mod recovery;
 mod appdata;
@@ -207,6 +208,9 @@ pub fn run() {
             oauth::oauth_loopback_start,
             oauth::oauth_loopback_wait,
             oauth::oauth_loopback_cancel,
+            credentials::secret_store,
+            credentials::secret_read,
+            credentials::secret_delete,
             pkcs11::pkcs11_detect_modules,
             pkcs11::pkcs11_list_tokens,
             pkcs11::pkcs11_sign,

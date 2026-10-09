@@ -385,22 +385,55 @@ export async function httpPost(url: string, contentType: string, body: Uint8Arra
   return new Uint8Array(buf);
 }
 
-/** JSON / form request to a web service (remote signing; https only). Error statuses come back with their body. */
-export async function apiRequest(req: { url: string; method: 'GET' | 'POST'; authorization?: string; contentType?: string; body?: string }): Promise<{ status: number; body: string }> {
+export interface ApiRequest {
+  url: string;
+  method: 'GET' | 'POST';
+  authorization?: string;
+  contentType?: string;
+  body?: string;
+  /** Accept header (default application/json). */
+  accept?: string;
+  /** Also return the body as bytes (ZIP downloads). */
+  binary?: boolean;
+}
+
+/** Request to a web service (remote signing, ANAF; https only). Error statuses come back with their body. */
+export async function apiRequest(req: ApiRequest): Promise<{ status: number; body: string; bytes?: Uint8Array }> {
   if (!isDesktop) {
-    const headers: Record<string, string> = { Accept: 'application/json' };
+    const headers: Record<string, string> = { Accept: req.accept ?? 'application/json' };
     if (req.authorization) headers.Authorization = req.authorization;
     if (req.contentType) headers['Content-Type'] = req.contentType;
     const r = await fetch(req.url, { method: req.method, headers, body: req.method === 'POST' ? (req.body ?? '') : undefined });
-    return { status: r.status, body: await r.text() };
+    if (!req.binary) return { status: r.status, body: await r.text() };
+    const bytes = new Uint8Array(await r.arrayBuffer());
+    return { status: r.status, body: bytes[0] === 0x50 && bytes[1] === 0x4b ? '' : new TextDecoder().decode(bytes), bytes };
   }
-  return invoke<{ status: number; body: string }>('api_request', {
+  const r = await invoke<{ status: number; body: string; base64?: string }>('api_request', {
     url: req.url,
     method: req.method,
     authorization: req.authorization ?? null,
     contentType: req.contentType ?? null,
     body: req.body ?? null,
+    accept: req.accept ?? null,
+    binary: req.binary ?? null,
   });
+  return { status: r.status, body: r.body, bytes: r.base64 !== undefined ? base64ToBytes(r.base64) : undefined };
+}
+
+/** A secret kept in Windows Credential Manager ("Adika PDF Editor/<name>"); null when missing or outside the desktop app. */
+export async function secretRead(name: string): Promise<string | null> {
+  if (!isDesktop) return null;
+  return invoke<string | null>('secret_read', { name });
+}
+
+export async function secretStore(name: string, value: string): Promise<void> {
+  if (!isDesktop) throw new DesktopOnlyError('Keeping secrets in Windows Credential Manager');
+  await invoke('secret_store', { name, value });
+}
+
+export async function secretDelete(name: string): Promise<void> {
+  if (!isDesktop) return;
+  await invoke('secret_delete', { name });
 }
 
 export interface LoopbackResult {
