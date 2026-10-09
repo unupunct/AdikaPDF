@@ -4,6 +4,7 @@
  * signature options and a fixed appearance; results per file, as CSV too.
  */
 import { useEffect, useRef, useState } from 'react';
+import { AppearanceChooser } from './SigAppearanceDesigner';
 import { CheckCircle2, Cloud, FilePlus2, FileSignature, FolderOpen, KeyRound, Loader2, LogIn, MinusCircle, RefreshCw, Save, Send, Usb, X, XCircle } from 'lucide-react';
 import { usePDFStore } from '@/store/usePDFStore';
 import { useCscProviders } from '@/store/cscProviders';
@@ -79,6 +80,7 @@ export function BatchSignModal() {
   const [offset, setOffset] = useState({ x: 28, y: 28 });
   const [size, setSize] = useState({ width: 210, height: 62 });
   const [ink, setInk] = useState('');
+  const [profile, setProfile] = useState<string | undefined>(undefined);
   const [useField, setUseField] = useState(false);
   const [fieldName, setFieldName] = useState('Signature1');
   // output
@@ -246,6 +248,7 @@ export function BatchSignModal() {
         width: Math.max(20, size.width),
         height: Math.max(10, size.height),
         fieldName: useField && fieldName.trim() ? fieldName.trim() : undefined,
+        profile,
       },
       output: outMode === 'replace' ? { mode: 'replace' } : outMode === 'folder' ? { mode: 'folder', folder: outFolder!, suffix } : { mode: 'suffix', suffix: suffix.trim() },
     };
@@ -774,6 +777,7 @@ export function BatchSignModal() {
             </Field>
           </div>
         ) : null}
+        {visible || useField ? <AppearanceChooser value={profile} onChange={setProfile} size={{ width: Math.max(20, size.width), height: Math.max(10, size.height) }} /> : null}
 
         {/* ------------------------------------------------ output */}
         <div className="mb-1 text-xs font-semibold">Save</div>
