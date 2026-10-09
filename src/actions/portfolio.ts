@@ -28,7 +28,14 @@ export async function createPortfolioFrom(files: PortfolioFile[], title: string)
 }
 
 /** After opening: a portfolio shows its files; an embedded e-invoice is announced. */
-export async function noteOpenedPdf(bytes: Uint8Array): Promise<void> {
+export async function noteOpenedPdf(bytes: Uint8Array, sourceId?: string): Promise<void> {
+  // Both need embedded files: pdf.js lists them cheaply, so a large file is not parsed again without them.
+  if (sourceId) {
+    const { getSourceDoc } = await import('@/lib/pdf/pdfService');
+    const atts = await getSourceDoc(sourceId).then((d) => d.getAttachments()).catch(() => null);
+    const count = atts instanceof Map ? atts.size : atts ? Object.keys(atts).length : 0;
+    if (!count) return;
+  }
   const { readPortfolio } = await import('@/lib/pdf/portfolio');
   const files = await readPortfolio(bytes).catch(() => null);
   const s = usePDFStore.getState();

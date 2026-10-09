@@ -3,8 +3,11 @@
  * for facing / book view), scrolled continuously or one row at a time, with
  * fit-width / fit-page zoom, Ctrl+wheel zoom anchored at the cursor, hand-tool
  * panning, current-page tracking, lazy page mounting and a view-only rotation.
+ * Long documents are virtualised: only the rows around the viewport are
+ * mounted, and the view stays on the same page when estimated page sizes are
+ * replaced by real ones.
  */
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { usePDFStore, MIN_ZOOM, MAX_ZOOM } from '@/store/usePDFStore';
 import { displaySize } from '@/lib/geometry';
 import type { PageRef } from '@/types';
@@ -13,9 +16,12 @@ import { ReadingOrderBar } from './ReadingOrderLayer';
 import { Magnifier } from './Magnifier';
 import { AutoScroller } from './AutoScroll';
 import { cn } from '@/lib/cn';
+import { anchoredScrollTop, rowAt, visibleRows, VIRTUAL_MIN_PAGES } from '@/lib/pdf/pageSizes';
 
 export const PAGE_GAP = 20;
 const PADDING = 24;
+/** Viewport heights mounted above and below the visible part. */
+const OVERSCAN = 2;
 
 interface Slot {
   index: number;
@@ -84,8 +90,9 @@ export function PDFCanvas() {
   }, [allRows, currentPageId]);
 
   // Rows actually laid out (all, or the current one in single-page mode).
+  const singleRow = viewScroll === 'single' ? currentRow : -1;
   const rows = useMemo((): Row[] => {
-    const source = viewScroll === 'single' ? allRows.slice(currentRow, currentRow + 1) : allRows;
+    const source = singleRow >= 0 ? allRows.slice(singleRow, singleRow + 1) : allRows;
     const out: Row[] = [];
     let y = PADDING;
     for (const slots of source) {
@@ -95,7 +102,31 @@ export function PDFCanvas() {
       y += height + PAGE_GAP;
     }
     return out;
-  }, [allRows, currentRow, viewScroll, zoom]);
+  }, [allRows, singleRow, zoom]);
+
+  // The part of the document in view, for virtualisation.
+  const [view, setView] = useState({ top: 0, height: 1000 });
+  const viewFrame = useRef(0);
+  const readView = useCallback(() => {
+    const el = containerRef.current;
+    if (el) setView((v) => (v.top === el.scrollTop && v.height === el.clientHeight ? v : { top: el.scrollTop, height: el.clientHeight }));
+  }, []);
+  const virtual = pages.length > VIRTUAL_MIN_PAGES && singleRow < 0;
+  const [firstRow, lastRow] = virtual ? visibleRows(rows, view.top, view.height, OVERSCAN) : [0, rows.length - 1];
+
+  // Same rows with new heights (real page sizes arrived, or a fit zoom): keep the page in view.
+  const prevRows = useRef<Row[]>([]);
+  useLayoutEffect(() => {
+    const before = prevRows.current;
+    prevRows.current = rows;
+    const el = containerRef.current;
+    if (!el || zoomAnchor.current || before === rows || before.length !== rows.length || !before.length) return;
+    for (let i = 0; i < rows.length; i++) if (before[i].slots[0].page.id !== rows[i].slots[0].page.id) return;
+    const top = anchoredScrollTop(before, rows, el.scrollTop);
+    if (Math.abs(top - el.scrollTop) < 0.5) return;
+    el.scrollTop = top;
+    readView();
+  }, [rows, readView]);
 
   // Fit modes follow the container size.
   const applyFit = useCallback(() => {
@@ -121,10 +152,13 @@ export function PDFCanvas() {
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
-    const ro = new ResizeObserver(() => applyFit());
+    const ro = new ResizeObserver(() => {
+      applyFit();
+      readView();
+    });
     ro.observe(el);
     return () => ro.disconnect();
-  }, [applyFit]);
+  }, [applyFit, readView]);
 
   useEffect(() => {
     applyFit();
@@ -189,12 +223,15 @@ export function PDFCanvas() {
   const onScroll = useCallback(() => {
     const el = containerRef.current;
     if (!el || rows.length === 0 || viewScroll === 'single') return;
+    if (!viewFrame.current)
+      viewFrame.current = requestAnimationFrame(() => {
+        viewFrame.current = 0;
+        readView();
+      });
     const mid = el.scrollTop + el.clientHeight * 0.4;
-    let r = 0;
-    for (let i = 0; i < rows.length; i++) if (rows[i].top <= mid) r = i;
-    const row = rows[r];
+    const row = rows[rowAt(rows, mid)];
     if (!row.slots.some((s) => s.page.id === usePDFStore.getState().currentPageId)) setCurrentPage(row.slots[0].page.id);
-  }, [rows, viewScroll, setCurrentPage]);
+  }, [rows, viewScroll, setCurrentPage, readView]);
 
   useEffect(() => {
     if (!scrollRequest) return;
@@ -212,6 +249,7 @@ export function PDFCanvas() {
     if (r < 0) return;
     const y = rows[r].top + (scrollRequest.y !== undefined && viewRotation === 0 ? scrollRequest.y * zoom - el.clientHeight / 3 : -12);
     el.scrollTo({ top: Math.max(0, y), behavior: 'auto' });
+    readView();
     // Only react to new requests, not to zoom/offset changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scrollRequest?.seq]);
@@ -253,7 +291,7 @@ export function PDFCanvas() {
       className={cn('relative h-full w-full overflow-auto', nightMode ? 'bg-[#0b0b0b]' : 'bg-canvas', tool === 'pan' && 'cursor-grab active:cursor-grabbing')}
     >
       <div className="relative mx-auto" style={{ width: contentWidth, height: totalHeight, minWidth: '100%' }}>
-        {rows.map((row) => {
+        {rows.slice(firstRow, lastRow + 1).map((row) => {
           let x = 0;
           return row.slots.map((s) => {
             const left = x;

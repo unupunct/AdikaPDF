@@ -127,9 +127,16 @@ export function CommentsPanel() {
     let alive = true;
     void (async () => {
       const rows: Row[] = [];
-      for (const p of pages) {
-        if (p.kind !== 'source' || !p.sourceId) continue;
-        const annots = (await getAnnotations(p.sourceId, p.sourceIndex).catch(() => [])) as RawAnnot[];
+      // Read 16 pages at a time (worker round trips overlap: long documents).
+      const filePages = pages.filter((p) => p.kind === 'source' && p.sourceId);
+      const loaded: Array<[PageRef, RawAnnot[]]> = [];
+      for (let i = 0; i < filePages.length && alive; i += 16) {
+        const part = filePages.slice(i, i + 16);
+        const annots = await Promise.all(part.map((p) => getAnnotations(p.sourceId!, p.sourceIndex).catch(() => []) as Promise<RawAnnot[]>));
+        part.forEach((p, k) => annots[k].length && loaded.push([p, annots[k]]));
+      }
+      for (const [p, annots] of loaded) {
+        if (!p.sourceId) continue;
         // Review-state replies are the status of the comment they answer, not comments of their own.
         const states = new Map<string, { state: ReviewState; by: string; at: string }>();
         for (const a of annots) {

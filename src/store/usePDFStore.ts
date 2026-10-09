@@ -29,6 +29,8 @@ import {
   rotateObjectWithPage,
 } from '@/lib/geometry';
 import { openPdf, registerSource, releaseSource } from '@/lib/pdf/pdfService';
+import { firstPagesToRead, loadPageSizes, readingOrder, type PageSize } from '@/lib/pdf/pageSizes';
+import { beginEstimated, hasEstimated, isEstimated, onSizesCorrected, pageCorrector, reportSizes } from '@/lib/pdf/pageSizeRegistry';
 import { uid } from '@/lib/uid';
 import type { StampTemplate } from '@/lib/objectFactory';
 import type { Unlocked } from '@/lib/crypto/decrypt';
@@ -213,8 +215,11 @@ interface PDFState extends UndoableState {
   /** `original`: `bytes` are exactly the file at `path` (not decrypted, converted or repaired). */
   loadDocument: (bytes: Uint8Array, name: string, path?: string | null, password?: string, original?: boolean) => Promise<void>;
   closeDocument: () => Promise<void>;
-  /** `original`: the bytes are the file as it is on disk (incremental saves can append to them). */
-  addSource: (bytes: Uint8Array, name: string, password?: string, original?: boolean) => Promise<{ source: SourceDoc; pages: PageRef[] }>;
+  /**
+   * `original`: the bytes are the file as it is on disk (incremental saves can append to them).
+   * `lazy`: a large document returns after its first pages, the other sizes estimated and corrected later (see pageSizeRegistry).
+   */
+  addSource: (bytes: Uint8Array, name: string, password?: string, original?: boolean, lazy?: boolean) => Promise<{ source: SourceDoc; pages: PageRef[] }>;
   /** Releases sources that neither the document nor its undo history uses any more. */
   releaseUnusedSources: () => void;
   mergeDocument: (bytes: Uint8Array, name: string, atIndex?: number) => Promise<void>;
@@ -400,6 +405,51 @@ function referencedSources(s: Pick<PDFState, 'pages' | 'past' | 'future'>): Set<
   return out;
 }
 
+type DocLike = Awaited<ReturnType<typeof openPdf>>;
+
+/**
+ * Reads the sizes of a large source's remaining pages in the background,
+ * starting around the current page. A page that cannot be read keeps its
+ * estimate (it shows an error when it is drawn).
+ */
+async function readRemainingSizes(sourceId: string, doc: DocLike, rest: number[], estimate: PageSize): Promise<void> {
+  const view = [0, 0, estimate.width, estimate.height];
+  const safe = { numPages: doc.numPages, getPage: (n: number) => doc.getPage(n).catch(() => ({ view, rotate: estimate.rotation })) };
+  // Let the first page render before the worker gets busy with the others.
+  await new Promise((r) => setTimeout(r, 50));
+  const s = usePDFStore.getState();
+  const current = s.pages.find((p) => p.id === s.currentPageId);
+  const near = current?.sourceId === sourceId ? current.sourceIndex : rest[0];
+  const order = readingOrder(doc.numPages, (i) => !isEstimated(sourceId, i), near);
+  try {
+    await loadPageSizes(safe, order, (b) => reportSizes(sourceId, b), { cancelled: () => !hasEstimated(sourceId) });
+  } catch (e) {
+    console.warn('Page sizes not read', e);
+  }
+}
+
+let correctionTimer: ReturnType<typeof setTimeout> | null = null;
+
+/** Real page sizes replace the estimates everywhere in the document state (history too), at most every 250 ms. */
+onSizesCorrected(() => {
+  if (correctionTimer) return;
+  correctionTimer = setTimeout(() => {
+    correctionTimer = null;
+    usePDFStore.setState((s) => correctedState(s));
+  }, 250);
+});
+
+export function correctedState(s: Pick<PDFState, 'pages' | 'objects' | 'fieldValues' | 'outline' | 'past' | 'future' | 'savedDoc'>) {
+  const fix = pageCorrector();
+  const doc = (d: UndoableState) => {
+    const pages = fix(d.pages);
+    return pages === d.pages ? d : { ...d, pages };
+  };
+  const pages = fix(s.pages);
+  if (pages === s.pages && s.past.every((d) => fix(d.pages) === d.pages) && s.future.every((d) => fix(d.pages) === d.pages)) return {};
+  return { pages, past: s.past.map(doc), future: s.future.map(doc), savedDoc: s.savedDoc && doc(s.savedDoc) };
+}
+
 export const usePDFStore = create<PDFState>()((set, get) => ({
   ...EMPTY_DOC,
   sources: {},
@@ -476,7 +526,7 @@ export const usePDFStore = create<PDFState>()((set, get) => ({
 
   // ------------------------------------------------------------ document
 
-  addSource: async (bytes, name, password, original) => {
+  addSource: async (bytes, name, password, original, lazy) => {
     const doc = await openPdf(bytes, password);
     // Password-protected: edited and saved from a decrypted copy (pdf.js keeps the original).
     let encryption: SourceDoc['encryption'];
@@ -493,26 +543,28 @@ export const usePDFStore = create<PDFState>()((set, get) => ({
     }
     const id = uid('src');
     registerSource(id, doc);
-    const pages: PageRef[] = [];
+    const count = doc.numPages;
+    // A large document shows after its first pages; the others start with the
+    // first page's size and are corrected in the background (pageSizeRegistry).
+    const first = lazy ? firstPagesToRead(count) : Array.from({ length: count }, (_, i) => i);
+    const sizes: PageSize[] = [];
     try {
-      for (let i = 0; i < doc.numPages; i++) {
-        const p = await doc.getPage(i + 1);
-        const [x0, y0, x1, y1] = p.view;
-        pages.push({
-          id: uid('pg'),
-          kind: 'source',
-          sourceId: id,
-          sourceIndex: i,
-          baseRotation: normalizeRotation(p.rotate),
-          userRotation: 0,
-          width: Math.abs(x1 - x0),
-          height: Math.abs(y1 - y0),
-        });
-      }
+      await loadPageSizes(doc, first, (b) => sizes.push(...b), { yieldEvery: false });
     } catch (e) {
       // A page that cannot be read: nothing of this source stays registered.
       void releaseSource(id);
       throw e;
+    }
+    const estimate: PageSize = sizes[0] ?? { index: 0, width: 612, height: 792, rotation: 0 };
+    const pages: PageRef[] = [];
+    for (let i = 0; i < count; i++) {
+      const s = sizes[i] ?? estimate;
+      pages.push({ id: uid('pg'), kind: 'source', sourceId: id, sourceIndex: i, baseRotation: s.rotation, userRotation: 0, width: s.width, height: s.height });
+    }
+    if (sizes.length < count) {
+      const rest = Array.from({ length: count - sizes.length }, (_, i) => i + sizes.length);
+      beginEstimated(id, rest, { width: estimate.width, height: estimate.height, rotation: estimate.rotation });
+      void readRemainingSizes(id, doc, rest, estimate);
     }
     const source: SourceDoc = { id, name, bytes, pageCount: doc.numPages, ...(password ? { password } : {}), ...(original ? { original } : {}), ...(encryption ? { encryption } : {}) };
     set((s) => ({ sources: { ...s.sources, [id]: source } }));
@@ -535,7 +587,7 @@ export const usePDFStore = create<PDFState>()((set, get) => ({
   loadDocument: async (bytes, name, path = null, password, original = false) => {
     const previous = Object.keys(get().sources);
     const { isPdfEncrypted } = await import('@/lib/crypto/encrypt');
-    const { source, pages } = await get().addSource(bytes, name, password, original && !!path);
+    const { source, pages } = await get().addSource(bytes, name, password, original && !!path, true);
     // Still encrypted: a security handler Adika cannot decrypt, so it cannot be saved either.
     const locked = isPdfEncrypted(source.bytes);
     for (const id of previous) {
@@ -604,7 +656,7 @@ export const usePDFStore = create<PDFState>()((set, get) => ({
   mergeDocument: async (bytes, name, atIndex) => {
     const { isPdfEncrypted } = await import('@/lib/crypto/encrypt');
     if (isPdfEncrypted(bytes)) throw new Error(`${name} is password-protected and cannot be merged. Use an unprotected copy.`);
-    const { pages: added } = await get().addSource(bytes, name);
+    const { pages: added } = await get().addSource(bytes, name, undefined, undefined, true);
     get().commit((s) => {
       const pages = [...s.pages];
       pages.splice(atIndex ?? pages.length, 0, ...added);

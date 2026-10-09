@@ -6,7 +6,7 @@
  */
 import { memo, useEffect, useRef, useState, type RefObject } from 'react';
 import type { PageRef } from '@/types';
-import { isRenderCancelled, renderPageToCanvas } from '@/lib/pdf/pdfService';
+import { isRenderCancelled, releasePage, renderPageToCanvas } from '@/lib/pdf/pdfService';
 import { usePDFStore } from '@/store/usePDFStore';
 import { PageOverlay } from './PageOverlay';
 import { LinkLayer, TextSelectionLayer } from './ReaderLayers';
@@ -80,7 +80,7 @@ export const PageView = memo(function PageView({ page, index, zoom, scrollRoot }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [near, zoom, page.sourceId, page.sourceIndex, page.baseRotation, page.userRotation, page.kind, renderEpoch, hidden]);
 
-  // Free bitmap memory for pages far away.
+  // Free bitmap memory (and pdf.js' parsed page) for pages far away.
   useEffect(() => {
     if (near) return;
     const c = canvasRef.current;
@@ -88,8 +88,22 @@ export const PageView = memo(function PageView({ page, index, zoom, scrollRoot }
       c.width = 0;
       c.height = 0;
       setRenderedZoom(null);
+      if (page.sourceId) releasePage(page.sourceId, page.sourceIndex);
     }
-  }, [near, renderedZoom]);
+  }, [near, renderedZoom, page.sourceId, page.sourceIndex]);
+
+  // Unmounted by the virtualised viewer: the same.
+  const source = useRef({ id: page.sourceId, index: page.sourceIndex });
+  source.current = { id: page.sourceId, index: page.sourceIndex };
+  useEffect(
+    () => () => {
+      const c = canvasRef.current;
+      if (c) c.width = c.height = 0;
+      const { id, index } = source.current;
+      if (id) releasePage(id, index);
+    },
+    [],
+  );
 
   return (
     <div

@@ -69,8 +69,17 @@ export function SearchBar() {
     const tab = useTabs.getState().activeId;
     setSearch({ running: true });
     let hits: Awaited<ReturnType<typeof searchDocument>>;
+    // Long documents: the hits found so far show (and the first one is revealed) while the search goes on.
+    let shown = false;
     try {
-      hits = await searchDocument(usePDFStore.getState().pages, query, mine, usePDFStore.getState().searchOptions);
+      hits = await searchDocument(usePDFStore.getState().pages, query, mine, usePDFStore.getState().searchOptions, (partial) => {
+        if (mine.cancelled || useTabs.getState().activeId !== tab) return;
+        setSearch({ hits: partial });
+        if (!shown && partial[0]) {
+          shown = true;
+          reveal(0, partial);
+        }
+      });
     } catch (e) {
       if (!mine.cancelled && useTabs.getState().activeId === tab) {
         setSearch({ hits: [], active: 0, running: false });
@@ -80,8 +89,9 @@ export function SearchBar() {
     }
     // Never write one document's hits into another tab's search.
     if (mine.cancelled || useTabs.getState().activeId !== tab) return;
-    setSearch({ hits, active: 0, running: false });
-    if (hits[0]) reveal(0, hits);
+    const active = usePDFStore.getState().search.active;
+    setSearch({ hits, active: shown && active < hits.length ? active : 0, running: false });
+    if (hits[0] && !shown) reveal(0, hits);
   };
 
   const reveal = (index: number, hits = usePDFStore.getState().search.hits) => {
@@ -123,7 +133,12 @@ export function SearchBar() {
         }}
       />
       <span className="w-16 text-center text-xs tabular-nums text-muted" data-testid="search-count">
-        {search.running ? <Loader2 size={13} className="mx-auto animate-spin" /> : search.hits.length ? `${search.active + 1} / ${search.hits.length}` : search.query ? '0 found' : ''}
+        {search.running ? (
+          <span className="inline-flex items-center gap-1">
+            <Loader2 size={13} className="mx-auto animate-spin" />
+            {search.hits.length ? search.hits.length : null}
+          </span>
+        ) : search.hits.length ? `${search.active + 1} / ${search.hits.length}` : search.query ? '0 found' : ''}
       </span>
       <Toggle label="Match case" active={options.caseSensitive} testId="search-case" onClick={() => { usePDFStore.getState().setSearchOptions({ caseSensitive: !options.caseSensitive }); void run(search.query); }}>
         <CaseSensitive size={15} />
