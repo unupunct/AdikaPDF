@@ -119,6 +119,13 @@ describe('translations: core terms', () => {
   }
 });
 
+describe('translations: one entry per string', () => {
+  it('ro.extra.ts does not give a string already in ro.json another translation', () => {
+    const json = ro as Record<string, string>;
+    expect(Object.keys(RO_EXTRA).filter((k) => k in json && json[k] !== RO_EXTRA[k]).map((k) => `${k}: ${json[k]} / ${RO_EXTRA[k]}`)).toEqual([]);
+  });
+});
+
 describe('translations: typography', () => {
   it('Romanian uses ș and ț with a comma below and ă (not ş, ţ, ã)', () => {
     expect(entries('ro').filter(([, v]) => /[şţŞŢãÃ]/.test(v)).map(([, v]) => v)).toEqual([]);

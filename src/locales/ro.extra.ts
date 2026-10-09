@@ -124,7 +124,6 @@ export const RO_EXTRA: Record<string, string> = {
   'Switch between light and dark': 'Comutați între luminos și întunecat',
   'Interface language: English / Română': 'Limba interfeței: English / Română',
   'Version, updates, shortcuts and logs': 'Versiune, actualizări, comenzi rapide și jurnale',
-  Split: 'Împărțire ecran',
   'Split view: another part of this document, or another open document, side by side (Ctrl+\\)': 'Ecran împărțit: altă parte a acestui document sau alt document deschis, alături (Ctrl+\\)',
   'Document in the split pane': 'Documentul din panoul alăturat',
   'This document': 'Acest document',
