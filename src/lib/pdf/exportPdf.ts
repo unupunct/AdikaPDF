@@ -95,6 +95,7 @@ import { writeOutline } from './outline';
 import { dropUnreachableObjects } from './prune';
 import { retargetPageRefs, scrubStructTree } from './redactCleanup';
 
+import { correctPages, hasEstimated, pageSizesReady } from './pageSizeRegistry';
 import { removeGlyphs, type Box, type EditFonts, type LineEdit } from './textRemoval';
 import { attachFallbacks, defaultFallbackSources, type FallbackSources } from './fontFallback';
 import { readFieldLogic, writeCalcOrder, writeFieldLogic } from './formScripts';
@@ -941,7 +942,18 @@ interface PlannedPage {
   rasterized: boolean;
 }
 
+/** A large document whose page sizes are still being read: waits for the real sizes and /Rotate. */
+async function withRealSizes(input: ExportInput, options: ExportOptions): Promise<ExportInput> {
+  if (input.pages.some((p) => p.sourceId && hasEstimated(p.sourceId))) {
+    options.onProgress?.('Reading page sizes…', 0);
+    await pageSizesReady(new Set(input.pages.map((p) => p.sourceId).filter((x): x is string => !!x)));
+  }
+  const pages = correctPages(input.pages);
+  return pages === input.pages ? input : { ...input, pages };
+}
+
 export async function buildPdf(input: ExportInput, options: ExportOptions = {}): Promise<Uint8Array> {
+  input = await withRealSizes(input, options);
   const { sources, pages, objects } = input;
   if (pages.length === 0) throw new ExportError('The document has no pages.');
   const progress = options.onProgress ?? (() => undefined);
@@ -1493,6 +1505,7 @@ export function incrementalBlocker(input: ExportInput, meta?: import('@/store/us
  * digital signatures stay valid (as Acrobat does). Check `incrementalBlocker` first.
  */
 export async function buildIncrementalPdf(input: ExportInput, options: ExportOptions = {}): Promise<Uint8Array> {
+  input = await withRealSizes(input, options);
   const why = incrementalBlocker(input);
   if (why) throw new ExportError(why);
   const baseSourceId = baseSourceOf(input.pages, input.baseSourceId)!;

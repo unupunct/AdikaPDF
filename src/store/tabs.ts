@@ -5,8 +5,9 @@
  * the rest of the app keeps working with a single-document store.
  */
 import { create } from 'zustand';
-import { usePDFStore } from './usePDFStore';
+import { correctedState, usePDFStore } from './usePDFStore';
 import { releaseSource } from '@/lib/pdf/pdfService';
+import { onSizesCorrected } from '@/lib/pdf/pageSizeRegistry';
 import { uid } from '@/lib/uid';
 
 type StoreState = ReturnType<typeof usePDFStore.getState>;
@@ -60,6 +61,20 @@ interface TabsState {
 
 const firstId = uid('tab');
 export const useTabs = create<TabsState>()(() => ({ tabs: [{ id: firstId, slice: null }], activeId: firstId }));
+
+// Real page sizes that arrive while a large document's tab is parked.
+onSizesCorrected(() => {
+  const { tabs } = useTabs.getState();
+  let changed = false;
+  const next = tabs.map((t) => {
+    if (!t.slice) return t;
+    const patch = correctedState(t.slice);
+    if (!Object.keys(patch).length) return t;
+    changed = true;
+    return { ...t, slice: { ...t.slice, ...patch } };
+  });
+  if (changed) useTabs.setState({ tabs: next });
+});
 
 function capture(): DocSlice {
   const s = usePDFStore.getState();

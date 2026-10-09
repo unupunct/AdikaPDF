@@ -11,6 +11,8 @@ import type { OptionalContentConfig } from 'pdfjs-dist/types/src/display/optiona
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import type { PageRef } from '@/types';
 import { totalRotation } from '@/lib/geometry';
+import { forgetSource, isEstimated, reportSizes } from './pageSizeRegistry';
+import { sizeOfPage } from './pageSizes';
 
 pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
 
@@ -87,6 +89,7 @@ export async function releaseSource(sourceId: string): Promise<void> {
   for (const key of [...textContents.keys()]) if (key.startsWith(`${sourceId}:`)) textContents.delete(key);
   for (const key of [...annotations.keys()]) if (key.startsWith(`${sourceId}:`)) annotations.delete(key);
   layerConfigs.delete(sourceId);
+  forgetSource(sourceId);
   for (const key of [...hiddenSets.keys()]) if (key.startsWith(`${sourceId}:`)) hiddenSets.delete(key);
   if (d) await (await d).loadingTask.destroy().catch(() => undefined);
 }
@@ -97,8 +100,24 @@ export function getPdfPage(sourceId: string, index: number): Promise<PDFPageProx
   if (!p) {
     p = getSourceDoc(sourceId).then((d) => d.getPage(index + 1));
     pages.set(key, p);
+    // A page of a large document shown before the background reading got to it.
+    if (isEstimated(sourceId, index)) void p.then((pg) => reportSizes(sourceId, [sizeOfPage(index, pg)]), () => undefined);
   }
   return p;
+}
+
+/**
+ * A page far from the view: pdf.js frees its parsed resources (operator
+ * lists, fonts, images) and the text layer copy is dropped; both are rebuilt
+ * when the page comes back. Search text (`getTextItems`) stays cached.
+ */
+export function releasePage(sourceId: string, index: number): void {
+  const key = `${sourceId}:${index}`;
+  const p = pages.get(key);
+  textContents.delete(key);
+  if (!p) return;
+  pages.delete(key);
+  void p.then((pg) => pg.cleanup(), () => undefined);
 }
 
 export function getTextItems(sourceId: string, index: number): Promise<TextItem[]> {

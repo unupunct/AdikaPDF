@@ -8,6 +8,8 @@
 import type { Rotation } from '@/types';
 import { normalizeRotation } from '@/lib/geometry';
 
+/** Documents with more pages than this mount only the pages (and thumbnails) near the view. */
+export const VIRTUAL_MIN_PAGES = 60;
 /** Documents with more pages than this open with estimated sizes. */
 export const LAZY_MIN_PAGES = 60;
 /** Pages read before the document is shown (the first screenful). */
