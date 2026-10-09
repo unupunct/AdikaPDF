@@ -129,3 +129,14 @@ export function visibleRows(rows: Band[], scrollTop: number, viewportHeight: num
   if (last < first) last = first;
   return [first, last];
 }
+
+/** Whether `token` (ASCII) occurs in the bytes; uses the native indexOf for its first byte. */
+export function containsToken(bytes: Uint8Array, token: string): boolean {
+  const t = Array.from(token, (c) => c.charCodeAt(0));
+  for (let i = bytes.indexOf(t[0]); i >= 0 && i + t.length <= bytes.length; i = bytes.indexOf(t[0], i + 1)) {
+    let k = 1;
+    while (k < t.length && bytes[i + k] === t[k]) k++;
+    if (k === t.length) return true;
+  }
+  return false;
+}

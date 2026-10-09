@@ -10,7 +10,9 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { PDFDocument, PDFName, StandardFonts } from 'pdf-lib';
 import * as pdfjs from 'pdfjs-dist/legacy/build/pdf.mjs';
-import { firstPagesToRead, loadPageSizes } from '../../src/lib/pdf/pageSizes';
+import { containsToken, firstPagesToRead, loadPageSizes } from '../../src/lib/pdf/pageSizes';
+import { verifyPdfSignatures } from '../../src/lib/crypto/digitalSignature';
+import { readPortfolio } from '../../src/lib/pdf/portfolio';
 
 const DIR = process.env.LARGE_DIR ?? join(tmpdir(), 'adika-large-docs');
 const MODE = process.env.LARGE_MODE ?? 'lazy';
@@ -88,6 +90,19 @@ async function measure(label: string, bytes: Uint8Array) {
     `${label.padEnd(26)} ${MODE.padEnd(5)} | file ${mb(bytes.length).padStart(7)} | pages ${String(doc.numPages).padStart(6)} | open ${tOpen.toFixed(0).padStart(5)} ms | first screen ${tFirst.toFixed(0).padStart(6)} ms | all sizes ${tAll.toFixed(0).padStart(6)} ms | heap +${mb(m1.heapUsed - m0.heapUsed)} rss +${mb(m1.rss - m0.rss)} | page ~4000 ops ${tFar.toFixed(0)} ms`;
   console.log(line);
   appendFileSync(join(DIR, 'results.txt'), `${line}\n`);
+  // Work the app does right after opening (signature status, portfolio / e-invoice check).
+  const t3 = performance.now();
+  if (MODE === 'eager' || containsToken(bytes, '/ByteRange')) await verifyPdfSignatures(bytes).catch(() => []);
+  const tSig = performance.now() - t3;
+  const t4 = performance.now();
+  const atts = await doc.getAttachments();
+  const tAtt = performance.now() - t4;
+  const t5 = performance.now();
+  if (MODE === 'eager' || atts) await readPortfolio(bytes);
+  const tPortfolio = performance.now() - t5;
+  const after = `${''.padEnd(26)} ${MODE.padEnd(5)} | after open: signatures ${tSig.toFixed(0)} ms, attachments ${tAtt.toFixed(0)} ms (${atts ? 'some' : 'none'}), pdf-lib portfolio check ${tPortfolio.toFixed(0)} ms`;
+  console.log(after);
+  appendFileSync(join(DIR, 'results.txt'), `${after}\n`);
   await doc.loadingTask.destroy();
 }
 
