@@ -1,0 +1,922 @@
+{
+  "There is no untagged content in that area.": {
+    "ro": "Nu există conținut neetichetat în acea zonă.",
+    "de": "In diesem Bereich gibt es keinen nicht getaggten Inhalt.",
+    "fr": "Aucun contenu non balisé dans cette zone.",
+    "hu": "Ezen a területen nincs címkézetlen tartalom.",
+    "it": "Non c'è contenuto senza tag in quell'area.",
+    "es": "No hay contenido sin etiquetar en esa zona."
+  },
+  "Checking PDF/UA…": {
+    "ro": "Se verifică PDF/UA…",
+    "de": "PDF/UA wird geprüft…",
+    "fr": "Vérification PDF/UA…",
+    "hu": "PDF/UA ellenőrzése…",
+    "it": "Verifica PDF/UA…",
+    "es": "Comprobando PDF/UA…"
+  },
+  "Fixing accessibility issues…": {
+    "ro": "Se corectează problemele de accesibilitate…",
+    "de": "Barrierefreiheitsprobleme werden behoben…",
+    "fr": "Correction des problèmes d'accessibilité…",
+    "hu": "Akadálymentességi hibák javítása…",
+    "it": "Correzione dei problemi di accessibilità…",
+    "es": "Corrigiendo problemas de accesibilidad…"
+  },
+  "{0} kind(s) of issue fixed. Undo reverts them.": {
+    "ro": "{0} tip(uri) de probleme corectate. Anularea le readuce.",
+    "de": "{0} Art(en) von Problemen behoben. Rückgängig macht es ungeschehen.",
+    "fr": "{0} type(s) de problème corrigé(s). Annuler les rétablit.",
+    "hu": "{0} fajta hiba javítva. A visszavonás visszaállítja.",
+    "it": "{0} tipo/i di problema corretto/i. Annulla li ripristina.",
+    "es": "{0} tipo(s) de problema corregido(s). Deshacer los revierte."
+  },
+  "Web page": {
+    "ro": "Pagină web",
+    "de": "Webseite",
+    "fr": "Page web",
+    "hu": "Weboldal",
+    "it": "Pagina web",
+    "es": "Página web"
+  },
+  "PDF/UA check": {
+    "ro": "Verificare PDF/UA",
+    "de": "PDF/UA-Prüfung",
+    "fr": "Contrôle PDF/UA",
+    "hu": "PDF/UA-ellenőrzés",
+    "it": "Verifica PDF/UA",
+    "es": "Comprobación PDF/UA"
+  },
+  "Full PDF/UA-1 check by Matterhorn checkpoint, with fixes and a report": {
+    "ro": "Verificare PDF/UA-1 completă pe puncte de control Matterhorn, cu corecturi și raport",
+    "de": "Vollständige PDF/UA-1-Prüfung nach Matterhorn-Prüfpunkten, mit Korrekturen und Bericht",
+    "fr": "Contrôle PDF/UA-1 complet par point de contrôle Matterhorn, avec corrections et rapport",
+    "hu": "Teljes PDF/UA-1-ellenőrzés Matterhorn-ellenőrzőpontok szerint, javításokkal és jelentéssel",
+    "it": "Verifica PDF/UA-1 completa per punto di controllo Matterhorn, con correzioni e rapporto",
+    "es": "Comprobación PDF/UA-1 completa por punto de control Matterhorn, con correcciones e informe"
+  },
+  "Reading order": {
+    "ro": "Ordine de citire",
+    "de": "Lesereihenfolge",
+    "fr": "Ordre de lecture",
+    "hu": "Olvasási sorrend",
+    "it": "Ordine di lettura",
+    "es": "Orden de lectura"
+  },
+  "Numbered boxes for the tagged content of each page: drag to reorder, set types, tag untagged areas": {
+    "ro": "Casete numerotate pentru conținutul etichetat al fiecărei pagini: trageți pentru a reordona, setați tipurile, etichetați zonele neetichetate",
+    "de": "Nummerierte Rahmen für den getaggten Inhalt jeder Seite: ziehen zum Umordnen, Typen festlegen, nicht getaggte Bereiche taggen",
+    "fr": "Cadres numérotés pour le contenu balisé de chaque page : faites glisser pour réordonner, définissez les types, balisez les zones non balisées",
+    "hu": "Számozott keretek az oldalak címkézett tartalmához: húzással átrendezés, típusok beállítása, címkézetlen területek címkézése",
+    "it": "Riquadri numerati per il contenuto con tag di ogni pagina: trascina per riordinare, imposta i tipi, assegna tag alle aree senza tag",
+    "es": "Recuadros numerados para el contenido etiquetado de cada página: arrastre para reordenar, defina tipos, etiquete zonas sin etiquetar"
+  },
+  "Fixes": {
+    "ro": "Corecturi",
+    "de": "Korrekturen",
+    "fr": "Corrections",
+    "hu": "Javítások",
+    "it": "Correzioni",
+    "es": "Correcciones"
+  },
+  "Fix selected": {
+    "ro": "Corectează selecția",
+    "de": "Auswahl beheben",
+    "fr": "Corriger la sélection",
+    "hu": "Kijelöltek javítása",
+    "it": "Correggi selezionati",
+    "es": "Corregir selección"
+  },
+  "Fix all safe issues": {
+    "ro": "Corectează toate problemele sigure",
+    "de": "Alle sicheren Probleme beheben",
+    "fr": "Corriger tous les problèmes sûrs",
+    "hu": "Minden biztonságos hiba javítása",
+    "it": "Correggi tutti i problemi sicuri",
+    "es": "Corregir todos los problemas seguros"
+  },
+  "Needs a person to check": {
+    "ro": "Necesită verificare umană",
+    "de": "Muss von einer Person geprüft werden",
+    "fr": "À vérifier par une personne",
+    "hu": "Személyes ellenőrzést igényel",
+    "it": "Richiede una verifica umana",
+    "es": "Requiere revisión humana"
+  },
+  "Save report:": {
+    "ro": "Salvează raportul:",
+    "de": "Bericht speichern:",
+    "fr": "Enregistrer le rapport :",
+    "hu": "Jelentés mentése:",
+    "it": "Salva rapporto:",
+    "es": "Guardar informe:"
+  },
+  "PDF": {
+    "ro": "PDF",
+    "de": "PDF",
+    "fr": "PDF",
+    "hu": "PDF",
+    "it": "PDF",
+    "es": "PDF"
+  },
+  "HTML": {
+    "ro": "HTML",
+    "de": "HTML",
+    "fr": "HTML",
+    "hu": "HTML",
+    "it": "HTML",
+    "es": "HTML"
+  },
+  "Also go through the checks a person has to make.": {
+    "ro": "Parcurgeți și verificările care necesită o persoană.",
+    "de": "Gehen Sie auch die Prüfungen durch, die eine Person vornehmen muss.",
+    "fr": "Passez aussi en revue les contrôles qu'une personne doit faire.",
+    "hu": "Nézze át a személyesen elvégzendő ellenőrzéseket is.",
+    "it": "Esegui anche le verifiche che richiedono una persona.",
+    "es": "Revise también las comprobaciones que debe hacer una persona."
+  },
+  "Tag the document": {
+    "ro": "Etichetează documentul",
+    "de": "Dokument taggen",
+    "fr": "Baliser le document",
+    "hu": "Dokumentum címkézése",
+    "it": "Assegna tag al documento",
+    "es": "Etiquetar el documento"
+  },
+  "Tag untagged content (headers, footers, page numbers and drawings as artifacts)": {
+    "ro": "Etichetează conținutul neetichetat (antete, subsoluri, numere de pagină și desene ca artefacte)",
+    "de": "Nicht getaggten Inhalt taggen (Kopf- und Fußzeilen, Seitenzahlen und Zeichnungen als Artefakte)",
+    "fr": "Baliser le contenu non balisé (en-têtes, pieds de page, numéros de page et dessins comme artefacts)",
+    "hu": "Címkézetlen tartalom címkézése (fejlécek, láblécek, oldalszámok és rajzok műtermékként)",
+    "it": "Assegna tag al contenuto senza tag (intestazioni, piè di pagina, numeri di pagina e disegni come artefatti)",
+    "es": "Etiquetar el contenido sin etiquetar (encabezados, pies, números de página y dibujos como artefactos)"
+  },
+  "Write PDF/UA metadata and title": {
+    "ro": "Scrie metadatele PDF/UA și titlul",
+    "de": "PDF/UA-Metadaten und Titel schreiben",
+    "fr": "Écrire les métadonnées PDF/UA et le titre",
+    "hu": "PDF/UA-metaadatok és cím írása",
+    "it": "Scrivi metadati PDF/UA e titolo",
+    "es": "Escribir metadatos PDF/UA y título"
+  },
+  "Show the title in the window": {
+    "ro": "Afișează titlul în fereastră",
+    "de": "Titel im Fenster anzeigen",
+    "fr": "Afficher le titre dans la fenêtre",
+    "hu": "Cím megjelenítése az ablakban",
+    "it": "Mostra il titolo nella finestra",
+    "es": "Mostrar el título en la ventana"
+  },
+  "Set the document language": {
+    "ro": "Setează limba documentului",
+    "de": "Dokumentsprache festlegen",
+    "fr": "Définir la langue du document",
+    "hu": "Dokumentum nyelvének beállítása",
+    "it": "Imposta la lingua del documento",
+    "es": "Definir el idioma del documento"
+  },
+  "Mark the document as tagged": {
+    "ro": "Marchează documentul ca etichetat",
+    "de": "Dokument als getaggt kennzeichnen",
+    "fr": "Marquer le document comme balisé",
+    "hu": "Dokumentum megjelölése címkézettként",
+    "it": "Contrassegna il documento come con tag",
+    "es": "Marcar el documento como etiquetado"
+  },
+  "Clear the Suspects flag": {
+    "ro": "Șterge indicatorul Suspects",
+    "de": "Suspects-Kennzeichen löschen",
+    "fr": "Effacer l'indicateur Suspects",
+    "hu": "Suspects jelző törlése",
+    "it": "Cancella l'indicatore Suspects",
+    "es": "Borrar el indicador Suspects"
+  },
+  "Map custom tags to standard ones": {
+    "ro": "Mapează etichetele personalizate la cele standard",
+    "de": "Eigene Tags auf Standard-Tags abbilden",
+    "fr": "Associer les balises personnalisées aux balises standard",
+    "hu": "Egyéni címkék megfeleltetése szabványosaknak",
+    "it": "Mappa i tag personalizzati su quelli standard",
+    "es": "Asignar etiquetas personalizadas a las estándar"
+  },
+  "Tag links, fields and comments": {
+    "ro": "Etichetează legăturile, câmpurile și comentariile",
+    "de": "Links, Felder und Kommentare taggen",
+    "fr": "Baliser les liens, champs et commentaires",
+    "hu": "Hivatkozások, mezők és megjegyzések címkézése",
+    "it": "Assegna tag a collegamenti, campi e commenti",
+    "es": "Etiquetar enlaces, campos y comentarios"
+  },
+  "Tab order follows the structure": {
+    "ro": "Ordinea Tab urmează structura",
+    "de": "Tab-Reihenfolge folgt der Struktur",
+    "fr": "L'ordre de tabulation suit la structure",
+    "hu": "A tabulátorsorrend a struktúrát követi",
+    "it": "L'ordine di tabulazione segue la struttura",
+    "es": "El orden de tabulación sigue la estructura"
+  },
+  "Describe links": {
+    "ro": "Descrie legăturile",
+    "de": "Links beschreiben",
+    "fr": "Décrire les liens",
+    "hu": "Hivatkozások leírása",
+    "it": "Descrivi i collegamenti",
+    "es": "Describir los enlaces"
+  },
+  "Describe form fields": {
+    "ro": "Descrie câmpurile de formular",
+    "de": "Formularfelder beschreiben",
+    "fr": "Décrire les champs de formulaire",
+    "hu": "Űrlapmezők leírása",
+    "it": "Descrivi i campi modulo",
+    "es": "Describir los campos de formulario"
+  },
+  "Repair list structure": {
+    "ro": "Repară structura listelor",
+    "de": "Listenstruktur reparieren",
+    "fr": "Réparer la structure des listes",
+    "hu": "Listaszerkezet javítása",
+    "it": "Ripara la struttura degli elenchi",
+    "es": "Reparar la estructura de las listas"
+  },
+  "Set list numbering": {
+    "ro": "Setează numerotarea listelor",
+    "de": "Listennummerierung festlegen",
+    "fr": "Définir la numérotation des listes",
+    "hu": "Listaszámozás beállítása",
+    "it": "Imposta la numerazione degli elenchi",
+    "es": "Definir la numeración de las listas"
+  },
+  "Guess table header scope (first row: column, first column: row)": {
+    "ro": "Deduce domeniul antetelor de tabel (primul rând: coloană, prima coloană: rând)",
+    "de": "Bereich der Tabellenkopfzellen ableiten (erste Zeile: Spalte, erste Spalte: Zeile)",
+    "fr": "Deviner la portée des en-têtes de tableau (première ligne : colonne, première colonne : ligne)",
+    "hu": "Táblázatfejlécek hatókörének becslése (első sor: oszlop, első oszlop: sor)",
+    "it": "Deduci l'ambito delle intestazioni di tabella (prima riga: colonna, prima colonna: riga)",
+    "es": "Deducir el ámbito de los encabezados de tabla (primera fila: columna, primera columna: fila)"
+  },
+  "Give notes unique IDs": {
+    "ro": "Atribuie ID-uri unice notelor",
+    "de": "Notizen eindeutige IDs geben",
+    "fr": "Donner des ID uniques aux notes",
+    "hu": "Egyedi azonosítók a jegyzeteknek",
+    "it": "Assegna ID univoci alle note",
+    "es": "Dar ID únicos a las notas"
+  },
+  "Name layer configurations": {
+    "ro": "Denumește configurațiile straturilor",
+    "de": "Ebenenkonfigurationen benennen",
+    "fr": "Nommer les configurations de calques",
+    "hu": "Rétegkonfigurációk elnevezése",
+    "it": "Assegna un nome alle configurazioni dei livelli",
+    "es": "Nombrar las configuraciones de capas"
+  },
+  "File names for attachments": {
+    "ro": "Nume de fișier pentru atașamente",
+    "de": "Dateinamen für Anhänge",
+    "fr": "Noms de fichier pour les pièces jointes",
+    "hu": "Fájlnevek a mellékletekhez",
+    "it": "Nomi file per gli allegati",
+    "es": "Nombres de archivo para los adjuntos"
+  },
+  "Remove incomplete CIDSet": {
+    "ro": "Elimină CIDSet incomplet",
+    "de": "Unvollständiges CIDSet entfernen",
+    "fr": "Supprimer le CIDSet incomplet",
+    "hu": "Hiányos CIDSet eltávolítása",
+    "it": "Rimuovi CIDSet incompleto",
+    "es": "Eliminar CIDSet incompleto"
+  },
+  "PDF/UA": {
+    "ro": "PDF/UA",
+    "de": "PDF/UA",
+    "fr": "PDF/UA",
+    "hu": "PDF/UA",
+    "it": "PDF/UA",
+    "es": "PDF/UA"
+  },
+  "Open a document to check it.": {
+    "ro": "Deschideți un document pentru a-l verifica.",
+    "de": "Öffnen Sie ein Dokument, um es zu prüfen.",
+    "fr": "Ouvrez un document pour le contrôler.",
+    "hu": "Nyisson meg egy dokumentumot az ellenőrzéshez.",
+    "it": "Apri un documento per verificarlo.",
+    "es": "Abra un documento para comprobarlo."
+  },
+  "Close reading order": {
+    "ro": "Închide ordinea de citire",
+    "de": "Lesereihenfolge schließen",
+    "fr": "Fermer l'ordre de lecture",
+    "hu": "Olvasási sorrend bezárása",
+    "it": "Chiudi ordine di lettura",
+    "es": "Cerrar orden de lectura"
+  },
+  "{0} failure(s) of PDF/UA-1 (Matterhorn Protocol).": {
+    "ro": "{0} neconformitate(ăți) PDF/UA-1 (Protocolul Matterhorn).",
+    "de": "{0} Verstoß/Verstöße gegen PDF/UA-1 (Matterhorn-Protokoll).",
+    "fr": "{0} échec(s) PDF/UA-1 (protocole Matterhorn).",
+    "hu": "{0} PDF/UA-1-hiba (Matterhorn-protokoll).",
+    "it": "{0} errore/i PDF/UA-1 (protocollo Matterhorn).",
+    "es": "{0} fallo(s) de PDF/UA-1 (protocolo Matterhorn)."
+  },
+  "No failures of the machine-checkable PDF/UA conditions.": {
+    "ro": "Nicio neconformitate la condițiile PDF/UA verificabile automat.",
+    "de": "Keine Verstöße gegen die maschinell prüfbaren PDF/UA-Bedingungen.",
+    "fr": "Aucun échec des conditions PDF/UA vérifiables automatiquement.",
+    "hu": "A gépileg ellenőrizhető PDF/UA-feltételek egyike sem sérül.",
+    "it": "Nessun errore nelle condizioni PDF/UA verificabili automaticamente.",
+    "es": "Ningún fallo en las condiciones PDF/UA comprobables automáticamente."
+  },
+  "Accessibility check (PDF/UA)": {
+    "ro": "Verificare accesibilitate (PDF/UA)",
+    "de": "Barrierefreiheitsprüfung (PDF/UA)",
+    "fr": "Contrôle d'accessibilité (PDF/UA)",
+    "hu": "Akadálymentességi ellenőrzés (PDF/UA)",
+    "it": "Verifica accessibilità (PDF/UA)",
+    "es": "Comprobación de accesibilidad (PDF/UA)"
+  },
+  "Untagged content: draw a rectangle around it to tag it": {
+    "ro": "Conținut neetichetat: desenați un dreptunghi în jurul lui pentru a-l eticheta",
+    "de": "Nicht getaggter Inhalt: zum Taggen ein Rechteck darum ziehen",
+    "fr": "Contenu non balisé : tracez un rectangle autour pour le baliser",
+    "hu": "Címkézetlen tartalom: a címkézéshez rajzoljon köré téglalapot",
+    "it": "Contenuto senza tag: disegna un rettangolo intorno per assegnargli un tag",
+    "es": "Contenido sin etiquetar: dibuje un rectángulo alrededor para etiquetarlo"
+  },
+  "{0} selected:": {
+    "ro": "{0} selectate:",
+    "de": "{0} ausgewählt:",
+    "fr": "{0} sélectionné(s) :",
+    "hu": "{0} kijelölve:",
+    "it": "{0} selezionati:",
+    "es": "{0} seleccionados:"
+  },
+  "Select boxes, then:": {
+    "ro": "Selectați casete, apoi:",
+    "de": "Rahmen auswählen, dann:",
+    "fr": "Sélectionnez des cadres, puis :",
+    "hu": "Jelöljön ki kereteket, majd:",
+    "it": "Seleziona i riquadri, poi:",
+    "es": "Seleccione recuadros y luego:"
+  },
+  "Draw to tag as": {
+    "ro": "Desenați pentru a eticheta ca",
+    "de": "Zeichnen, um zu taggen als",
+    "fr": "Tracer pour baliser comme",
+    "hu": "Rajzolással címkézés mint",
+    "it": "Disegna per assegnare il tag",
+    "es": "Dibujar para etiquetar como"
+  },
+  "Type for new regions": {
+    "ro": "Tipul pentru zonele noi",
+    "de": "Typ für neue Bereiche",
+    "fr": "Type des nouvelles zones",
+    "hu": "Új területek típusa",
+    "it": "Tipo per le nuove aree",
+    "es": "Tipo para zonas nuevas"
+  },
+  "Fixable": {
+    "ro": "Se poate corecta",
+    "de": "Behebbar",
+    "fr": "Corrigeable",
+    "hu": "Javítható",
+    "it": "Correggibile",
+    "es": "Corregible"
+  },
+  "Fix after confirming": {
+    "ro": "Corectare după confirmare",
+    "de": "Behebung nach Bestätigung",
+    "fr": "Correction après confirmation",
+    "hu": "Javítás megerősítés után",
+    "it": "Correzione dopo conferma",
+    "es": "Corrección tras confirmar"
+  },
+  "Needs a person": {
+    "ro": "Necesită o persoană",
+    "de": "Erfordert eine Person",
+    "fr": "Nécessite une personne",
+    "hu": "Személyt igényel",
+    "it": "Richiede una persona",
+    "es": "Requiere una persona"
+  },
+  "Paragraph": {
+    "ro": "Paragraf",
+    "de": "Absatz",
+    "fr": "Paragraphe",
+    "hu": "Bekezdés",
+    "it": "Paragrafo",
+    "es": "Párrafo"
+  },
+  "Figure": {
+    "ro": "Figură",
+    "de": "Abbildung",
+    "fr": "Figure",
+    "hu": "Ábra",
+    "it": "Figura",
+    "es": "Figura"
+  },
+  "Formula": {
+    "ro": "Formulă",
+    "de": "Formel",
+    "fr": "Formule",
+    "hu": "Képlet",
+    "it": "Formula",
+    "es": "Fórmula"
+  },
+  "Table": {
+    "ro": "Tabel",
+    "de": "Tabelle",
+    "fr": "Tableau",
+    "hu": "Táblázat",
+    "it": "Tabella",
+    "es": "Tabla"
+  },
+  "List": {
+    "ro": "Listă",
+    "de": "Liste",
+    "fr": "Liste",
+    "hu": "Lista",
+    "it": "Elenco",
+    "es": "Lista"
+  },
+  "Artifact": {
+    "ro": "Artefact",
+    "de": "Artefakt",
+    "fr": "Artefact",
+    "hu": "Műtermék",
+    "it": "Artefatto",
+    "es": "Artefacto"
+  },
+  "Real content tagged": {
+    "ro": "Conținut real etichetat",
+    "de": "Echter Inhalt getaggt",
+    "fr": "Contenu réel balisé",
+    "hu": "Valódi tartalom címkézve",
+    "it": "Contenuto reale con tag",
+    "es": "Contenido real etiquetado"
+  },
+  "Role mapping": {
+    "ro": "Maparea rolurilor",
+    "de": "Rollenzuordnung",
+    "fr": "Mappage des rôles",
+    "hu": "Szerepkör-megfeleltetés",
+    "it": "Mappatura dei ruoli",
+    "es": "Asignación de roles"
+  },
+  "Flickering": {
+    "ro": "Pâlpâire",
+    "de": "Flackern",
+    "fr": "Clignotement",
+    "hu": "Villódzás",
+    "it": "Sfarfallio",
+    "es": "Parpadeo"
+  },
+  "Color and contrast": {
+    "ro": "Culoare și contrast",
+    "de": "Farbe und Kontrast",
+    "fr": "Couleur et contraste",
+    "hu": "Szín és kontraszt",
+    "it": "Colore e contrasto",
+    "es": "Color y contraste"
+  },
+  "Metadata": {
+    "ro": "Metadate",
+    "de": "Metadaten",
+    "fr": "Métadonnées",
+    "hu": "Metaadatok",
+    "it": "Metadati",
+    "es": "Metadatos"
+  },
+  "Dictionary": {
+    "ro": "Dicționar",
+    "de": "Wörterbuch",
+    "fr": "Dictionnaire",
+    "hu": "Szótár",
+    "it": "Dizionario",
+    "es": "Diccionario"
+  },
+  "OCR validation": {
+    "ro": "Validarea OCR",
+    "de": "OCR-Validierung",
+    "fr": "Validation OCR",
+    "hu": "OCR-ellenőrzés",
+    "it": "Convalida OCR",
+    "es": "Validación OCR"
+  },
+  "Appropriate tags": {
+    "ro": "Etichete adecvate",
+    "de": "Geeignete Tags",
+    "fr": "Balises appropriées",
+    "hu": "Megfelelő címkék",
+    "it": "Tag appropriati",
+    "es": "Etiquetas adecuadas"
+  },
+  "Character mappings": {
+    "ro": "Maparea caracterelor",
+    "de": "Zeichenzuordnungen",
+    "fr": "Correspondance des caractères",
+    "hu": "Karakter-megfeleltetések",
+    "it": "Mappatura dei caratteri",
+    "es": "Asignación de caracteres"
+  },
+  "Declared natural language": {
+    "ro": "Limba naturală declarată",
+    "de": "Deklarierte natürliche Sprache",
+    "fr": "Langue naturelle déclarée",
+    "hu": "Megadott természetes nyelv",
+    "it": "Lingua naturale dichiarata",
+    "es": "Idioma natural declarado"
+  },
+  "Graphics": {
+    "ro": "Grafică",
+    "de": "Grafiken",
+    "fr": "Graphiques",
+    "hu": "Grafika",
+    "it": "Grafica",
+    "es": "Gráficos"
+  },
+  "Headings": {
+    "ro": "Titluri",
+    "de": "Überschriften",
+    "fr": "Titres",
+    "hu": "Címsorok",
+    "it": "Intestazioni",
+    "es": "Encabezados"
+  },
+  "Tables": {
+    "ro": "Tabele",
+    "de": "Tabellen",
+    "fr": "Tableaux",
+    "hu": "Táblázatok",
+    "it": "Tabelle",
+    "es": "Tablas"
+  },
+  "Lists": {
+    "ro": "Liste",
+    "de": "Listen",
+    "fr": "Listes",
+    "hu": "Listák",
+    "it": "Elenchi",
+    "es": "Listas"
+  },
+  "Mathematical expressions": {
+    "ro": "Expresii matematice",
+    "de": "Mathematische Ausdrücke",
+    "fr": "Expressions mathématiques",
+    "hu": "Matematikai kifejezések",
+    "it": "Espressioni matematiche",
+    "es": "Expresiones matemáticas"
+  },
+  "Page headers and footers": {
+    "ro": "Antete și subsoluri de pagină",
+    "de": "Kopf- und Fußzeilen",
+    "fr": "En-têtes et pieds de page",
+    "hu": "Élőfejek és élőlábak",
+    "it": "Intestazioni e piè di pagina",
+    "es": "Encabezados y pies de página"
+  },
+  "Notes and references": {
+    "ro": "Note și referințe",
+    "de": "Notizen und Verweise",
+    "fr": "Notes et références",
+    "hu": "Jegyzetek és hivatkozások",
+    "it": "Note e riferimenti",
+    "es": "Notas y referencias"
+  },
+  "Optional content": {
+    "ro": "Conținut opțional",
+    "de": "Optionale Inhalte",
+    "fr": "Contenu facultatif",
+    "hu": "Opcionális tartalom",
+    "it": "Contenuto facoltativo",
+    "es": "Contenido opcional"
+  },
+  "Embedded files": {
+    "ro": "Fișiere încorporate",
+    "de": "Eingebettete Dateien",
+    "fr": "Fichiers incorporés",
+    "hu": "Beágyazott fájlok",
+    "it": "File incorporati",
+    "es": "Archivos incrustados"
+  },
+  "XFA": {
+    "ro": "XFA",
+    "de": "XFA",
+    "fr": "XFA",
+    "hu": "XFA",
+    "it": "XFA",
+    "es": "XFA"
+  },
+  "Annotations": {
+    "ro": "Adnotări",
+    "de": "Anmerkungen",
+    "fr": "Annotations",
+    "hu": "Megjegyzések",
+    "it": "Annotazioni",
+    "es": "Anotaciones"
+  },
+  "XObjects": {
+    "ro": "XObjects",
+    "de": "XObjects",
+    "fr": "XObjects",
+    "hu": "XObjectek",
+    "it": "XObject",
+    "es": "XObjects"
+  },
+  "Fonts": {
+    "ro": "Fonturi",
+    "de": "Schriften",
+    "fr": "Polices",
+    "hu": "Betűtípusok",
+    "it": "Font",
+    "es": "Fuentes"
+  },
+  "Artifacts and real content": {
+    "ro": "Artefacte și conținut real",
+    "de": "Artefakte und echter Inhalt",
+    "fr": "Artefacts et contenu réel",
+    "hu": "Műtermékek és valódi tartalom",
+    "it": "Artefatti e contenuto reale",
+    "es": "Artefactos y contenido real"
+  },
+  "Decoration (page numbers, running headers, lines, backgrounds) is marked as artifact and everything meaningful is tagged. Use Reading order to see what is tagged.": {
+    "ro": "Decorațiunile (numere de pagină, antete curente, linii, fundaluri) sunt marcate ca artefacte și tot ce are sens este etichetat. Folosiți Ordine de citire pentru a vedea ce este etichetat.",
+    "de": "Dekoration (Seitenzahlen, laufende Kopfzeilen, Linien, Hintergründe) ist als Artefakt markiert und alles Bedeutungstragende ist getaggt. Mit der Lesereihenfolge sehen Sie, was getaggt ist.",
+    "fr": "La décoration (numéros de page, en-têtes courants, filets, arrière-plans) est marquée comme artefact et tout ce qui a du sens est balisé. Utilisez Ordre de lecture pour voir ce qui est balisé.",
+    "hu": "A díszítés (oldalszámok, élőfejek, vonalak, hátterek) műtermékként van jelölve, minden érdemi tartalom címkézett. Az Olvasási sorrend mutatja, mi van címkézve.",
+    "it": "La decorazione (numeri di pagina, intestazioni correnti, linee, sfondi) è contrassegnata come artefatto e tutto ciò che ha significato ha un tag. Usa Ordine di lettura per vedere cosa ha un tag.",
+    "es": "La decoración (números de página, encabezados, líneas, fondos) está marcada como artefacto y todo lo significativo está etiquetado. Use Orden de lectura para ver qué está etiquetado."
+  },
+  "Colour and contrast": {
+    "ro": "Culoare și contrast",
+    "de": "Farbe und Kontrast",
+    "fr": "Couleur et contraste",
+    "hu": "Szín és kontraszt",
+    "it": "Colore e contrasto",
+    "es": "Color y contraste"
+  },
+  "Colour is never the only way information is given (e.g. “required fields in red”), and text has enough contrast against its background (WCAG: 4.5:1, large text 3:1).": {
+    "ro": "Culoarea nu este niciodată singurul mod de a transmite informația (de ex. „câmpurile obligatorii cu roșu”), iar textul are suficient contrast față de fundal (WCAG: 4,5:1, text mare 3:1).",
+    "de": "Farbe ist nie das einzige Mittel, eine Information zu vermitteln (z. B. „Pflichtfelder in Rot“), und Text hat genug Kontrast zum Hintergrund (WCAG: 4,5:1, großer Text 3:1).",
+    "fr": "La couleur n'est jamais le seul moyen de transmettre une information (p. ex. « champs obligatoires en rouge ») et le texte a un contraste suffisant avec le fond (WCAG : 4,5:1, grand texte 3:1).",
+    "hu": "A szín sosem az egyetlen információhordozó (pl. „a kötelező mezők pirosak”), és a szöveg kontrasztja elegendő a háttérhez képest (WCAG: 4,5:1, nagy szöveg 3:1).",
+    "it": "Il colore non è mai l'unico modo per dare un'informazione (ad es. “campi obbligatori in rosso”) e il testo ha contrasto sufficiente con lo sfondo (WCAG: 4,5:1, testo grande 3:1).",
+    "es": "El color nunca es la única forma de transmitir información (p. ej. «campos obligatorios en rojo») y el texto tiene suficiente contraste con el fondo (WCAG: 4,5:1, texto grande 3:1)."
+  },
+  "Recognised text": {
+    "ro": "Text recunoscut",
+    "de": "Erkannter Text",
+    "fr": "Texte reconnu",
+    "hu": "Felismert szöveg",
+    "it": "Testo riconosciuto",
+    "es": "Texto reconocido"
+  },
+  "For scanned pages, the recognised (OCR) text matches the page: proof-read it before tagging.": {
+    "ro": "La paginile scanate, textul recunoscut (OCR) corespunde paginii: verificați-l înainte de etichetare.",
+    "de": "Bei gescannten Seiten stimmt der erkannte (OCR-)Text mit der Seite überein: vor dem Taggen Korrektur lesen.",
+    "fr": "Pour les pages numérisées, le texte reconnu (OCR) correspond à la page : relisez-le avant de baliser.",
+    "hu": "Szkennelt oldalaknál a felismert (OCR) szöveg egyezik az oldallal: címkézés előtt olvassa át.",
+    "it": "Per le pagine scansionate, il testo riconosciuto (OCR) corrisponde alla pagina: rileggilo prima di assegnare i tag.",
+    "es": "En las páginas escaneadas, el texto reconocido (OCR) coincide con la página: revíselo antes de etiquetar."
+  },
+  "Logical reading order": {
+    "ro": "Ordine logică de citire",
+    "de": "Logische Lesereihenfolge",
+    "fr": "Ordre de lecture logique",
+    "hu": "Logikus olvasási sorrend",
+    "it": "Ordine di lettura logico",
+    "es": "Orden de lectura lógico"
+  },
+  "Tags follow the order in which the page is meant to be read (columns, sidebars, captions after their figure). Check it with Accessibility → Reading order.": {
+    "ro": "Etichetele urmează ordinea în care pagina trebuie citită (coloane, casete laterale, legende după figura lor). Verificați cu Accesibilitate → Ordine de citire.",
+    "de": "Die Tags folgen der Reihenfolge, in der die Seite gelesen werden soll (Spalten, Randkästen, Bildunterschriften nach ihrer Abbildung). Prüfen Sie es mit Barrierefreiheit → Lesereihenfolge.",
+    "fr": "Les balises suivent l'ordre dans lequel la page doit être lue (colonnes, encadrés, légendes après leur figure). Vérifiez avec Accessibilité → Ordre de lecture.",
+    "hu": "A címkék az oldal szándékolt olvasási sorrendjét követik (hasábok, oldalsávok, képaláírások az ábra után). Ellenőrizze: Akadálymentesség → Olvasási sorrend.",
+    "it": "I tag seguono l'ordine in cui la pagina va letta (colonne, riquadri laterali, didascalie dopo la figura). Verificalo con Accessibilità → Ordine di lettura.",
+    "es": "Las etiquetas siguen el orden en que debe leerse la página (columnas, recuadros, pies de figura tras su figura). Compruébelo con Accesibilidad → Orden de lectura."
+  },
+  "Tags match the meaning": {
+    "ro": "Etichetele corespund sensului",
+    "de": "Tags entsprechen der Bedeutung",
+    "fr": "Les balises correspondent au sens",
+    "hu": "A címkék a jelentést tükrözik",
+    "it": "I tag corrispondono al significato",
+    "es": "Las etiquetas corresponden al significado"
+  },
+  "Headings are tagged as headings, lists as lists, tables as tables, quotes as quotes; nothing is tagged only for its looks.": {
+    "ro": "Titlurile sunt etichetate ca titluri, listele ca liste, tabelele ca tabele, citatele ca citate; nimic nu este etichetat doar după aspect.",
+    "de": "Überschriften sind als Überschriften getaggt, Listen als Listen, Tabellen als Tabellen, Zitate als Zitate; nichts ist nur wegen seines Aussehens getaggt.",
+    "fr": "Les titres sont balisés comme titres, les listes comme listes, les tableaux comme tableaux, les citations comme citations ; rien n'est balisé pour sa seule apparence.",
+    "hu": "A címsorok címsorként, a listák listaként, a táblázatok táblázatként, az idézetek idézetként vannak címkézve; semmi sem csak a kinézete miatt.",
+    "it": "Le intestazioni hanno tag di intestazione, gli elenchi di elenco, le tabelle di tabella, le citazioni di citazione; nulla ha un tag solo per l'aspetto.",
+    "es": "Los encabezados se etiquetan como encabezados, las listas como listas, las tablas como tablas y las citas como citas; nada se etiqueta solo por su aspecto."
+  },
+  "Meaningful alternate text": {
+    "ro": "Text alternativ cu sens",
+    "de": "Aussagekräftiger Alternativtext",
+    "fr": "Texte de remplacement pertinent",
+    "hu": "Értelmes helyettesítő szöveg",
+    "it": "Testo alternativo significativo",
+    "es": "Texto alternativo significativo"
+  },
+  "Each figure’s alternate text says what the picture shows or means in context; decorative pictures are artifacts instead.": {
+    "ro": "Textul alternativ al fiecărei figuri spune ce arată sau ce înseamnă imaginea în context; imaginile decorative sunt în schimb artefacte.",
+    "de": "Der Alternativtext jeder Abbildung sagt, was das Bild im Zusammenhang zeigt oder bedeutet; dekorative Bilder sind stattdessen Artefakte.",
+    "fr": "Le texte de remplacement de chaque figure dit ce que l'image montre ou signifie dans son contexte ; les images décoratives sont plutôt des artefacts.",
+    "hu": "Minden ábra helyettesítő szövege megmondja, mit mutat vagy jelent a kép az adott helyen; a díszítő képek inkább műtermékek.",
+    "it": "Il testo alternativo di ogni figura dice cosa mostra o significa l'immagine nel contesto; le immagini decorative sono invece artefatti.",
+    "es": "El texto alternativo de cada figura dice lo que muestra o significa la imagen en su contexto; las imágenes decorativas son artefactos."
+  },
+  "Headings describe the sections that follow and their levels reflect the document outline.": {
+    "ro": "Titlurile descriu secțiunile care urmează, iar nivelurile lor reflectă structura documentului.",
+    "de": "Überschriften beschreiben die folgenden Abschnitte, ihre Ebenen spiegeln die Gliederung des Dokuments.",
+    "fr": "Les titres décrivent les sections qui suivent et leurs niveaux reflètent le plan du document.",
+    "hu": "A címsorok leírják az utánuk következő szakaszokat, szintjeik a dokumentum vázlatát tükrözik.",
+    "it": "Le intestazioni descrivono le sezioni che seguono e i loro livelli riflettono la struttura del documento.",
+    "es": "Los encabezados describen las secciones que siguen y sus niveles reflejan el esquema del documento."
+  },
+  "Table structure": {
+    "ro": "Structura tabelelor",
+    "de": "Tabellenstruktur",
+    "fr": "Structure des tableaux",
+    "hu": "Táblázatszerkezet",
+    "it": "Struttura delle tabelle",
+    "es": "Estructura de las tablas"
+  },
+  "Only real data tables are tagged as tables; header cells are TH with the right scope.": {
+    "ro": "Doar tabelele reale de date sunt etichetate ca tabele; celulele de antet sunt TH cu domeniul corect.",
+    "de": "Nur echte Datentabellen sind als Tabellen getaggt; Kopfzellen sind TH mit dem richtigen Bereich.",
+    "fr": "Seuls les vrais tableaux de données sont balisés comme tableaux ; les cellules d'en-tête sont des TH avec la bonne portée.",
+    "hu": "Csak a valódi adattáblázatok vannak táblázatként címkézve; a fejléccellák TH-k a megfelelő hatókörrel.",
+    "it": "Solo le vere tabelle di dati hanno tag di tabella; le celle di intestazione sono TH con l'ambito corretto.",
+    "es": "Solo las tablas de datos reales se etiquetan como tablas; las celdas de encabezado son TH con el ámbito correcto."
+  },
+  "The title identifies the document (not a file name such as “Document1”).": {
+    "ro": "Titlul identifică documentul (nu un nume de fișier precum „Document1”).",
+    "de": "Der Titel benennt das Dokument (kein Dateiname wie „Dokument1“).",
+    "fr": "Le titre identifie le document (pas un nom de fichier comme « Document1 »).",
+    "hu": "A cím azonosítja a dokumentumot (nem fájlnév, például „Dokumentum1”).",
+    "it": "Il titolo identifica il documento (non un nome file come “Documento1”).",
+    "es": "El título identifica el documento (no un nombre de archivo como «Documento1»)."
+  },
+  "The declared language is the language of the text; passages in other languages carry their own language on their tag.": {
+    "ro": "Limba declarată este limba textului; pasajele în alte limbi au propria limbă pe eticheta lor.",
+    "de": "Die deklarierte Sprache ist die Sprache des Textes; Passagen in anderen Sprachen tragen ihre eigene Sprache am Tag.",
+    "fr": "La langue déclarée est celle du texte ; les passages dans d'autres langues portent leur propre langue sur leur balise.",
+    "hu": "A megadott nyelv a szöveg nyelve; a más nyelvű részek címkéjükön saját nyelvet kapnak.",
+    "it": "La lingua dichiarata è quella del testo; i passaggi in altre lingue riportano la propria lingua sul loro tag.",
+    "es": "El idioma declarado es el del texto; los pasajes en otros idiomas llevan su propio idioma en su etiqueta."
+  },
+  "Annotation order and purpose": {
+    "ro": "Ordinea și scopul adnotărilor",
+    "de": "Reihenfolge und Zweck der Anmerkungen",
+    "fr": "Ordre et finalité des annotations",
+    "hu": "Megjegyzések sorrendje és célja",
+    "it": "Ordine e scopo delle annotazioni",
+    "es": "Orden y finalidad de las anotaciones"
+  },
+  "Links, fields and comments come in a sensible tab order and their descriptions say what they do.": {
+    "ro": "Legăturile, câmpurile și comentariile au o ordine Tab logică, iar descrierile lor spun ce fac.",
+    "de": "Links, Felder und Kommentare haben eine sinnvolle Tab-Reihenfolge und ihre Beschreibungen sagen, was sie tun.",
+    "fr": "Les liens, champs et commentaires suivent un ordre de tabulation logique et leurs descriptions disent ce qu'ils font.",
+    "hu": "A hivatkozások, mezők és megjegyzések ésszerű tabulátorsorrendben követik egymást, leírásuk megmondja, mit tesznek.",
+    "it": "Collegamenti, campi e commenti seguono un ordine di tabulazione sensato e le loro descrizioni dicono cosa fanno.",
+    "es": "Enlaces, campos y comentarios siguen un orden de tabulación lógico y sus descripciones dicen lo que hacen."
+  },
+  "PDF/UA accessibility report": {
+    "ro": "Raport de accesibilitate PDF/UA",
+    "de": "PDF/UA-Barrierefreiheitsbericht",
+    "fr": "Rapport d'accessibilité PDF/UA",
+    "hu": "PDF/UA akadálymentességi jelentés",
+    "it": "Rapporto di accessibilità PDF/UA",
+    "es": "Informe de accesibilidad PDF/UA"
+  },
+  "Checked on {0} by Adika PDF Editor (PDF/UA-1, Matterhorn Protocol 1.1).": {
+    "ro": "Verificat la {0} de Adika PDF Editor (PDF/UA-1, Protocolul Matterhorn 1.1).",
+    "de": "Geprüft am {0} mit Adika PDF Editor (PDF/UA-1, Matterhorn-Protokoll 1.1).",
+    "fr": "Contrôlé le {0} par Adika PDF Editor (PDF/UA-1, protocole Matterhorn 1.1).",
+    "hu": "Ellenőrizve: {0}, Adika PDF Editor (PDF/UA-1, Matterhorn-protokoll 1.1).",
+    "it": "Verificato il {0} da Adika PDF Editor (PDF/UA-1, protocollo Matterhorn 1.1).",
+    "es": "Comprobado el {0} con Adika PDF Editor (PDF/UA-1, protocolo Matterhorn 1.1)."
+  },
+  "{0} failure(s) in {1} checkpoint(s).": {
+    "ro": "{0} neconformitate(ăți) în {1} punct(e) de control.",
+    "de": "{0} Verstoß/Verstöße in {1} Prüfpunkt(en).",
+    "fr": "{0} échec(s) dans {1} point(s) de contrôle.",
+    "hu": "{0} hiba {1} ellenőrzőpontban.",
+    "it": "{0} errore/i in {1} punto/i di controllo.",
+    "es": "{0} fallo(s) en {1} punto(s) de control."
+  },
+  "{0} failure(s)": {
+    "ro": "{0} neconformitate(ăți)",
+    "de": "{0} Verstoß/Verstöße",
+    "fr": "{0} échec(s)",
+    "hu": "{0} hiba",
+    "it": "{0} errore/i",
+    "es": "{0} fallo(s)"
+  },
+  "page {0}": {
+    "ro": "pagina {0}",
+    "de": "Seite {0}",
+    "fr": "page {0}",
+    "hu": "{0}. oldal",
+    "it": "pagina {0}",
+    "es": "página {0}"
+  },
+  "object {0}": {
+    "ro": "obiectul {0}",
+    "de": "Objekt {0}",
+    "fr": "objet {0}",
+    "hu": "{0}. objektum",
+    "it": "oggetto {0}",
+    "es": "objeto {0}"
+  },
+  "needs a person": {
+    "ro": "necesită o persoană",
+    "de": "erfordert eine Person",
+    "fr": "nécessite une personne",
+    "hu": "személyt igényel",
+    "it": "richiede una persona",
+    "es": "requiere una persona"
+  },
+  "Adika can fix it": {
+    "ro": "Adika poate corecta",
+    "de": "Adika kann es beheben",
+    "fr": "Adika peut le corriger",
+    "hu": "Az Adika javítani tudja",
+    "it": "Adika può correggerlo",
+    "es": "Adika puede corregirlo"
+  },
+  "Adika can fix it (after you confirm)": {
+    "ro": "Adika poate corecta (după confirmare)",
+    "de": "Adika kann es beheben (nach Bestätigung)",
+    "fr": "Adika peut le corriger (après confirmation)",
+    "hu": "Az Adika javítani tudja (megerősítés után)",
+    "it": "Adika può correggerlo (dopo conferma)",
+    "es": "Adika puede corregirlo (tras confirmar)"
+  },
+  "pass": {
+    "ro": "trecut",
+    "de": "bestanden",
+    "fr": "réussi",
+    "hu": "megfelelt",
+    "it": "superato",
+    "es": "superado"
+  },
+  "FAIL": {
+    "ro": "EȘUAT",
+    "de": "FEHLER",
+    "fr": "ÉCHEC",
+    "hu": "HIBA",
+    "it": "ERRORE",
+    "es": "FALLO"
+  },
+  "check": {
+    "ro": "de verificat",
+    "de": "prüfen",
+    "fr": "à vérifier",
+    "hu": "ellenőrizendő",
+    "it": "da verificare",
+    "es": "por revisar"
+  },
+  "needs a person to check": {
+    "ro": "necesită verificare umană",
+    "de": "muss von einer Person geprüft werden",
+    "fr": "à vérifier par une personne",
+    "hu": "személyes ellenőrzést igényel",
+    "it": "richiede una verifica umana",
+    "es": "requiere revisión humana"
+  },
+  "Condition": {
+    "ro": "Condiție",
+    "de": "Bedingung",
+    "fr": "Condition",
+    "hu": "Feltétel",
+    "it": "Condizione",
+    "es": "Condición"
+  },
+  "Problem": {
+    "ro": "Problemă",
+    "de": "Problem",
+    "fr": "Problème",
+    "hu": "Probléma",
+    "it": "Problema",
+    "es": "Problema"
+  },
+  "Where": {
+    "ro": "Unde",
+    "de": "Wo",
+    "fr": "Où",
+    "hu": "Hol",
+    "it": "Dove",
+    "es": "Dónde"
+  },
+  "Fix": {
+    "ro": "Corectură",
+    "de": "Korrektur",
+    "fr": "Correction",
+    "hu": "Javítás",
+    "it": "Correzione",
+    "es": "Corrección"
+  }
+}

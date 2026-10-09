@@ -28,6 +28,7 @@ import { registerViewToolTests } from './viewtools.part.mjs';
 import { registerEidasTests, makeStoreTestPfx } from './eidas.part.mjs';
 import { registerMergeTests } from './merge.part.mjs';
 import { registerAccessTests } from './access.part.mjs';
+import { registerPdfUaTests } from './pdfua.part.mjs';
 import { registerVisualTests } from './visual.part.mjs';
 import { registerScanTests } from './scan.part.mjs';
 import { registerPrintProdTests } from './printprod.part.mjs';
@@ -857,6 +858,8 @@ registerPageTests(test, { S, page, dir, open, idle, savedFile, assert, pdfText, 
 registerEidasTests(test, { S, page, open, idle, savedFile, assert, F });
 registerMergeTests(test, { S, page, dir, open, idle, savedFile, assert, pdfText, join, writeFileSync });
 registerAccessTests(test, { S, page, dir, open, idle, savedFile, assert, join, writeFileSync });
+// Round 14, not yet run against a build.
+registerPdfUaTests(test, { S, page, dir, open, idle, savedFile, assert, join, writeFileSync });
 registerVisualTests(test, { S, page, dir, open, idle, savedFile, assert, pdfText, join, writeFileSync, F });
 registerScanTests(test, { S, page, dir, open, idle, savedFile, assert, join, writeFileSync, FONT_DATA });
 registerPrintProdTests(test, { S, page, dir, open, idle, savedFile, assert, join, writeFileSync, FONT_DATA });
