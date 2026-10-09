@@ -99,6 +99,11 @@ interface SignOptionsBase {
   rect: [number, number, number, number];
   /** Optional PNG bytes drawn as the widget's visible appearance (the signature badge) */
   appearancePng?: Uint8Array;
+  /**
+   * Draws the widget's appearance (a form XObject) for a widget of width ×
+   * height on a page with /Rotate `rotation` (see sigAppearance.ts); wins over appearancePng.
+   */
+  appearance?: (doc: PDFDocument, width: number, height: number, rotation: number) => Promise<PDFRef>;
   reason?: string;
   location?: string;
   contactInfo?: string;
@@ -1645,7 +1650,10 @@ async function addSignatureObjects(doc: PDFDocument, opts: SignOptionsBase, disp
   const w = rect[2] - rect[0];
   const h = rect[3] - rect[1];
   let apStream;
-  if (opts.appearancePng && w > 0 && h > 0) {
+  let apRef: PDFRef | undefined;
+  if (opts.appearance && w > 0 && h > 0) {
+    apRef = await opts.appearance(doc, w, h, page.getRotation().angle);
+  } else if (opts.appearancePng && w > 0 && h > 0) {
     const img = await doc.embedPng(opts.appearancePng);
     apStream = ctx.stream(`q ${w} 0 0 ${h} 0 0 cm /Img Do Q`, {
       Type: 'XObject',
@@ -1656,7 +1664,7 @@ async function addSignatureObjects(doc: PDFDocument, opts: SignOptionsBase, disp
   } else {
     apStream = ctx.stream('', { Type: 'XObject', Subtype: 'Form', BBox: [0, 0, Math.max(w, 0), Math.max(h, 0)] });
   }
-  const apRef = ctx.register(apStream);
+  apRef ??= ctx.register(apStream!);
 
   if (target) {
     // The prepared field keeps its name, widget and position; it gets the value and the appearance.

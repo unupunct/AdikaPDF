@@ -34,6 +34,7 @@ import {
 } from '@/lib/objectFactory';
 import { PressureLine } from './PressureLine';
 import { layoutText, TEXT_PADDING } from '@/lib/textLayout';
+import { textContentHeight } from '@/lib/richText';
 import { paragraphAt } from '@/lib/paragraph';
 import { pageTextRuns, runAngle, runRect } from '@/lib/pdf/textGeometry';
 import { ObjectNode } from './ObjectNode';
@@ -684,7 +685,7 @@ export function PageOverlay({ page, zoom }: { page: PageRef; zoom: number }) {
     switch (o.type) {
       case 'text': {
         const width = Math.max(20, o.width * sx);
-        patch = { ...base, width, height: layoutText({ ...o, width }).contentHeight };
+        patch = { ...base, width, height: textContentHeight({ ...o, width }) };
         break;
       }
       case 'pen':

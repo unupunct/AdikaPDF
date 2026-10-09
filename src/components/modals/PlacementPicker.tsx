@@ -7,12 +7,15 @@ import { usePDFStore } from '@/store/usePDFStore';
 import { Field, Select } from '@/components/ui/primitives';
 import { displaySize } from '@/lib/geometry';
 import type { SignPlacement } from '@/actions/sign';
+import { AppearanceChooser } from './SigAppearanceDesigner';
 
 export type PlacementMode = 'selected' | 'bottom-right' | 'bottom-left' | 'top-right' | 'top-left' | 'invisible';
 
 export interface PlacementState {
   mode: PlacementMode;
   pageNumber: number;
+  /** Appearance profile id ('standard' = the standard badge; unset = the default profile). */
+  appearance?: string;
 }
 
 const BADGE_W = 210;
@@ -39,7 +42,9 @@ export function PlacementPicker({ value, onChange }: { value: PlacementState; on
     { value: 'top-left', label: 'Top-left corner' },
     { value: 'invisible', label: 'Invisible (no visible badge)' },
   ];
+  const size = value.mode === 'selected' && target ? { width: target.width, height: target.height } : { width: BADGE_W, height: BADGE_H };
   return (
+    <>
     <div className="grid grid-cols-[1fr_110px] gap-3">
       <Field label="Visible signature">
         <Select value={value.mode} onChange={(mode) => onChange({ ...value, mode })} options={options} ariaLabel="Signature placement" />
@@ -54,6 +59,8 @@ export function PlacementPicker({ value, onChange }: { value: PlacementState; on
         />
       </Field>
     </div>
+    {value.mode !== 'invisible' ? <AppearanceChooser value={value.appearance} onChange={(appearance) => onChange({ ...value, appearance })} size={size} /> : null}
+    </>
   );
 }
 
@@ -65,7 +72,7 @@ export function resolvePlacement(value: PlacementState): { placement: SignPlacem
     if (o && (o.type === 'signature' || o.type === 'field')) {
       const pageIndex = s.pages.findIndex((p) => p.id === o.pageId);
       return {
-        placement: { pageIndex, rect: { x: o.x, y: o.y, width: o.width, height: o.height } },
+        placement: { pageIndex, rect: { x: o.x, y: o.y, width: o.width, height: o.height }, appearance: value.appearance },
         inkSrc: o.type === 'signature' ? o.src : null,
         consumeId: o.id,
       };
@@ -76,5 +83,5 @@ export function resolvePlacement(value: PlacementState): { placement: SignPlacem
   const size = displaySize(s.pages[pageIndex]);
   const x = value.mode.endsWith('right') ? size.width - BADGE_W - MARGIN : MARGIN;
   const y = value.mode.startsWith('bottom') ? size.height - BADGE_H - MARGIN : MARGIN;
-  return { placement: { pageIndex, rect: { x, y, width: BADGE_W, height: BADGE_H } }, inkSrc: null, consumeId: null };
+  return { placement: { pageIndex, rect: { x, y, width: BADGE_W, height: BADGE_H }, appearance: value.appearance }, inkSrc: null, consumeId: null };
 }

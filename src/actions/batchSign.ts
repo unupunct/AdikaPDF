@@ -6,7 +6,8 @@ import { identityFromCertificateDer, signerFromIdentity, addValidationData, type
 import { oneByOne, resultsCsv, runBatchSign, tokenBatchSigner, type BatchSignOptions, type BatchSignResult, type BatchSigner } from '@/lib/batchSign';
 import type { CscClient, CscCredential, CscSecrets } from '@/lib/crypto/csc';
 import { base64ToBytes, fileStamp, httpGet, httpPost, isDesktop, listDir, pkcs11CloseSession, pkcs11OpenSession, pkcs11SessionSign, readFile, winstoreSign, writeFile, type StoreCertificate, type TokenCertificate } from '@/lib/platform';
-import { cnOf, issuerChain, nativeFetch, renderSignatureBadge, trustedRoots } from './sign';
+import { cnOf, issuerChain, nativeFetch, trustedRoots } from './sign';
+import { appearanceBuilder, appearanceValues, chosenProfile } from './sigAppearance';
 import { saveFileQuiet } from './saveGuard';
 import { assertOnline, assertSigningIssuer } from '@/lib/policy';
 
@@ -84,6 +85,7 @@ export async function signFiles(
 ): Promise<BatchSignResult[]> {
   if (opts.tsaUrl) assertOnline('timestamp');
   if (opts.ltv) assertOnline('revocation');
+  const draw = opts.appearance.visible || opts.appearance.fieldName ? await appearanceBuilder(chosenProfile(opts.appearance.profile), display.name, inkSrc) : null;
   return runBatchSign(
     paths,
     signer,
@@ -94,7 +96,9 @@ export async function signFiles(
       write: writeFile,
       exists: async (p) => (await fileStamp(p)) !== null,
       fetchImpl: isDesktop ? nativeFetch : undefined,
-      badge: (size, when) => renderSignatureBadge({ ...size, signerName: display.name, when, reason: opts.reason, issuer: display.issuer, inkSrc }),
+      appearance: draw
+        ? (when) => draw(appearanceValues({ name: display.name, issuer: display.issuer, when, reason: opts.reason, location: opts.location, contact: opts.contactInfo, certificate: signer.certificate }))
+        : undefined,
       ltv: async (bytes) => addValidationData(bytes, { trustedRoots: await trustedRoots(), httpGet: isDesktop ? httpGet : undefined, httpPost: isDesktop ? httpPost : undefined }),
     },
     hooks,
