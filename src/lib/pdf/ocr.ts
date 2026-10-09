@@ -23,34 +23,25 @@ import {
 } from 'pdf-lib';
 import { canvasToBlob, renderPageToCanvas } from './convert';
 import { loadFontBytes } from '../fonts';
+import { BUNDLED_OCR_LANGS, OcrLangMissingError, downloadedOcrLangs, planOcrLangs, readDownloadedLangs, stageForWorker } from '../ocrLangs';
 
-/** Languages whose traineddata is bundled under public/tesseract/lang. */
-export const OCR_LANGUAGES: Array<{ code: string; label: string }> = [
-  { code: 'eng', label: 'English' },
-  { code: 'ron', label: 'Română' },
-  { code: 'deu', label: 'Deutsch' },
-  { code: 'fra', label: 'Français' },
-  { code: 'spa', label: 'Español' },
-  { code: 'ita', label: 'Italiano' },
-  { code: 'hun', label: 'Magyar' },
-  { code: 'por', label: 'Português' },
-  { code: 'nld', label: 'Nederlands' },
-  { code: 'pol', label: 'Polski' },
-];
+/** Languages whose traineddata is bundled under public/tesseract/lang (more can be downloaded: lib/ocrLangs.ts). */
+export const OCR_LANGUAGES: Array<{ code: string; label: string }> = BUNDLED_OCR_LANGS;
 
 const KNOWN_LANGS = new Set(OCR_LANGUAGES.map((l) => l.code));
 
 /**
  * Normalises a language spec ('ron+eng', ['ron', 'eng'], ' RON + eng ') to a
- * de-duplicated list of bundled codes. Unknown codes are dropped; falls back
- * to English when nothing usable remains.
+ * de-duplicated list of usable codes (bundled, plus `extra` downloaded ones).
+ * Unknown codes are dropped; falls back to English when nothing usable remains.
  */
-export function parseOcrLangs(lang: string | string[] | undefined): string[] {
+export function parseOcrLangs(lang: string | string[] | undefined, extra: Iterable<string> = []): string[] {
+  const known = new Set([...KNOWN_LANGS, ...extra]);
   const raw = Array.isArray(lang) ? lang : (lang ?? 'eng').split('+');
   const out: string[] = [];
   for (const r of raw) {
     const c = r.trim().toLowerCase();
-    if (KNOWN_LANGS.has(c) && !out.includes(c)) out.push(c);
+    if (known.has(c) && !out.includes(c)) out.push(c);
   }
   return out.length ? out : ['eng'];
 }
@@ -191,13 +182,22 @@ export async function ocrPages(
     straighten?: boolean;
     /** Stops between pages when aborted. */
     signal?: AbortSignal;
+    /** Languages downloaded into app data (default: asks the native side). */
+    downloaded?: string[];
   },
   onProgress?: (msg: string, fraction: number) => void,
 ): Promise<OcrPageResult[]> {
   const { createWorker, OEM } = await import('tesseract.js');
   const dpi = opts.dpi ?? 300;
   // tesseract.js v7 accepts an array (or a '+'-joined string) of languages.
-  const langs = parseOcrLangs(opts.lang);
+  // Bundled ones come from langPath, downloaded ones from app data (handed over through the worker's cache).
+  const requested = Array.isArray(opts.lang) ? opts.lang : (opts.lang ?? 'eng').split('+');
+  const downloaded = opts.downloaded ?? (await downloadedOcrLangs().catch(() => [] as string[]));
+  const plan = planOcrLangs(requested, downloaded);
+  if (plan.missing.length) throw new OcrLangMissingError(plan.missing);
+  const langs = parseOcrLangs([...plan.bundled, ...plan.downloaded], plan.downloaded);
+  const staged = await readDownloadedLangs(plan.downloaded);
+  const cachePath = `adika-ocr-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
   const pages = opts.pageNumbers.filter((n) => n >= 1 && n <= pdf.numPages);
   const total = Math.max(1, pages.length);
   let current = 0;
@@ -206,17 +206,20 @@ export async function ocrPages(
 
   const base = assetBase();
   onProgress?.('Loading OCR engine', 0);
+  const unstage = await stageForWorker(cachePath, staged);
   const worker = await createWorker(langs, OEM.LSTM_ONLY, {
     workerPath: new URL('tesseract/worker.min.js', base).href,
     corePath: new URL('tesseract/', base).href,
     langPath: new URL('tesseract/lang', base).href,
     gzip: true,
     workerBlobURL: false,
-    cacheMethod: 'none',
+    // 'readOnly' reads staged languages from the cache and never writes one there.
+    cacheMethod: staged.length ? 'readOnly' : 'none',
+    cachePath,
     logger: (m: { status: string; progress: number }) => {
       if (m.status === 'recognizing text') report(`Recognizing page ${pages[current] ?? ''}`, m.progress);
     },
-  });
+  }).finally(() => unstage());
 
   // Renders the page turned clockwise by `rotation` and reads it; word boxes in that turned space.
   const read = async (n: number, rotation: number, atDpi: number, keepPixels: boolean) => {

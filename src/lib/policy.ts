@@ -13,7 +13,7 @@
 import { create } from 'zustand';
 import { LANGS, type Lang } from './i18n';
 
-export type OnlineFeature = 'updates' | 'revocation' | 'timestamp' | 'trustedList' | 'cloudSign' | 'anaf' | 'urlConvert' | 'network';
+export type OnlineFeature = 'updates' | 'revocation' | 'timestamp' | 'trustedList' | 'cloudSign' | 'anaf' | 'urlConvert' | 'ocrLanguages' | 'network';
 
 type Kind = 'flag' | 'lang' | 'url' | 'list';
 
@@ -173,6 +173,7 @@ const FEATURE_NAMES: Record<OnlineFeature, string> = {
   cloudSign: 'Remote (cloud) signing',
   anaf: 'The ANAF connection',
   urlConvert: 'Converting a web page',
+  ocrLanguages: 'Downloading OCR languages',
   network: 'This online feature',
 };
 

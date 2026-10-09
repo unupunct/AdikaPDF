@@ -4,7 +4,8 @@ import { ArrowDown, ArrowUp, CheckCircle2, FilePlus2, Loader2, MinusCircle, Plus
 import { usePDFStore } from '@/store/usePDFStore';
 import { Button, Callout, Dialog, Field, Input, Select, Tabs } from '@/components/ui/primitives';
 import { BATCH_OPS, sequenceProblem, sequenceSuffix, type ActionSequence, type BatchKind, type BatchOp, type CompressLevel } from '@/lib/batch';
-import { OCR_LANGUAGES } from '@/lib/pdf/ocr';
+import { ocrLangLabel } from '@/lib/ocrLangs';
+import { useInstalledOcrLangs } from './OcrLanguages';
 import type { BatchResult } from '@/actions/batch';
 import { WatchPanel } from './WatchPanel';
 
@@ -29,7 +30,8 @@ function defaultOp(kind: BatchKind): BatchOp {
 
 /** The settings of one operation (language, strength, text, password). */
 function OpParams({ op, onChange, repeat, onRepeat, testPrefix = 'batch' }: { op: BatchOp; onChange: (op: BatchOp) => void; repeat: string; onRepeat: (v: string) => void; testPrefix?: string }) {
-  const langOptions = [{ value: 'ron+eng', label: 'Română + English' }, ...OCR_LANGUAGES.map((l) => ({ value: l.code, label: l.label }))];
+  const installed = useInstalledOcrLangs();
+  const langOptions = [{ value: 'ron+eng', label: 'Română + English' }, ...installed.map((code) => ({ value: code, label: ocrLangLabel(code) }))];
   switch (op.kind) {
     case 'ocr':
       return (
