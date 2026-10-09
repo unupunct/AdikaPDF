@@ -61,7 +61,7 @@ export async function uaDoc(spec: UaDocSpec = {}): Promise<Uint8Array> {
   const contents = (spec.content ?? DEFAULT_CONTENT)(T);
   const pages = contents.map((c) => {
     const p = doc.addPage([595, 842]);
-    p.node.newFontDictionary('F1', font.ref);
+    p.node.setFontDictionary(PDFName.of('F1'), font.ref);
     p.node.set(PDFName.of('Contents'), ctx.register(ctx.flateStream(c)));
     return p;
   });
