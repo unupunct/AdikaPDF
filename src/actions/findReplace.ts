@@ -241,7 +241,8 @@ export async function findSensitiveElsewhere(q: SensitiveQuery): Promise<Elsewhe
     const doc = await PDFDocument.load(src.bytes, { ignoreEncryption: true, updateMetadata: false });
     for (const h of findElsewhere(doc, finder)) {
       if (h.pageIndex === undefined) {
-        out.push(h);
+        // Edited bookmarks replace the file's own when saving: those are listed below.
+        if (!(h.kind === 'bookmark' && s.outline)) out.push(h);
         continue;
       }
       const page = s.pages.find((p) => p.sourceId === sid && p.sourceIndex === h.pageIndex);
@@ -281,9 +282,10 @@ export async function findSensitiveElsewhere(q: SensitiveQuery): Promise<Elsewhe
       if (hit) out.push({ kind: 'metadata', where: `Metadata: ${k}`, text: hit });
     }
   }
-  // The same place found in the file and in the unsaved edits is listed once.
+  // A field value or property found both in the file and in the unsaved edits is listed once.
   const seen = new Set<string>();
   return out.filter((m) => {
+    if (m.kind !== 'fieldValue' && m.kind !== 'metadata') return true;
     const key = [m.kind, m.where, m.page ?? '', m.detail ?? '', m.text].join('\u0000');
     if (seen.has(key)) return false;
     seen.add(key);
@@ -306,44 +308,43 @@ export async function redactSensitiveElsewhere(q: SensitiveQuery, opts: Elsewher
   const finder = await sensitiveFinder(q);
   const kinds = new Set(opts.kinds ?? ['comment', 'fieldValue', 'fieldName', 'bookmark', 'metadata', 'attachment', 'link', 'altText']);
   const want = (k: ElsewhereKind) => kinds.has(k) && (k !== 'fieldName' || !!opts.fieldNames);
-  const [{ findElsewhere, redactElsewhere, blockOut }, { PDFDocument }, { rewriteSource }, { withBusy }] = await Promise.all([
+  const [{ findElsewhere, redactElsewhere, blockOut }, { PDFDocument }, { dropUnreachableObjects }, { withBusy }] = await Promise.all([
     import('@/lib/pdf/redactElsewhere'),
     import('pdf-lib'),
-    import('./sourceRewrite'),
+    import('@/lib/pdf/prune'),
     import('./document'),
   ]);
   const block = (t: string) => blockOut(t, finder(t));
   const done = await withBusy('Redacting…', async () => {
     let changed = 0;
     const s0 = usePDFStore.getState();
+    const swaps = new Map<string, { id: string; renamed: Record<string, string> }>();
     for (const sid of new Set(s0.pages.map((p) => p.sourceId).filter((x): x is string => !!x))) {
       const src = s0.sources[sid];
       if (!src) continue;
       const probe = await PDFDocument.load(src.bytes, { ignoreEncryption: true, updateMetadata: false });
       if (!findElsewhere(probe, finder).some((h) => want(h.kind))) continue;
-      let renamed: Record<string, string> = {};
-      const fresh = await rewriteSource(sid, (doc) => {
-        const r = redactElsewhere(doc, finder, opts);
-        changed += r.changed;
-        renamed = r.renamed;
-      });
-      // Typed values follow renamed fields (and their children).
-      if (Object.keys(renamed).length) {
-        const prefix = `${fresh}::`;
-        usePDFStore.getState().commit((st) => ({
-          fieldValues: Object.fromEntries(
-            Object.entries(st.fieldValues).map(([k, v]) => {
-              if (!k.startsWith(prefix)) return [k, v];
-              const name = k.slice(prefix.length);
-              const from = Object.keys(renamed).find((old) => name === old || name.startsWith(`${old}.`));
-              return [from ? `${prefix}${renamed[from]}${name.slice(from.length)}` : k, v];
-            }),
-          ),
-        }));
-      }
+      // A fresh file (unreferenced objects dropped, no earlier revision), swapped in below in one undoable step.
+      const r = redactElsewhere(probe, finder, opts);
+      changed += r.changed;
+      dropUnreachableObjects(probe);
+      const { source } = await usePDFStore.getState().addSource(await probe.save({ useObjectStreams: true }), src.name);
+      swaps.set(sid, { id: source.id, renamed: r.renamed });
     }
     // The unsaved edits.
     const s = usePDFStore.getState();
+    const pages = s.pages.map((p) => (p.sourceId && swaps.has(p.sourceId) ? { ...p, sourceId: swaps.get(p.sourceId)!.id } : p));
+    // Typed values follow their source and renamed fields (with their children).
+    const moved = Object.fromEntries(
+      Object.entries(s.fieldValues).map(([k, v]) => {
+        const at = k.indexOf('::');
+        const swap = swaps.get(k.slice(0, at));
+        if (!swap) return [k, v];
+        const name = k.slice(at + 2);
+        const from = Object.keys(swap.renamed).find((old) => name === old || name.startsWith(`${old}.`));
+        return [`${swap.id}::${from ? `${swap.renamed[from]}${name.slice(from.length)}` : name}`, v];
+      }),
+    );
     const objects: EditorObject[] = [];
     for (const o of s.objects) {
       const kind = objectKind(o);
@@ -370,13 +371,13 @@ export async function redactSensitiveElsewhere(q: SensitiveQuery, opts: Elsewher
     }
     const fieldValues = want('fieldValue')
       ? Object.fromEntries(
-          Object.entries(s.fieldValues).map(([k, v]): [string, FieldValue] => {
+          Object.entries(moved).map(([k, v]): [string, FieldValue] => {
             if (!fieldValueText(v).some((t) => finder(t).length)) return [k, v];
             changed++;
             return [k, Array.isArray(v) ? [] : ''];
           }),
         )
-      : s.fieldValues;
+      : moved;
     const redactItems = (items: BookmarkItem[]): BookmarkItem[] =>
       items.flatMap((b) => {
         if (!finder(b.title).length) return [{ ...b, children: redactItems(b.children) }];
@@ -384,7 +385,9 @@ export async function redactSensitiveElsewhere(q: SensitiveQuery, opts: Elsewher
         return (opts.bookmarks ?? 'redact') === 'remove' ? [] : [{ ...b, title: block(b.title), children: redactItems(b.children) }];
       });
     const outline = s.outline && want('bookmark') ? redactItems(s.outline) : s.outline;
-    s.commit(() => ({ objects, fieldValues, outline }));
+    s.commit(() => ({ pages, objects, fieldValues, outline }));
+    const primary = s.primarySource && swaps.get(s.primarySource);
+    if (primary) usePDFStore.setState({ primarySource: primary.id });
     if (s.docMeta && want('metadata')) {
       const meta: DocMeta = { ...s.docMeta };
       let touched = false;
