@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="utf-8"?>
+<policyDefinitionResources xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" revision="1.0" schemaVersion="1.0" xmlns="http://schemas.microsoft.com/GroupPolicy/2006/07/PolicyDefinitions">
+  <displayName>Adika PDF Editor</displayName>
+  <description>Politici pentru Adika PDF Editor.</description>
+  <resources>
+    <stringTable>
+      <string id="AdikaPDFEditor">Adika PDF Editor</string>
+      <string id="SUPPORTED_Adika_1_14">Adika PDF Editor 1.14 și versiunile ulterioare</string>
+      <string id="DisableUpdateCheck">Dezactivează verificarea actualizărilor</string>
+      <string id="DisableUpdateCheck_Help">Activat: Adika nu întreabă niciodată GitHub dacă există o versiune nouă (nici verificarea săptămânală, nici „Verifică actualizările” din Despre) și nu descarcă și nu rulează actualizări. Distribuiți versiunile noi prin propriul sistem de distribuție software.
+
+Dezactivat sau neconfigurat: utilizatorii pot verifica actualizările (verificarea săptămânală rămâne oprită până când utilizatorul o pornește).
+
+Opțiunea de instalare /NOUPDATES setează aceeași valoare ca implicită; această politică are prioritate.</string>
+      <string id="DisableOnlineFeatures">Dezactivează toate funcțiile online</string>
+      <string id="DisableOnlineFeatures_Help">Activat: Adika nu face nicio conexiune la rețea. Se dezactivează verificarea actualizărilor, verificarea online a certificatelor (OCSP / CRL), marcajele temporale de încredere, datele de validare pe termen lung, descărcarea listelor de încredere UE, semnarea la distanță (în cloud), conexiunea ANAF e-Factura și conversia unei pagini web după adresă. Restul funcțiilor merg offline ca de obicei.
+
+Dezactivat sau neconfigurat: aceste funcții contactează serviciile alese de utilizator, numai când utilizatorul le pornește.
+
+Adika nu are telemetrie: nu se trimite nimic în fundal, cu sau fără această politică.</string>
+      <string id="DisableCloudSigning">Dezactivează semnarea la distanță (în cloud)</string>
+      <string id="DisableCloudSigning_Help">Activat: semnarea cu o cheie păstrată de un furnizor de servicii de încredere (API Cloud Signature Consortium) nu este disponibilă. Fișierele de certificat, depozitul de certificate Windows și cardurile / tokenurile funcționează în continuare.
+
+Dezactivat sau neconfigurat: utilizatorii pot adăuga servicii de semnare și pot semna la distanță.</string>
+      <string id="DefaultLanguage">Limba implicită a interfeței</string>
+      <string id="DefaultLanguage_Help">Limba interfeței folosită de Adika până când utilizatorul alege una (utilizatorii o pot schimba în continuare). Neconfigurat: limba de afișare a Windows, dacă Adika o are, altfel engleza.
+
+Opțiunea de instalare /LANG= setează aceeași valoare ca implicită; această politică are prioritate.</string>
+      <string id="Lang_en">Engleză (English)</string>
+      <string id="Lang_ro">Română</string>
+      <string id="Lang_de">Germană (Deutsch)</string>
+      <string id="Lang_fr">Franceză (Français)</string>
+      <string id="Lang_hu">Maghiară (Magyar)</string>
+      <string id="Lang_it">Italiană (Italiano)</string>
+      <string id="Lang_es">Spaniolă (Español)</string>
+      <string id="DefaultTimestampServer">Server implicit de marcaj temporal</string>
+      <string id="DefaultTimestampServer_Help">Autoritatea de marcare temporală RFC 3161 propusă când utilizatorul adaugă un marcaj temporal de încredere la o semnătură și folosită pentru marcajele temporale de arhivare (o adresă http:// sau https://). Utilizatorii pot scrie în continuare altă adresă pentru o semnătură.
+
+Neconfigurat: http://timestamp.digicert.com.</string>
+      <string id="AllowedSigningCertificateIssuers">Emitenți permiși pentru certificatele de semnare</string>
+      <string id="AllowedSigningCertificateIssuers_Help">Permite semnarea digitală numai cu certificate al căror nume de emitent conține unul dintre textele date (fără a ține cont de majuscule), separate prin punct și virgulă, de exemplu: certSIGN Qualified CA; CN=DigiSign Qualified CA.
+
+Se aplică tuturor modurilor de semnare (fișiere de certificat, depozitul Windows, tokenuri, semnare în cloud, semnare în lot). ID-urile autosemnate sunt refuzate dacă numele lor nu se potrivește.
+
+Neconfigurat: orice certificat poate semna.</string>
+      <string id="SaveIncremental">Salvează ca actualizare incrementală</string>
+      <string id="SaveIncremental_Help">Activat: Salvarea adaugă modificările la fișier ca actualizare incrementală ori de câte ori modificările permit (versiunile anterioare rămân în fișier).
+
+Dezactivat: documentele nesemnate sunt rescrise întotdeauna complet (versiunile anterioare sunt eliminate). Documentele semnate sunt salvate în continuare incremental, ca semnăturile să rămână valide.
+
+Neconfigurat: decide utilizatorul (Despre > Salvare).</string>
+    </stringTable>
+    <presentationTable>
+      <presentation id="DefaultLanguage">
+        <dropdownList refId="DefaultLanguage" noSort="true" defaultItem="0">Limba:</dropdownList>
+      </presentation>
+      <presentation id="DefaultTimestampServer">
+        <textBox refId="DefaultTimestampServer">
+          <label>Adresa serverului de marcaj temporal:</label>
+          <defaultValue>http://timestamp.digicert.com</defaultValue>
+        </textBox>
+      </presentation>
+      <presentation id="AllowedSigningCertificateIssuers">
+        <textBox refId="AllowedSigningCertificateIssuers">
+          <label>Nume de emitenți (separate prin ;):</label>
+        </textBox>
+      </presentation>
+    </presentationTable>
+  </resources>
+</policyDefinitionResources>

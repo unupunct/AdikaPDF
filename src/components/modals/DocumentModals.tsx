@@ -10,12 +10,15 @@ import { protectDocument } from '@/actions/security';
 import type { PdfPermissions } from '@/lib/crypto/encrypt';
 import { AdikaLogo } from '@/components/shell/AdikaLogo';
 import { logsFolder, openLogsFolder } from '@/lib/log';
-import { APP_VERSION, checkForUpdates, useUpdates } from '@/lib/updates';
+import { APP_VERSION, checkForUpdates, portableZipUrl, useUpdates } from '@/lib/updates';
+import { onlineAllowed, usePolicy } from '@/lib/policy';
 import { openExternal } from '@/lib/platform';
 import { useSaveSettings } from '@/lib/saveSettings';
 
 function UpdateInfo() {
   const { status, latest, error, auto, setAuto, installable } = useUpdates();
+  const portable = usePolicy((s) => s.portable);
+  const allowed = usePolicy((s) => onlineAllowed('updates', s.policies));
   // A signed update opens its own dialog (version, notes, install); About closes for it.
   const showPrompt = () => {
     usePDFStore.getState().openModal(null);
@@ -25,6 +28,16 @@ function UpdateInfo() {
     const found = await checkForUpdates();
     if (found && useUpdates.getState().installable) showPrompt();
   };
+  if (!allowed) {
+    return (
+      <div className="mt-4 rounded-lg border border-app px-3 py-2 text-[11.5px]" data-testid="update-info">
+        <span className="block font-semibold">Updates</span>
+        <span className="block text-muted" data-testid="update-status">
+          The update check is turned off by your organisation.
+        </span>
+      </div>
+    );
+  }
   return (
     <div className="mt-4 rounded-lg border border-app px-3 py-2 text-[11.5px]" data-testid="update-info">
       <div className="flex items-center gap-2">
@@ -47,8 +60,8 @@ function UpdateInfo() {
             Update…
           </Button>
         ) : status === 'available' && latest ? (
-          <Button size="sm" variant="primary" onClick={() => void openExternal(latest.url)} data-testid="update-download">
-            Download
+          <Button size="sm" variant="primary" onClick={() => void openExternal(portable ? portableZipUrl(latest.version) : latest.url)} data-testid="update-download">
+            {portable ? 'Download portable ZIP' : 'Download'}
           </Button>
         ) : (
           <Button size="sm" disabled={status === 'checking'} onClick={() => void check()} data-testid="update-check">
@@ -59,19 +72,57 @@ function UpdateInfo() {
       <div className="mt-1.5">
         <Checkbox checked={auto} onChange={setAuto} label="Check automatically once a week" />
       </div>
+      {portable ? <span className="block text-muted">Portable copy: download the new ZIP and unpack it over this folder (the Data folder stays).</span> : null}
     </div>
   );
 }
 
 function SaveInfo() {
   const { preferIncremental, setPreferIncremental } = useSaveSettings();
+  const forced = usePolicy((s) => s.policies.saveIncremental);
   return (
     <div className="mt-4 rounded-lg border border-app px-3 py-2 text-[11.5px]" data-testid="save-info">
       <span className="block font-semibold">Saving</span>
       <span className="block text-muted">Signed documents are saved as an incremental update, so their signatures stay valid. Other documents are rewritten in full, which also removes earlier versions kept inside the file.</span>
       <div className="mt-1.5">
-        <Checkbox checked={preferIncremental} onChange={setPreferIncremental} label="Save as incremental update when possible" />
+        <Checkbox checked={forced ?? preferIncremental} onChange={setPreferIncremental} disabled={forced !== null} label="Save as incremental update when possible" />
       </div>
+    </div>
+  );
+}
+
+/** Policies set by the organisation (read-only) and the portable mode. */
+function ManagedInfo() {
+  const { entries, portable, dataDir } = usePolicy();
+  if (!entries.length && !portable) return null;
+  return (
+    <div className="mt-4 rounded-lg border border-app px-3 py-2 text-[11.5px]" data-testid="managed-info">
+      {portable ? (
+        <>
+          <span className="block font-semibold">Portable copy</span>
+          <span className="block break-all text-muted" data-testid="portable-data">
+            Settings, backups and logs are kept in <span data-no-translate>{dataDir}</span>
+          </span>
+        </>
+      ) : null}
+      {entries.length ? (
+        <>
+          <span className={cn('block font-semibold', portable && 'mt-2')}>Managed by your organisation</span>
+          <table className="mt-1 w-full">
+            <tbody>
+              {entries.map((e) => (
+                <tr key={e.name} data-testid={`policy-${e.name}`}>
+                  <td className="py-0.5 pr-3">{e.label}</td>
+                  <td className="py-0.5 text-muted">
+                    <span data-no-translate={e.value !== 'On' && e.value !== 'Off' ? '' : undefined}>{e.value}</span>
+                    {e.source === 'installer' ? ' (set by the installer)' : ''}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </>
+      ) : null}
     </div>
   );
 }
@@ -768,6 +819,7 @@ export function AboutModal() {
           ))}
         </tbody>
       </table>
+      <ManagedInfo />
       <UpdateInfo />
       <SaveInfo />
       <LogsInfo />

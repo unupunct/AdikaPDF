@@ -5,9 +5,12 @@ import { ErrorBoundary } from './components/shell/ErrorBoundary';
 import 'pdfjs-dist/web/pdf_viewer.css';
 import './index.css';
 import { installGlobalErrorLogging } from './lib/log';
-import { applyLang, startDomTranslation, useLang } from './lib/i18n';
+import { applyLang, setDefaultLang, startDomTranslation, useLang } from './lib/i18n';
+import { loadDeployment, usePolicy } from './lib/policy';
 
 installGlobalErrorLogging();
+// Policies and the portable mode first: they decide the default language and what may go online.
+const deployment = loadDeployment();
 void import('./lib/author').then((m) => m.initAuthor());
 
 // Test hooks for the end-to-end suite: only in dev, or when the desktop app
@@ -76,11 +79,13 @@ void (async () => {
 // Command line batch (`--batch`): runs without the interface, then exits.
 const commandLine: Promise<boolean> =
   '__TAURI_INTERNALS__' in window
-    ? import('./actions/automation').then((m) => m.runCommandLine()).catch((e) => (console.error('Command line failed', e), false))
+    ? deployment.then(() => import('./actions/automation')).then((m) => m.runCommandLine()).catch((e) => (console.error('Command line failed', e), false))
     : Promise.resolve(false);
 
 // Interface language first (no flash of English), then watch the DOM and render.
-void applyLang(useLang.getState().lang)
+void deployment
+  .then(() => setDefaultLang(usePolicy.getState().policies.defaultLanguage))
+  .then(() => applyLang(useLang.getState().lang))
   .catch((e) => console.error('Language loading failed', e))
   .finally(async () => {
     if (await commandLine) return;

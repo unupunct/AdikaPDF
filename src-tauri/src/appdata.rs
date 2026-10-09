@@ -7,12 +7,9 @@ use percent_encoding::percent_decode_str;
 use std::path::PathBuf;
 use tauri::ipc::{InvokeBody, Request, Response};
 
+/// Portable mode: `<exe>\Data\Data`.
 pub(crate) fn root() -> PathBuf {
-    if let Some(dir) = std::env::var_os("ADIKA_DATA_DIR") {
-        return PathBuf::from(dir);
-    }
-    let base = std::env::var_os("LOCALAPPDATA").map(PathBuf::from).unwrap_or_else(std::env::temp_dir);
-    base.join("Adika PDF Editor").join("Data")
+    crate::deploy::data_root("ADIKA_DATA_DIR", "Data")
 }
 
 fn safe(name: &str) -> Result<PathBuf, String> {

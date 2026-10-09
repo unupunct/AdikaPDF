@@ -1,0 +1,23 @@
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.locale.1.6.0.schema.json
+PackageIdentifier: unupunct.AdikaPDFEditor
+PackageVersion: 1.14.0
+PackageLocale: ro-RO
+Publisher: unupunct
+PublisherUrl: https://github.com/unupunct
+PublisherSupportUrl: https://github.com/unupunct/AdikaPDF/issues
+PackageName: Adika PDF Editor
+PackageUrl: https://github.com/unupunct/AdikaPDF
+License: MIT
+LicenseUrl: https://github.com/unupunct/AdikaPDF/blob/main/LICENSE
+Copyright: 'Copyright (c) 2026 unupunct'
+ShortDescription: 'Editor PDF offline, cu semnături electronice, care îți păstrează confidențialitatea'
+Description: 'Adika PDF Editor citește, comentează, editează, semnează, organizează, protejează, recunoaște text (OCR) și convertește fișiere PDF numai pe calculatorul tău. Nimic nu este încărcat online.'
+Tags:
+- pdf
+- editor-pdf
+- semnatura-electronica
+- ocr
+- offline
+ReleaseNotesUrl: https://github.com/unupunct/AdikaPDF/releases/tag/v1.14.0
+ManifestType: locale
+ManifestVersion: 1.6.0

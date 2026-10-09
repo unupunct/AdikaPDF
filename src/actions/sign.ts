@@ -19,6 +19,7 @@ import {
 } from '@/lib/crypto/digitalSignature';
 import { appDataRead, appDataWrite, base64ToBytes, httpGet, httpPost, isDesktop, pkcs11Sign, systemCertificates, winstoreSign, type StoreCertificate, type TokenCertificate } from '@/lib/platform';
 import { downloadTrustedLists, trustIndex, type TrustedListCache } from '@/lib/crypto/euTrustedList';
+import { assertOnline, assertSigningIssuer } from '@/lib/policy';
 import type { SignatureValidation } from '@/types';
 import { PDFDocument } from 'pdf-lib';
 import { displaySize, displayToPdfMatrix, normalizeRotation, transformRectBounds } from '@/lib/geometry';
@@ -156,6 +157,9 @@ async function signWith(
   onAbort?: () => void,
 ): Promise<void> {
   const store = usePDFStore.getState();
+  assertSigningIssuer('identity' in signer ? signer.identity.certificate : signer.signer.certificate);
+  if (meta.tsaUrl) assertOnline('timestamp');
+  if (meta.ltv) assertOnline('revocation');
   const hadSignatures = store.signatureStatus.length > 0;
   if (hadSignatures && store.dirty) {
     throw new Error(
@@ -235,6 +239,7 @@ async function signWith(
  * authority's certificate expires keeps the signatures verifiable.
  */
 export async function addArchiveTimestamp(tsaUrl: string): Promise<void> {
+  assertOnline('timestamp');
   const store = usePDFStore.getState();
   const bytes = primarySourceFile();
   if (!bytes || !store.signatureStatus.length) return;
@@ -256,6 +261,7 @@ export async function addArchiveTimestamp(tsaUrl: string): Promise<void> {
 
 /** Verify → Add long-term validation: stores the validation data in an already signed PDF (the signatures stay valid). */
 export async function addLongTermValidation(): Promise<void> {
+  assertOnline('revocation');
   const store = usePDFStore.getState();
   const bytes = primarySourceFile();
   if (!bytes || !store.signatureStatus.length) return;
@@ -390,6 +396,7 @@ async function euTrust() {
 
 /** Downloads the EU list of trusted lists and every national list, and keeps them for offline use. */
 export async function updateEuTrustedLists(): Promise<TrustedListCache | null> {
+  assertOnline('trustedList');
   const store = usePDFStore.getState();
   const res = await withBusy('Downloading the EU Trusted Lists…', (progress) =>
     downloadTrustedLists(httpGet, (done, total) => progress(`Downloading the EU Trusted Lists (${done} / ${total})…`, total ? done / total : null)),

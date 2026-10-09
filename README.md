@@ -48,6 +48,101 @@ folder*). Attach `crash-*.log` files when reporting a problem.
 Office files are converted with macros turned off; password-protected Office files are refused
 rather than asking for a password in the background.
 
+### Portable version
+
+`AdikaPDF_x.y.z_x64-portable.zip` (Releases) runs without installing, e.g. from a USB stick: unpack
+it and start `adika-pdf-editor.exe`. The `portable.ini` file next to the exe switches Adika to
+portable mode: settings (the WebView2 profile), recovery backups, logs and caches go to a `Data`
+folder next to the exe, and nothing is written to the registry. Not included: the virtual printer,
+Explorer menu entries and thumbnails, the `.pdf` association. The Microsoft Edge WebView2 Runtime
+must be present (it is part of Windows 10 and 11; Adika shows a message with the download link
+when it is missing). *Check for updates* in About offers the new portable ZIP (unpack it over the
+folder; `Data` stays); a portable copy never runs the installer. If an installed Adika is already
+running, starting the portable one opens its files in the running window (one instance per user).
+Temporary files (conversions, e-mail attachments) still use `%TEMP%`.
+
+## Deploying in a company
+
+### Unattended install
+
+The setup is an NSIS installer. Switches (combine as needed; `/D=` must come last):
+
+| Switch | Effect |
+| --- | --- |
+| `/S` | Silent: no windows, no questions |
+| `/P` | Passive: progress bar only (used by the in-app updater) |
+| `/ALLUSERS` / `/CURRENTUSER` | Per-machine (Program Files, needs an elevated prompt) or per-user (`%LOCALAPPDATA%`) install. Without either, a silent install reuses the previous mode, else installs per machine when elevated |
+| `/NOPRINTER` | No virtual printer, no Print Spooler changes, no print helper at log-on |
+| `/NOSHELL` | No Explorer menu entries (Combine / Compress / OCR / Convert) and no PDF thumbnail handler |
+| `/NOUPDATES` | Turns the update check off (same effect as the `DisableUpdateCheck` policy) |
+| `/LANG=ro` | Default interface language (`en`, `ro`, `de`, `fr`, `hu`, `it`, `es`); users can still change it |
+| `/FORCECLOSE` | Silent only: end Adika if it does not close by itself (see below) |
+| `/NS` | No desktop shortcut |
+| `/R` | Start Adika after a silent / passive install |
+| `/D=C:\Path` | Install folder |
+
+```bat
+AdikaPDF_1.14.0_x64-setup.exe /S /ALLUSERS /NOUPDATES /LANG=ro
+"C:\Program Files\Adika PDF Editor\uninstall.exe" /S
+```
+
+`/NOPRINTER`, `/NOSHELL`, `/NOUPDATES` and `/LANG=` are remembered in
+`HKLM\Software\unupunct\Adika PDF Editor` (`HKCU\…` for a per-user install) as `NoPrinter`,
+`NoShell`, `DisableUpdateCheck`, `DefaultLanguage`, so later updates keep them; `/NOPRINTER=0`
+(likewise the others) turns an option back on and removes what it skipped before. A Group Policy
+value always wins over these defaults. The `.pdf` "Open with" association is registered in every case.
+
+**Running copies.** An interactive setup asks Adika to close (users are offered to save) and shows
+*Retry / Cancel* if it stays open. A silent setup never shows anything: it asks every Adika window
+to close and waits 8 seconds. Windows without unsaved work close; if one stays open (unsaved work
+waiting for the user, or another user's session), the setup **stops without changing anything**
+and exits with code 2 (a message is printed when started from a console), so a deployment tool can
+retry later. With `/FORCECLOSE` the remaining copies are ended instead; unsaved documents are
+offered again from the automatic recovery backup at the next start. The same applies to a silent
+uninstall. A silent uninstall keeps the users' data (`%LOCALAPPDATA%\Adika PDF Editor`).
+
+### Group Policy
+
+Adika reads `HKLM\SOFTWARE\Policies\Adika PDF Editor` and `HKCU\SOFTWARE\Policies\Adika PDF Editor`
+at start-up; a machine value wins over a user value. Policies in effect are listed read-only in
+About under *Managed by your organisation*.
+
+| Value | Type | Effect |
+| --- | --- | --- |
+| `DisableUpdateCheck` | DWORD 1 | No update check, no downloads or installs of updates |
+| `DisableOnlineFeatures` | DWORD 1 | No network use at all: update check, OCSP / CRL checks, trusted timestamps, LTV data, EU Trusted List download, cloud signing, ANAF connection, converting a web page by address (also refused by the native side) |
+| `DisableCloudSigning` | DWORD 1 | No remote (CSC) signing |
+| `DefaultLanguage` | String `en`/`ro`/`de`/`fr`/`hu`/`it`/`es` | Interface language until the user picks one |
+| `DefaultTimestampServer` | String (http/https URL) | Timestamp authority offered for signatures and used for archive timestamps |
+| `AllowedSigningCertificateIssuers` | String, `;`-separated (or multi-string) | Sign only with certificates whose issuer name contains one of the texts |
+| `SaveIncremental` | DWORD 1 / 0 | Forces *Save as incremental update* on or off (signed documents are always saved incrementally) |
+
+Adika has no telemetry, so there is nothing to turn off: nothing is sent unless a user starts an
+online feature.
+
+ADMX templates are in `deploy/policies` (`AdikaPDFEditor.admx`, `en-US` and `ro-RO` ADML). For the
+domain Central Store copy `AdikaPDFEditor.admx` to
+`\\<domain>\SYSVOL\<domain>\Policies\PolicyDefinitions\` and each language folder's
+`AdikaPDFEditor.adml` to the matching subfolder (`en-US\`, `ro-RO\`); create `PolicyDefinitions`
+from `C:\Windows\PolicyDefinitions` first if the domain has none. For a single computer use
+`C:\Windows\PolicyDefinitions` instead. The settings then appear in the Group Policy editor under
+*Computer / User Configuration → Administrative Templates → Adika PDF Editor*. Without templates:
+
+```bat
+reg add "HKLM\SOFTWARE\Policies\Adika PDF Editor" /v DisableOnlineFeatures /t REG_DWORD /d 1 /f
+```
+
+### winget
+
+`deploy/winget/manifests/…` holds the manifests (`unupunct.AdikaPDFEditor`: version, installer with
+user and machine scope, en-US and ro-RO locales). After `npm run release:assets`, run
+`npm run release:winget` to write them for the release with the SHA-256 of the uploaded setup (the
+committed set has a placeholder hash until then). Check with `winget validate --manifest <folder>`
+and `winget install --manifest <folder>` (needs `winget settings --enable LocalManifestFiles`). To
+publish, open a pull request adding the folder to `manifests/u/unupunct/AdikaPDFEditor/<version>/`
+of [microsoft/winget-pkgs](https://github.com/microsoft/winget-pkgs) (or use `wingetcreate submit`);
+that is the maintainer's decision, nothing here submits it.
+
 ## Build from source
 
 Requirements: Node 20+, Rust (MSVC toolchain), Visual Studio 2022 Build Tools with the C++ workload.
@@ -65,7 +160,8 @@ only when its signature matches the public key in `tauri.conf.json` (`plugins.up
 
 ```bash
 npm run desktop:build:release   # tauri build + updater signature (.sig); key from %USERPROFILE%\.tauri\adika-updater.key
-npm run release:assets -- --notes-file notes.md   # release-assets/v<version>/: AdikaPDF_<v>_x64-setup.exe, .sig, latest.json
+npm run release:assets -- --notes-file notes.md   # release-assets/v<version>/: AdikaPDF_<v>_x64-setup.exe, .sig, latest.json, AdikaPDF_<v>_x64-portable.zip
+npm run release:winget                            # deploy/winget/manifests/.../<version>/ with the setup's SHA-256
 gh release create v<version> release-assets/v<version>/* --title "Adika PDF Editor <version>" --notes-file notes.md
 ```
 

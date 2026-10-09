@@ -8,6 +8,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { open as openDialog, save as saveDialog } from '@tauri-apps/plugin-dialog';
 import { translate } from './i18n';
+import { assertOnline } from './policy';
 
 export const isDesktop = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
 
@@ -273,6 +274,7 @@ export async function officeToPdf(path: string): Promise<Uint8Array> {
 
 export async function htmlToPdf(input: { html: string } | { url: string }): Promise<Uint8Array> {
   if (!isDesktop) throw new DesktopOnlyError('HTML → PDF conversion');
+  if ('url' in input) assertOnline('urlConvert');
   const args = 'html' in input ? { html: input.html, url: null } : { html: null, url: input.url };
   return new Uint8Array(await invoke<ArrayBuffer>('html_to_pdf', args));
 }
@@ -361,7 +363,10 @@ export async function cliExit(code: number): Promise<void> {
 
 // ---------------------------------------------------------------- network
 
+// Every request below is refused when the DisableOnlineFeatures policy is set (net.rs checks again).
+
 export async function httpGet(url: string): Promise<Uint8Array> {
+  assertOnline();
   if (!isDesktop) {
     const r = await fetch(url);
     if (!r.ok) throw new Error(`${url} answered HTTP ${r.status}`);
@@ -374,6 +379,7 @@ export async function httpGet(url: string): Promise<Uint8Array> {
 }
 
 export async function httpPost(url: string, contentType: string, body: Uint8Array): Promise<Uint8Array> {
+  assertOnline();
   if (!isDesktop) {
     const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': contentType }, body: body.slice().buffer });
     if (!r.ok) throw new Error(`${url} answered HTTP ${r.status}`);
@@ -387,6 +393,7 @@ export async function httpPost(url: string, contentType: string, body: Uint8Arra
 
 /** JSON / form request to a web service (remote signing; https only). Error statuses come back with their body. */
 export async function apiRequest(req: { url: string; method: 'GET' | 'POST'; authorization?: string; contentType?: string; body?: string }): Promise<{ status: number; body: string }> {
+  assertOnline();
   if (!isDesktop) {
     const headers: Record<string, string> = { Accept: 'application/json' };
     if (req.authorization) headers.Authorization = req.authorization;

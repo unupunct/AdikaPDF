@@ -11,11 +11,14 @@
 import { create } from 'zustand';
 import { httpGet, isDesktop } from './platform';
 import { log } from './log';
+import { isPortable, onlineAllowed, PolicyError } from './policy';
 
 export const APP_VERSION: string = typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : '0.0.0';
 export const RELEASES_API = 'https://api.github.com/repos/unupunct/AdikaPDF/releases/latest';
 export const RELEASES_PAGE = 'https://github.com/unupunct/AdikaPDF/releases/latest';
 export const releaseTagPage = (version: string) => `https://github.com/unupunct/AdikaPDF/releases/tag/v${version}`;
+/** The portable build of a release (a portable copy never runs the installer). */
+export const portableZipUrl = (version: string) => `https://github.com/unupunct/AdikaPDF/releases/download/v${version}/AdikaPDF_${version}_x64-portable.zip`;
 const SETTINGS_KEY = 'adika.updates';
 const WEEK = 7 * 24 * 3600 * 1000;
 
@@ -143,7 +146,7 @@ let pending: PendingUpdate | null = null;
 
 /** The Tauri updater (main window of the desktop app only: its permission is granted there). */
 export const pluginUpdaterCheck: UpdaterCheck = async () => {
-  if (!isDesktop) return undefined;
+  if (!isDesktop || isPortable()) return undefined;
   try {
     const { getCurrentWindow } = await import('@tauri-apps/api/window');
     if (getCurrentWindow().label !== 'main') return undefined;
@@ -177,6 +180,10 @@ export async function checkForUpdates(
   updater: UpdaterCheck = pluginUpdaterCheck,
 ): Promise<ReleaseInfo | null> {
   if (useUpdates.getState().phase !== 'idle') return useUpdates.getState().latest;
+  if (!onlineAllowed('updates')) {
+    useUpdates.setState({ status: 'error', error: new PolicyError('updates').message, installable: false });
+    return null;
+  }
   useUpdates.setState({ status: 'checking', error: '', installError: '' });
   try {
     const feed = await updater().catch(() => undefined);
@@ -280,7 +287,7 @@ export async function installUpdate(deps: InstallDeps = defaultInstallDeps, upda
 /** At start-up: check once a week, only when the user turned it on. */
 export function maybeAutoCheck(now = Date.now()): boolean {
   const s = loadSettings();
-  if (!s.auto || now - s.lastCheck < WEEK) return false;
+  if (!onlineAllowed('updates') || !s.auto || now - s.lastCheck < WEEK) return false;
   void checkForUpdates();
   return true;
 }

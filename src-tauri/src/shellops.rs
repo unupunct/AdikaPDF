@@ -177,11 +177,9 @@ pub async fn open_document_window(app: tauri::AppHandle, adopt: String) -> Resul
     let label = format!("doc-{millis}-{}", NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed));
     let url = tauri::WebviewUrl::App(format!("index.html?adopt={adopt}").into());
     let mut b = tauri::WebviewWindowBuilder::new(&app, &label, url).title("Adika PDF Editor").inner_size(1280.0, 860.0).min_inner_size(900.0, 600.0);
-    // The end-to-end tests' own WebView profile, like the main window.
-    if std::env::var("ADIKA_E2E").map(|v| v == "1").unwrap_or(false) {
-        if let Some(dir) = std::env::var_os("ADIKA_WEBVIEW_DATA") {
-            b = b.data_directory(std::path::PathBuf::from(dir));
-        }
+    // The same WebView profile as the main window (end-to-end tests, portable copy).
+    if let Some(dir) = crate::webview_data_dir() {
+        b = b.data_directory(dir);
     }
     b.build().map_err(|e| e.to_string())?;
     Ok(label)

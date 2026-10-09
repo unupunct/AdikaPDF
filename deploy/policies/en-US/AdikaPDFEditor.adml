@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="utf-8"?>
+<policyDefinitionResources xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" revision="1.0" schemaVersion="1.0" xmlns="http://schemas.microsoft.com/GroupPolicy/2006/07/PolicyDefinitions">
+  <displayName>Adika PDF Editor</displayName>
+  <description>Policies for Adika PDF Editor.</description>
+  <resources>
+    <stringTable>
+      <string id="AdikaPDFEditor">Adika PDF Editor</string>
+      <string id="SUPPORTED_Adika_1_14">Adika PDF Editor 1.14 and later</string>
+      <string id="DisableUpdateCheck">Turn off the update check</string>
+      <string id="DisableUpdateCheck_Help">Enabled: Adika never asks GitHub for a newer version (neither the weekly check nor "Check for updates" in About) and never downloads or runs an update. Deploy new versions with your own software distribution.
+
+Disabled or not configured: users can check for updates (the weekly check is off until a user turns it on).
+
+The installer switch /NOUPDATES sets the same value as a default; this policy overrides it.</string>
+      <string id="DisableOnlineFeatures">Turn off all online features</string>
+      <string id="DisableOnlineFeatures_Help">Enabled: Adika makes no network connections. This turns off the update check, online certificate checks (OCSP / CRL), trusted timestamps, long-term validation data, downloading the EU Trusted Lists, remote (cloud) signing, the ANAF e-Factura connection and converting a web page by its address. Everything else works offline as usual.
+
+Disabled or not configured: these features contact the services the user chooses, only when the user starts them.
+
+Adika has no telemetry: nothing is ever sent in the background, with or without this policy.</string>
+      <string id="DisableCloudSigning">Turn off remote (cloud) signing</string>
+      <string id="DisableCloudSigning_Help">Enabled: signing with a key held by a trust service provider (Cloud Signature Consortium API) is not available. Certificate files, the Windows certificate store and smart cards / tokens still work.
+
+Disabled or not configured: users can add signing services and sign remotely.</string>
+      <string id="DefaultLanguage">Default interface language</string>
+      <string id="DefaultLanguage_Help">The interface language Adika uses until a user chooses one (users can still change it). Not configured: the Windows display language when Adika has it, otherwise English.
+
+The installer switch /LANG= sets the same value as a default; this policy overrides it.</string>
+      <string id="Lang_en">English</string>
+      <string id="Lang_ro">Romanian (Română)</string>
+      <string id="Lang_de">German (Deutsch)</string>
+      <string id="Lang_fr">French (Français)</string>
+      <string id="Lang_hu">Hungarian (Magyar)</string>
+      <string id="Lang_it">Italian (Italiano)</string>
+      <string id="Lang_es">Spanish (Español)</string>
+      <string id="DefaultTimestampServer">Default timestamp server</string>
+      <string id="DefaultTimestampServer_Help">The RFC 3161 timestamp authority offered when a user adds a trusted timestamp to a signature, and used for archive timestamps (an http:// or https:// address). Users can still type another address for one signature.
+
+Not configured: http://timestamp.digicert.com.</string>
+      <string id="AllowedSigningCertificateIssuers">Allowed issuers of signing certificates</string>
+      <string id="AllowedSigningCertificateIssuers_Help">Restricts digital signing to certificates whose issuer name contains one of the given texts (case-insensitive), separated by semicolons, for example: certSIGN Qualified CA; CN=DigiSign Qualified CA.
+
+Applies to every way of signing (certificate files, Windows store, tokens, cloud signing, batch signing). Self-signed IDs are refused unless their name matches.
+
+Not configured: any certificate can sign.</string>
+      <string id="SaveIncremental">Save as incremental update</string>
+      <string id="SaveIncremental_Help">Enabled: Save appends changes to the file as an incremental update whenever the changes allow it (earlier versions stay inside the file).
+
+Disabled: unsigned documents are always rewritten in full (earlier versions are removed). Signed documents are still saved incrementally so their signatures stay valid.
+
+Not configured: the user decides (About > Saving).</string>
+    </stringTable>
+    <presentationTable>
+      <presentation id="DefaultLanguage">
+        <dropdownList refId="DefaultLanguage" noSort="true" defaultItem="0">Language:</dropdownList>
+      </presentation>
+      <presentation id="DefaultTimestampServer">
+        <textBox refId="DefaultTimestampServer">
+          <label>Timestamp server address:</label>
+          <defaultValue>http://timestamp.digicert.com</defaultValue>
+        </textBox>
+      </presentation>
+      <presentation id="AllowedSigningCertificateIssuers">
+        <textBox refId="AllowedSigningCertificateIssuers">
+          <label>Issuer names (separated by ;):</label>
+        </textBox>
+      </presentation>
+    </presentationTable>
+  </resources>
+</policyDefinitionResources>

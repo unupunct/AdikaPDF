@@ -344,10 +344,10 @@ function isSigned(): boolean {
 async function chooseSaveMode(): Promise<'incremental' | 'full' | 'copy' | null> {
   const s = usePDFStore.getState();
   const signed = isSigned();
-  const { useSaveSettings } = await import('@/lib/saveSettings');
+  const { preferIncremental } = await import('@/lib/saveSettings');
   const { incrementalBlocker } = await import('@/lib/pdf/exportPdf');
   const blocker = incrementalBlocker(currentDoc(), s.docMeta, !!s.protection && !s.protection.keep);
-  if (!blocker && (signed || useSaveSettings.getState().preferIncremental)) return 'incremental';
+  if (!blocker && (signed || preferIncremental())) return 'incremental';
   if (!signed) return 'full';
   log('info', `Save: full rewrite of a signed document (${blocker})`);
   const choice = await askChoice({

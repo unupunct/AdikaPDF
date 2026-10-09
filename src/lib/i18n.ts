@@ -226,6 +226,17 @@ export const useLang = create<{ lang: Lang; setLang: (l: Lang) => Promise<void> 
   },
 }));
 
+/** The organisation's or installer's default language: used until the user picks one (not remembered). */
+export function setDefaultLang(lang: Lang | null): void {
+  if (!lang) return;
+  try {
+    if (isLang(localStorage.getItem(KEY))) return;
+  } catch {
+    /* no storage: the default applies */
+  }
+  useLang.setState({ lang });
+}
+
 // ------------------------------------------------------------------ DOM
 
 const SKIP = '[data-no-translate], .textLayer, .annotationLayer, textarea, script, style, [contenteditable="true"], [contenteditable=""]';

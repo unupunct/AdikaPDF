@@ -24,6 +24,7 @@ import {
 import { batchExtractFormCsv } from '@/actions/security';
 import { withBusy } from '@/actions/document';
 import { converterAvailability, isDesktop, pickFiles, type ConverterAvailability } from '@/lib/platform';
+import { onlineAllowed } from '@/lib/policy';
 
 const close = () => usePDFStore.getState().openModal(null);
 
@@ -135,6 +136,7 @@ export function ImportModal() {
         <>
           {!avail?.edge ? <Callout kind="warn">{isDesktop ? 'Microsoft Edge was not found; it renders web pages to PDF.' : 'Web and text conversion needs the Adika desktop app.'}</Callout> : null}
           <HtmlOptions value={htmlOpts} onChange={setHtmlOpts} />
+          {onlineAllowed('urlConvert') ? (
           <Field label="Web page address" hint="Rendered with Microsoft Edge (headless) with CSS layout and clickable links kept.">
             <div className="flex gap-2">
               <Input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://example.com" data-testid="import-url" />
@@ -143,6 +145,7 @@ export function ImportModal() {
               </Button>
             </div>
           </Field>
+          ) : null}
           <Field label="Or a file">
             <div className="flex gap-2">
               <Select value={textKind} onChange={setTextKind} ariaLabel="File type" options={[{ value: 'html', label: 'HTML page (.html)' }, { value: 'markdown', label: 'Markdown (.md)' }, { value: 'text', label: 'Plain text (.txt)' }]} />

@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Adika PDF Editor policies. Values go to Software\Policies\Adika PDF Editor
+     (HKLM for Computer Configuration, HKCU for User Configuration; HKLM wins).
+     Names and types match src/lib/policy.ts. -->
+<policyDefinitions xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" revision="1.0" schemaVersion="1.0" xmlns="http://schemas.microsoft.com/GroupPolicy/2006/07/PolicyDefinitions">
+  <policyNamespaces>
+    <target prefix="adikapdf" namespace="unupunct.Policies.AdikaPDFEditor" />
+  </policyNamespaces>
+  <resources minRequiredRevision="1.0" />
+  <supportedOn>
+    <definitions>
+      <definition name="SUPPORTED_Adika_1_14" displayName="$(string.SUPPORTED_Adika_1_14)" />
+    </definitions>
+  </supportedOn>
+  <categories>
+    <category name="AdikaPDFEditor" displayName="$(string.AdikaPDFEditor)" />
+  </categories>
+  <policies>
+    <policy name="DisableUpdateCheck" class="Both" displayName="$(string.DisableUpdateCheck)" explainText="$(string.DisableUpdateCheck_Help)" key="Software\Policies\Adika PDF Editor" valueName="DisableUpdateCheck">
+      <parentCategory ref="AdikaPDFEditor" />
+      <supportedOn ref="SUPPORTED_Adika_1_14" />
+      <enabledValue><decimal value="1" /></enabledValue>
+      <disabledValue><decimal value="0" /></disabledValue>
+    </policy>
+    <policy name="DisableOnlineFeatures" class="Both" displayName="$(string.DisableOnlineFeatures)" explainText="$(string.DisableOnlineFeatures_Help)" key="Software\Policies\Adika PDF Editor" valueName="DisableOnlineFeatures">
+      <parentCategory ref="AdikaPDFEditor" />
+      <supportedOn ref="SUPPORTED_Adika_1_14" />
+      <enabledValue><decimal value="1" /></enabledValue>
+      <disabledValue><decimal value="0" /></disabledValue>
+    </policy>
+    <policy name="DisableCloudSigning" class="Both" displayName="$(string.DisableCloudSigning)" explainText="$(string.DisableCloudSigning_Help)" key="Software\Policies\Adika PDF Editor" valueName="DisableCloudSigning">
+      <parentCategory ref="AdikaPDFEditor" />
+      <supportedOn ref="SUPPORTED_Adika_1_14" />
+      <enabledValue><decimal value="1" /></enabledValue>
+      <disabledValue><decimal value="0" /></disabledValue>
+    </policy>
+    <policy name="DefaultLanguage" class="Both" displayName="$(string.DefaultLanguage)" explainText="$(string.DefaultLanguage_Help)" key="Software\Policies\Adika PDF Editor" presentation="$(presentation.DefaultLanguage)">
+      <parentCategory ref="AdikaPDFEditor" />
+      <supportedOn ref="SUPPORTED_Adika_1_14" />
+      <elements>
+        <enum id="DefaultLanguage" valueName="DefaultLanguage" required="true">
+          <item displayName="$(string.Lang_en)"><value><string>en</string></value></item>
+          <item displayName="$(string.Lang_ro)"><value><string>ro</string></value></item>
+          <item displayName="$(string.Lang_de)"><value><string>de</string></value></item>
+          <item displayName="$(string.Lang_fr)"><value><string>fr</string></value></item>
+          <item displayName="$(string.Lang_hu)"><value><string>hu</string></value></item>
+          <item displayName="$(string.Lang_it)"><value><string>it</string></value></item>
+          <item displayName="$(string.Lang_es)"><value><string>es</string></value></item>
+        </enum>
+      </elements>
+    </policy>
+    <policy name="DefaultTimestampServer" class="Both" displayName="$(string.DefaultTimestampServer)" explainText="$(string.DefaultTimestampServer_Help)" key="Software\Policies\Adika PDF Editor" presentation="$(presentation.DefaultTimestampServer)">
+      <parentCategory ref="AdikaPDFEditor" />
+      <supportedOn ref="SUPPORTED_Adika_1_14" />
+      <elements>
+        <text id="DefaultTimestampServer" valueName="DefaultTimestampServer" maxLength="512" required="true" />
+      </elements>
+    </policy>
+    <policy name="AllowedSigningCertificateIssuers" class="Both" displayName="$(string.AllowedSigningCertificateIssuers)" explainText="$(string.AllowedSigningCertificateIssuers_Help)" key="Software\Policies\Adika PDF Editor" presentation="$(presentation.AllowedSigningCertificateIssuers)">
+      <parentCategory ref="AdikaPDFEditor" />
+      <supportedOn ref="SUPPORTED_Adika_1_14" />
+      <elements>
+        <text id="AllowedSigningCertificateIssuers" valueName="AllowedSigningCertificateIssuers" maxLength="2048" required="true" />
+      </elements>
+    </policy>
+    <policy name="SaveIncremental" class="Both" displayName="$(string.SaveIncremental)" explainText="$(string.SaveIncremental_Help)" key="Software\Policies\Adika PDF Editor" valueName="SaveIncremental">
+      <parentCategory ref="AdikaPDFEditor" />
+      <supportedOn ref="SUPPORTED_Adika_1_14" />
+      <enabledValue><decimal value="1" /></enabledValue>
+      <disabledValue><decimal value="0" /></disabledValue>
+    </policy>
+  </policies>
+</policyDefinitions>

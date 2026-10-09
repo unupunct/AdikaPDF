@@ -286,8 +286,8 @@ pub fn run() {
 /// Starts the watcher in the background if it is not running (called by the app).
 #[tauri::command]
 pub fn ensure_print_watcher() -> bool {
-    // Only meaningful when the virtual printer was installed.
-    if !spool_file().parent().map(|p| p.is_dir()).unwrap_or(false) {
+    // Only meaningful when the virtual printer was installed (never by a portable copy).
+    if crate::deploy::is_portable() || !spool_file().parent().map(|p| p.is_dir()).unwrap_or(false) {
         return false;
     }
     if let Some(lock) = single_watcher_lock() {
@@ -308,7 +308,7 @@ pub fn ensure_print_watcher() -> bool {
 /// Whether the virtual printer is installed (its spool folder exists).
 #[tauri::command]
 pub fn virtual_printer_installed() -> bool {
-    spool_file().parent().map(|p| p.is_dir()).unwrap_or(false)
+    !crate::deploy::is_portable() && spool_file().parent().map(|p| p.is_dir()).unwrap_or(false)
 }
 
 #[cfg(test)]

@@ -15,6 +15,7 @@ import { errorMessage } from '@/actions/document';
 import { askConfirm } from '@/store/useDialogs';
 import { base64ToBytes, isDesktop, pickFiles, pickFolder, pickPaths, pkcs11DetectModules, pkcs11ListTokens, winstoreList, type Pkcs11Module, type StoreCertificate, type TokenCertificate, type TokenInfo } from '@/lib/platform';
 import { cn } from '@/lib/cn';
+import { defaultTsaUrl, onlineAllowed, usePolicy } from '@/lib/policy';
 
 type Source = 'pfx' | 'store' | 'token' | 'cloud';
 type PageChoice = 'first' | 'last' | 'number';
@@ -64,8 +65,9 @@ export function BatchSignModal() {
   const [location, setLocation] = useState('');
   const [contact, setContact] = useState('');
   const [useTsa, setUseTsa] = useState(false);
-  const [tsaUrl, setTsaUrl] = useState('http://timestamp.digicert.com');
+  const [tsaUrl, setTsaUrl] = useState(defaultTsaUrl);
   const [ltv, setLtv] = useState(false);
+  const online = usePolicy((s) => onlineAllowed('timestamp', s.policies));
   const [archive, setArchive] = useState(false);
   const [pades, setPades] = useState(true);
   const [certify, setCertify] = useState<0 | 1 | 2 | 3>(0);
@@ -671,13 +673,13 @@ export function BatchSignModal() {
             <Input value={contact} onChange={(e) => setContact(e.target.value)} />
           </Field>
         </div>
-        <Checkbox checked={useTsa} label="Add a trusted timestamp (RFC 3161, needs internet)" onChange={setUseTsa} />
+        <Checkbox checked={useTsa} disabled={!online && !useTsa} label="Add a trusted timestamp (RFC 3161, needs internet)" onChange={setUseTsa} />
         {useTsa ? (
           <Field label="Timestamp authority URL">
             <Input value={tsaUrl} onChange={(e) => setTsaUrl(e.target.value)} />
           </Field>
         ) : null}
-        <Checkbox checked={ltv} label="Add long-term validation data (LTV: the signature can be verified offline for years; needs internet)" onChange={setLtv} />
+        <Checkbox checked={ltv} disabled={!online && !ltv} label="Add long-term validation data (LTV: the signature can be verified offline for years; needs internet)" onChange={setLtv} />
         {ltv && useTsa ? <Checkbox checked={archive} label="Add an archive timestamp over the signature and validation data (PAdES B-LTA)" onChange={setArchive} /> : null}
         <Checkbox checked={pades} label="EU format: PAdES baseline (eIDAS)" onChange={setPades} />
         <p className="mb-2 text-[11px] text-muted" data-testid="batchsign-level">
