@@ -94,12 +94,34 @@ export function findInPage(runs: TextRun[], query: string, opts: SearchOptions =
   return results;
 }
 
-export async function searchDocument(pages: PageRef[], query: string, signal: { cancelled: boolean }, opts: SearchOptions = {}): Promise<SearchHit[]> {
+/** Pages whose text is read at once (worker round trips overlap). */
+const SEARCH_BATCH = 8;
+
+/**
+ * Searches every page in order. `onProgress` gets the hits found so far and
+ * the share of pages done, at most every 300 ms (long documents show their
+ * first hits early).
+ */
+export async function searchDocument(
+  pages: PageRef[],
+  query: string,
+  signal: { cancelled: boolean },
+  opts: SearchOptions = {},
+  onProgress?: (hits: SearchHit[], fraction: number) => void,
+): Promise<SearchHit[]> {
   const hits: SearchHit[] = [];
-  for (const page of pages) {
+  let reported = Date.now();
+  for (let i = 0; i < pages.length; i += SEARCH_BATCH) {
     if (signal.cancelled) break;
-    const runs = await pageTextRuns(page);
-    for (const m of findInPage(runs, query, opts)) hits.push({ pageId: page.id, rects: m.rects, snippet: m.snippet });
+    const part = pages.slice(i, i + SEARCH_BATCH);
+    const texts = await Promise.all(part.map((p) => pageTextRuns(p)));
+    texts.forEach((runs, k) => {
+      for (const m of findInPage(runs, query, opts)) hits.push({ pageId: part[k].id, rects: m.rects, snippet: m.snippet });
+    });
+    if (onProgress && Date.now() - reported > 300 && i + SEARCH_BATCH < pages.length) {
+      reported = Date.now();
+      onProgress(hits.slice(), (i + part.length) / pages.length);
+    }
   }
   return hits;
 }

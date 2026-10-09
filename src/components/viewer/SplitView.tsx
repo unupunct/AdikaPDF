@@ -4,7 +4,7 @@
  * other open tab; edits are drawn on top. Optionally it follows the page of
  * the main view.
  */
-import { memo, useEffect, useMemo, useRef, useState, type RefObject } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import { create } from 'zustand';
 import { Layer, Stage } from 'react-konva';
 import { X, ZoomIn, ZoomOut, MoveHorizontal } from 'lucide-react';
@@ -12,6 +12,7 @@ import { usePDFStore } from '@/store/usePDFStore';
 import { tabInfo, useTabs } from '@/store/tabs';
 import { renderPageToCanvas } from '@/lib/pdf/pdfService';
 import { displaySize } from '@/lib/geometry';
+import { visibleRows, VIRTUAL_MIN_PAGES } from '@/lib/pdf/pageSizes';
 import { ObjectNode } from './ObjectNode';
 import { Checkbox, Select } from '@/components/ui/primitives';
 import type { EditorObject, PageRef } from '@/types';
@@ -78,30 +79,61 @@ export function SplitView() {
   const objects = self ? activeObjects : (other?.objects ?? []);
   const root = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(400);
+  const [view, setView] = useState({ top: 0, height: 800 });
+  const frame = useRef(0);
+  const readView = useCallback(() => {
+    if (frame.current) return;
+    frame.current = requestAnimationFrame(() => {
+      frame.current = 0;
+      const el = root.current;
+      if (el) setView({ top: el.scrollTop, height: el.clientHeight });
+    });
+  }, []);
 
   useEffect(() => {
     const el = root.current;
     if (!el) return;
-    const ro = new ResizeObserver(() => setWidth(el.clientWidth));
+    const ro = new ResizeObserver(() => {
+      setWidth(el.clientWidth);
+      readView();
+    });
     ro.observe(el);
     return () => ro.disconnect();
-  }, []);
+  }, [readView]);
 
   const fit = pages.length ? Math.max(0.1, (width - 32) / displaySize(pages[0]).width) : 1;
   const zoom = zoomSet ?? fit;
   const byPage = useMemo(() => {
     const m = new Map<string, EditorObject[]>();
-    for (const o of objects) m.set(o.pageId, [...(m.get(o.pageId) ?? []), o]);
+    for (const o of objects) {
+      const list = m.get(o.pageId);
+      if (list) list.push(o);
+      else m.set(o.pageId, [o]);
+    }
     return m;
   }, [objects]);
+
+  // Page positions (12 px apart), so a long document mounts only the pages in view.
+  const bands = useMemo(() => {
+    let top = 0;
+    return pages.map((p) => {
+      const h = displaySize(p).height * zoom;
+      const band = { top, height: h };
+      top += h + 12;
+      return band;
+    });
+  }, [pages, zoom]);
+  const [first, last] = pages.length > VIRTUAL_MIN_PAGES ? visibleRows(bands, view.top, view.height, 2) : [0, pages.length - 1];
+  const end = bands.length ? bands[bands.length - 1].top + bands[bands.length - 1].height + 12 : 0;
+  const before = bands[first]?.top ?? 0;
+  const after = bands[last] ? end - bands[last].top - bands[last].height - 12 : 0;
 
   // Follow the main view: show the same page number.
   useEffect(() => {
     if (!follow || !self || !current) return;
     const i = pages.findIndex((p) => p.id === current);
-    const el = root.current?.querySelector(`[data-testid="split-page-${i + 1}"]`) as HTMLElement | null;
-    if (el && root.current) root.current.scrollTop = el.offsetTop - 12;
-  }, [follow, self, current, pages]);
+    if (i >= 0 && root.current) root.current.scrollTop = 16 + bands[i].top - 12;
+  }, [follow, self, current, pages, bands]);
 
   const options = [{ value: '__self', label: 'This document' }, ...tabs.tabs.filter((t) => t.id !== tabs.activeId && t.slice?.pages.length).map((t) => ({ value: t.id, label: tabInfo(t, tabs.activeId).name ?? 'Untitled' }))];
 
@@ -129,10 +161,12 @@ export function SplitView() {
           <X size={15} />
         </button>
       </div>
-      <div ref={root} className="relative min-h-0 flex-1 overflow-auto p-4" data-testid="split-scroll">
-        {pages.map((p, i) => (
-          <SplitPage key={p.id} page={p} index={i} zoom={zoom} objects={byPage.get(p.id) ?? []} root={root} />
+      <div ref={root} onScroll={readView} className="relative min-h-0 flex-1 overflow-auto p-4" data-testid="split-scroll">
+        {before > 0 ? <div style={{ height: before }} /> : null}
+        {pages.slice(first, last + 1).map((p, k) => (
+          <SplitPage key={p.id} page={p} index={first + k} zoom={zoom} objects={byPage.get(p.id) ?? []} root={root} />
         ))}
+        {after > 0 ? <div style={{ height: after }} /> : null}
       </div>
     </aside>
   );
