@@ -310,3 +310,27 @@ export function refFromId(id: string): PDFRef {
   const [n, g] = id.split('-').map(Number);
   return PDFRef.of(n, g || 0);
 }
+
+/** Index in the document element after the last top-level element with content on `page` (or before later pages). */
+export function insertionIndex(doc: PDFDocument, st: Structure, docEl: { dict: PDFDict; ref: PDFRef }, page: number): number {
+  const kids = kidsArray(doc, docEl.dict).asArray();
+  const pagesOf = (k: PDFObject) => {
+    const n = st.nodes.find((x) => x.ref && k instanceof PDFRef && idOf(x.ref) === idOf(k));
+    if (!n) return [] as number[];
+    const out: number[] = [];
+    const visit = (x: StructNode, d: number) => {
+      for (const m of x.mcids) if (m.page >= 0) out.push(m.page);
+      for (const o of x.objrs) if (o.page >= 0) out.push(o.page);
+      if (!x.mcids.length && !x.objrs.length && x.page >= 0) out.push(x.page);
+      if (d < 50) x.children.forEach((c) => visit(c, d + 1));
+    };
+    visit(n, 0);
+    return out;
+  };
+  let idx = -1;
+  kids.forEach((k, i) => {
+    const ps = pagesOf(k);
+    if (ps.length && Math.min(...ps) <= page) idx = i;
+  });
+  return idx + 1;
+}
