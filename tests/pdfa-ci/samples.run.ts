@@ -8,7 +8,7 @@
 import { describe, expect, it } from 'vitest';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { PDFDocument, PDFName, StandardFonts, rgb } from 'pdf-lib';
+import { PDFArray, PDFDocument, PDFName, StandardFonts, rgb } from 'pdf-lib';
 import { convertToPdfADetailed, pdfaWarnings, type PdfALevel } from '@/lib/pdf/pdfa';
 import type { PdfAFontSources } from '@/lib/pdf/pdfaFonts';
 
@@ -43,7 +43,8 @@ async function source(): Promise<Uint8Array> {
   else res.set(PDFName.of('XObject'), ctx.obj({ Cmyk: img }));
   const extra = ctx.register(ctx.stream('q 0 1 1 0 k 1 0 0 0 K 40 400 120 60 re B /Gold cs 1 scn 200 400 120 60 re f 60 0 0 60 360 400 cm /Cmyk Do Q'));
   const contents = page.node.get(PDFName.of('Contents'));
-  page.node.set(PDFName.of('Contents'), ctx.obj([contents, extra]));
+  const parts = contents instanceof PDFArray ? contents.asArray() : [contents!];
+  page.node.set(PDFName.of('Contents'), ctx.obj([...parts, extra]));
   // A form field and a comment.
   const field = doc.getForm().createTextField('Name');
   field.addToPage(page, { x: 40, y: 300, width: 200, height: 24 });

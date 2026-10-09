@@ -183,8 +183,9 @@ describe('PDF/A annotations, forms and colours', () => {
     expect((widget.lookup(PDFName.of('F')) as unknown as { asNumber(): number }).asNumber() & 4).toBe(4);
     expect(out.catalog.lookup(PDFName.of('AcroForm'), PDFDict).has(PDFName.of('NeedAppearances'))).toBe(false);
     const w = (await pdfaWarnings(r.bytes, '2b')).join('\n');
-    // The square annotation has no appearance Adika could draw: still reported.
-    expect(w).toMatch(/1 annotation\(s\) or form field\(s\) have no appearance/);
+    // The square annotation is given an appearance too.
+    expect(r.notes.join('\n')).toMatch(/1 comment\(s\) without an appearance were given one/);
+    expect(w).not.toMatch(/have no appearance/);
     expect(w).not.toMatch(/not set to print|NeedAppearances/);
     // The regenerated appearance uses an embedded font (the source's unused /DR Helvetica is still reported).
     expect(w).not.toMatch(/NotoSans/);
