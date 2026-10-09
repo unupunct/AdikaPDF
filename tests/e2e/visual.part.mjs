@@ -59,6 +59,22 @@ export function registerVisualTests(test, ctx) {
     await page.waitForFunction(() => /editable/.test(window.__adika.store.getState().fileName ?? ''), null, { timeout: 15000 });
   });
 
+  // Round 14, not yet run against a release build. Nothing is downloaded: only the list is checked.
+  test('OCR languages: the manager lists every language, bundled ones included, others downloadable', async () => {
+    await page.click('[data-testid="tab-convert"]');
+    await page.click('[data-testid="btn-ocr"]');
+    await page.waitForSelector('[data-testid="ocr-modal"]');
+    await page.click('[data-testid="ocr-langs-more"]');
+    await page.waitForSelector('[data-testid="ocr-lang-manager"]');
+    const rows = await page.$$eval('[data-testid="ocr-lang-manager"] tr', (r) => r.length);
+    assert(rows >= 100, `about a hundred languages listed (${rows})`);
+    assert(/Included/.test(await page.textContent('[data-testid="ocr-lang-ron"]')), 'Romanian comes with the app');
+    assert(await page.$('[data-testid="ocr-lang-download-ukr"]'), 'Ukrainian can be downloaded');
+    await page.fill('[data-testid="ocr-lang-filter"]', 'japan');
+    assert((await page.$$('[data-testid="ocr-lang-manager"] tr')).length === 1, 'filter narrows the list');
+    await page.keyboard.press('Escape');
+  });
+
   test('visual compare: an overlay report of the pixel differences', async () => {
     const make = async (amount, color) => {
       const d = await PD.create();

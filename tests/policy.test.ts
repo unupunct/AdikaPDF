@@ -73,7 +73,7 @@ describe('policy values', () => {
     expect(onlineAllowed('timestamp', p({ disableUpdateCheck: true }))).toBe(true);
     expect(onlineAllowed('cloudSign', p({ disableCloudSigning: true }))).toBe(false);
     expect(onlineAllowed('anaf', p({ disableCloudSigning: true }))).toBe(true);
-    for (const f of ['updates', 'revocation', 'timestamp', 'trustedList', 'cloudSign', 'anaf', 'urlConvert', 'network'] as const) {
+    for (const f of ['updates', 'revocation', 'timestamp', 'trustedList', 'cloudSign', 'anaf', 'urlConvert', 'ocrLanguages', 'network'] as const) {
       expect(onlineAllowed(f, p({ disableOnlineFeatures: true }))).toBe(false);
     }
   });

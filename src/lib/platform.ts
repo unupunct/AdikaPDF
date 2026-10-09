@@ -492,6 +492,38 @@ export async function appDataWrite(name: string, bytes: Uint8Array): Promise<voi
   await invoke('appdata_write', bytes, { headers: { 'x-name': encodeURIComponent(name) } });
 }
 
+// ---------------------------------------------------------------- downloaded OCR languages
+
+const memoryOcrLangs = new Map<string, Uint8Array>();
+
+/** Languages downloaded into app data (`ocr-langs`), with their file sizes. */
+export async function ocrLangList(): Promise<Array<{ code: string; size: number }>> {
+  if (!isDesktop) return [...memoryOcrLangs].map(([code, b]) => ({ code, size: b.length }));
+  return invoke<Array<{ code: string; size: number }>>('ocr_lang_list');
+}
+
+/** The gzipped traineddata of a downloaded language (empty when missing). */
+export async function ocrLangRead(code: string): Promise<Uint8Array> {
+  if (!isDesktop) return memoryOcrLangs.get(code) ?? new Uint8Array(0);
+  return new Uint8Array(await invoke<ArrayBuffer>('ocr_lang_read', { code }));
+}
+
+export async function ocrLangWrite(code: string, bytes: Uint8Array): Promise<void> {
+  if (!isDesktop) {
+    memoryOcrLangs.set(code, bytes);
+    return;
+  }
+  await invoke('ocr_lang_write', bytes, { headers: { 'x-name': code } });
+}
+
+export async function ocrLangDelete(code: string): Promise<void> {
+  if (!isDesktop) {
+    memoryOcrLangs.delete(code);
+    return;
+  }
+  await invoke('ocr_lang_delete', { code });
+}
+
 // ---------------------------------------------------------------- installed fonts
 
 /** A font installed in Windows (one face of a font file). */

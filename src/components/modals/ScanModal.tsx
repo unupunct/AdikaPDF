@@ -5,7 +5,7 @@ import { usePDFStore } from '@/store/usePDFStore';
 import { Button, Callout, Checkbox, Dialog, Field, Select } from '@/components/ui/primitives';
 import { errorMessage } from '@/actions/document';
 import { isDesktop, wiaDevices, type ScannerInfo } from '@/lib/platform';
-import { OCR_LANGUAGES } from '@/lib/pdf/ocr';
+import { ocrLangLabel } from '@/lib/ocrLangs';
 import { loadOcrLangs } from './DocumentModals';
 import type { PageCleanup, PaperSize, ScanPageItem, ScanSettings, ScanSource } from '@/actions/scan';
 import type { ScanMode } from '@/lib/scan/scanPdf';
@@ -127,7 +127,7 @@ export function ScanModal() {
     return n;
   })();
   const langLabel = loadOcrLangs()
-    .map((c) => OCR_LANGUAGES.find((l) => l.code === c)?.label ?? c)
+    .map((c) => ocrLangLabel(c))
     .join(', ');
 
   return (

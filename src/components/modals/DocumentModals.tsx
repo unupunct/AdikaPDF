@@ -148,7 +148,8 @@ function LogsInfo() {
   );
 }
 import { cn } from '@/lib/cn';
-import { OCR_LANGUAGES } from '@/lib/pdf/ocr';
+import { ocrLangLabel } from '@/lib/ocrLangs';
+import { OcrLanguageManager, useInstalledOcrLangs } from './OcrLanguages';
 import type { PdfALevel } from '@/lib/pdf/pdfa';
 import { pickFiles } from '@/lib/platform';
 
@@ -611,6 +612,8 @@ export function OcrModal() {
   const [output, setOutput] = useState<'searchable' | 'sans' | 'serif'>('searchable');
   const [straighten, setStraighten] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [manage, setManage] = useState(false);
+  const installed = useInstalledOcrLangs();
 
   const toggleLang = (code: string) => {
     const next = langs.includes(code) ? langs.filter((l) => l !== code) : [...langs, code];
@@ -629,10 +632,13 @@ export function OcrModal() {
       setError(e instanceof Error ? e.message : String(e));
       return;
     }
-    saveOcrLangs(langs);
+    // A language removed since it was last chosen is left out.
+    const usable = installed.length ? langs.filter((l) => installed.includes(l)) : langs;
+    const chosen = usable.length ? usable : ['eng'];
+    saveOcrLangs(chosen);
     close();
     // The dialog is closed by now: failures are shown as a toast.
-    await runOcr({ pageNumbers, dpi, lang: langs.join('+'), straighten, editable: output === 'searchable' ? undefined : { family: output } }).catch((e: unknown) =>
+    await runOcr({ pageNumbers, dpi, lang: chosen.join('+'), straighten, editable: output === 'searchable' ? undefined : { family: output } }).catch((e: unknown) =>
       usePDFStore.getState().toast(e instanceof Error ? e.message : String(e), 'error'),
     );
   };
@@ -682,7 +688,7 @@ export function OcrModal() {
       ) : null}
       <Field label="Document languages" hint="Pick every language that appears in the scan. Fewer languages = faster and more accurate.">
         <div className="flex flex-wrap gap-1.5" data-testid="ocr-langs">
-          {OCR_LANGUAGES.map((l) => (
+          {installed.map((code) => ({ code, label: ocrLangLabel(code) })).map((l) => (
             <button
               key={l.code}
               type="button"
@@ -693,8 +699,12 @@ export function OcrModal() {
               {l.label}
             </button>
           ))}
+          <button type="button" aria-expanded={manage} onClick={() => setManage((v) => !v)} className="rounded-full border border-dashed border-app px-2.5 py-1 text-xs hover-app" data-testid="ocr-langs-more">
+            {manage ? 'Hide languages' : 'More languages…'}
+          </button>
         </div>
       </Field>
+      {manage ? <OcrLanguageManager onInstalled={(code) => setLangs((cur) => (cur.includes(code) ? cur : [...cur, code]))} /> : null}
       {error ? <Callout kind="error">{error}</Callout> : null}
     </Dialog>
   );
