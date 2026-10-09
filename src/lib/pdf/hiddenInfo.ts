@@ -106,7 +106,7 @@ function streamText(v: unknown): string {
 }
 
 /** Every dictionary reachable from the catalog and the Info dictionary (stream dictionaries included). */
-function reachableDicts(doc: PDFDocument): PDFDict[] {
+export function reachableDicts(doc: PDFDocument): PDFDict[] {
   const out: PDFDict[] = [];
   const seen = new Set<unknown>();
   const stack: unknown[] = [doc.context.trailerInfo.Root];
@@ -140,7 +140,7 @@ function nameTree(doc: PDFDocument, node: unknown, depth = 0): Array<[string, un
   return out;
 }
 
-function annotsOf(doc: PDFDocument, page: PDFPage): Array<{ ref: unknown; dict: PDFDict }> {
+export function annotsOf(doc: PDFDocument, page: PDFPage): Array<{ ref: unknown; dict: PDFDict }> {
   const annots = page.node.lookup(N('Annots'));
   if (!(annots instanceof PDFArray)) return [];
   const out: Array<{ ref: unknown; dict: PDFDict }> = [];
@@ -157,7 +157,7 @@ function subtypeOf(d: PDFDict): string {
 
 const NOT_COMMENTS = new Set(['Link', 'Widget', 'Popup', 'FileAttachment']);
 
-function isComment(d: PDFDict): boolean {
+export function isComment(d: PDFDict): boolean {
   return !NOT_COMMENTS.has(subtypeOf(d));
 }
 
@@ -267,7 +267,7 @@ function stripOffContent(doc: PDFDocument, page: PDFPage, off: Set<string>): num
 }
 
 /** Drops the given refs from every array inside `v` (nested arrays included). */
-function dropFromArrays(doc: PDFDocument, v: unknown, gone: Set<string>, depth = 0): void {
+export function dropFromArrays(doc: PDFDocument, v: unknown, gone: Set<string>, depth = 0): void {
   const x = lookup(doc, v);
   if (depth > 32) return;
   if (x instanceof PDFArray) {
@@ -455,7 +455,7 @@ export async function scanHiddenInfo(bytes: Uint8Array): Promise<HiddenFinding[]
 
 // ------------------------------------------------------------------ removal
 
-function filterAnnots(doc: PDFDocument, page: PDFPage, drop: (d: PDFDict) => boolean): number {
+export function filterAnnots(doc: PDFDocument, page: PDFPage, drop: (d: PDFDict) => boolean): number {
   const list = annotsOf(doc, page);
   if (!list.length) return 0;
   const gone = new Set<string>();
