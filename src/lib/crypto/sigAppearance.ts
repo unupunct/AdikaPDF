@@ -380,7 +380,7 @@ export async function drawSignatureAppearance(
     Subtype: 'Form',
     BBox: [0, 0, W, H],
     Matrix: uprightMatrix(rotation, W, H),
-    Resources: resources,
+    Resources: doc.context.obj(resources as never),
   });
   // Optional content and the like are not needed: a plain form the viewer scales into /Rect.
   stream.dict.set(PDFName.of('FormType'), doc.context.obj(1));

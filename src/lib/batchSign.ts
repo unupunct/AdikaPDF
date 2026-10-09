@@ -5,7 +5,7 @@
  * remote signing), then each file is finished (CMS, timestamp, validation
  * data) and written. Files that cannot be signed are skipped with a reason.
  */
-import { addDocumentTimestamp, inspectForSigning, prepareSignature, type ExternalSigner, type PreparedSignature, type SignerCertificates } from './crypto/digitalSignature';
+import { addDocumentTimestamp, inspectForSigning, prepareSignature, type ExternalSigner, type PreparedSignature, type PrepareOptions, type SignerCertificates } from './crypto/digitalSignature';
 import { isPdfEncrypted } from './crypto/encrypt';
 import { BatchSkip, outputPath } from './batch';
 import { displayToPdfMatrix, normalizeRotation, transformRectBounds } from './geometry';
@@ -84,6 +84,8 @@ export interface BatchAppearance {
   offsetY: number;
   width: number;
   height: number;
+  /** Appearance profile id ('standard' = Adika's badge; unset = the default profile). */
+  profile?: string;
   /** Sign into the empty signature field with this name when the file has one (otherwise as above). */
   fieldName?: string;
 }
@@ -112,6 +114,8 @@ export interface BatchSignIo {
   fetchImpl?: typeof fetch;
   /** PNG of the visible signature (app: the signature badge). */
   badge?(size: { width: number; height: number }, when: Date): Promise<Uint8Array>;
+  /** Draws the visible signature (a designed appearance); wins over badge. */
+  appearance?(when: Date): NonNullable<PrepareOptions['appearance']>;
   /** Long-term validation data (chain, OCSP / CRL answers). */
   ltv?(bytes: Uint8Array): Promise<{ bytes: Uint8Array; complete: boolean; notes: string[] }>;
 }
@@ -269,13 +273,15 @@ export async function runBatchSign(inputs: string[], signer: BatchSigner, opts: 
         const when = new Date();
         const w = place.rect[2] - place.rect[0];
         const h = place.rect[3] - place.rect[1];
-        const appearancePng = w > 0 && h > 0 && io.badge ? await io.badge({ width: w, height: h }, when) : undefined;
+        const appearance = w > 0 && h > 0 && io.appearance ? io.appearance(when) : undefined;
+        const appearancePng = w > 0 && h > 0 && !appearance && io.badge ? await io.badge({ width: w, height: h }, when) : undefined;
         const prepared = await prepareSignature(bytes, {
           signer,
           pageIndex: place.pageIndex,
           rect: place.rect,
           intoField: place.intoField,
           appearancePng,
+          appearance,
           reason: opts.reason || undefined,
           location: opts.location || undefined,
           contactInfo: opts.contactInfo || undefined,
