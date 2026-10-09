@@ -66,4 +66,4 @@ npm run typecheck
 - Installed: Node 24.19, npm 11.17, Git 2.55, Python 3.13, gh 2.101, PowerShell 7.6, VS Code, Rust 1.98.1 (stable-x86_64-pc-windows-msvc, in `%USERPROFILE%\.cargo\bin`), Visual Studio Build Tools 2022 17.14 (C++ workload). `cargo check` in `src-tauri` passes (about 4 min cold on this HDD).
 - Project is on D: (a spinning HDD), so installs and builds are slower than on the SSD.
 - A new PowerShell window may be needed after installs so PATH includes the new tools.
-- The project was started on the user's work PC; `node_modules/` and `src-tauri/target/` were copied over from there (the target folder has installers 1.0.0 to 1.2.0).
+- The project was started on the user's work PC. Since 2026-10-09 there is one working checkout here (`D:\MyAIProjects\AdikaPDF` on main; Claude sessions integrate in their own worktree, with node_modules / public assets / .tools linked to it and `CARGO_TARGET_DIR` pointing at its src-tauri/target) with its own node_modules and the current Rust build cache (src-tauri/target, release only); release installers are on GitHub, not kept locally.
