@@ -172,7 +172,7 @@ describe('10 character mappings, 31 fonts', () => {
       mutate: (d) => {
         const helv = d.context.register(d.context.obj({ Type: 'Font', Subtype: 'Type1', BaseFont: 'Helvetica', Encoding: 'WinAnsiEncoding' }));
         d.getPage(0).node.setFontDictionary(PDFName.of('F2'), helv);
-        const c = d.getPage(0).node.lookup(PDFName.of('Contents'), PDFRawStream);
+        const c = d.getPage(0).node.lookup(PDFName.of('Contents')) as PDFRawStream;
         const src = new TextDecoder('latin1').decode(decodePDFRawStream(c).decode()) + '\n/P <</MCID 2>> BDC BT /F2 11 Tf 60 600 Td (Helvetica) Tj ET EMC';
         d.getPage(0).node.set(PDFName.of('Contents'), d.context.register(d.context.flateStream(src)));
       },

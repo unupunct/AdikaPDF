@@ -77,6 +77,7 @@ import {
   KeyRound,
   Mails,
   Accessibility,
+  ClipboardCheck,
   Printer,
   MousePointerClick,
   QrCode,
@@ -559,6 +560,25 @@ function SecurityTab() {
       </Group>
       <Group label="Accessibility">
         <Big icon={<Accessibility size={I} />} label="Accessibility" disabled={!hasDoc} onClick={() => s.openModal('accessibility')} tip="Check and fix what screen readers need: tags, reading order, title, language, picture descriptions (PDF/UA)" testId="btn-accessibility" />
+        <Big
+          icon={<ClipboardCheck size={I} />}
+          label="PDF/UA check"
+          disabled={!hasDoc}
+          onClick={() => {
+            usePDFStore.getState().setView({ sidebarTab: 'accessibility' });
+            void import('@/actions/pdfua').then((m) => m.runPdfUaCheck());
+          }}
+          tip="Full PDF/UA-1 check by Matterhorn checkpoint, with fixes and a report"
+          testId="btn-pdfua"
+        />
+        <Big
+          icon={<ListOrdered size={I} />}
+          label="Reading order"
+          disabled={!hasDoc}
+          onClick={() => void import('@/actions/pdfua').then((m) => m.setReadingOrderMode(true))}
+          tip="Numbered boxes for the tagged content of each page: drag to reorder, set types, tag untagged areas"
+          testId="btn-reading-order"
+        />
       </Group>
       <Group label="Signatures">
         <Big icon={<ShieldCheck size={I} />} label="Verify" disabled={!hasDoc} onClick={() => s.openModal('verify')} />

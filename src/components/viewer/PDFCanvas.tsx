@@ -9,6 +9,7 @@ import { usePDFStore, MIN_ZOOM, MAX_ZOOM } from '@/store/usePDFStore';
 import { displaySize } from '@/lib/geometry';
 import type { PageRef } from '@/types';
 import { PageView } from './PageView';
+import { ReadingOrderBar } from './ReadingOrderLayer';
 import { Magnifier } from './Magnifier';
 import { AutoScroller } from './AutoScroll';
 import { cn } from '@/lib/cn';
@@ -286,6 +287,7 @@ export function PDFCanvas() {
       </div>
       <Magnifier container={containerRef} />
       <AutoScroller container={containerRef} />
+      <ReadingOrderBar />
     </div>
   );
 }

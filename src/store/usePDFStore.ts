@@ -108,7 +108,7 @@ export interface ToastAction {
   run: () => void;
 }
 
-export type SidebarTab = 'pages' | 'bookmarks' | 'comments' | 'attachments' | 'layers' | 'tags' | 'search';
+export type SidebarTab = 'pages' | 'bookmarks' | 'comments' | 'attachments' | 'layers' | 'tags' | 'accessibility' | 'search';
 
 export interface NavPoint {
   pageId: string;
