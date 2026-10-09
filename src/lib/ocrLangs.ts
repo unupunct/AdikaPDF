@@ -97,7 +97,7 @@ export function planOcrLangs(requested: string[], downloaded: Iterable<string>):
 
 export class OcrLangMissingError extends Error {
   constructor(codes: string[]) {
-    super(`OCR language not installed: ${codes.join(', ')}. Download it in Optimise → OCR → Languages.`);
+    super(`OCR language not installed: ${codes.join(', ')}. Download it in the OCR dialog (More languages…).`);
     this.name = 'OcrLangMissingError';
   }
 }
