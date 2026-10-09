@@ -714,8 +714,8 @@ export function EInvoiceCreateModal() {
             {issues.length ? (
               <ul className="flex flex-col gap-1 text-[11.5px]" data-testid="einv-issues">
                 {issues.map((i, k) => (
-                  <li key={k} className={i.severity === 'error' ? 'text-rose-600 dark:text-rose-400' : 'text-amber-600 dark:text-amber-400'}>
-                    <span className="mr-1 font-mono text-[10px] opacity-70" data-no-translate>
+                  <li key={k} className={i.severity === 'error' ? 'text-rose-700 dark:text-rose-400' : 'text-amber-700 dark:text-amber-400'}>
+                    <span className="mr-1 font-mono text-[10px]" data-no-translate>
                       {i.rule}
                     </span>
                     <span data-no-translate>{translate(i.message)}</span>
@@ -729,7 +729,7 @@ export function EInvoiceCreateModal() {
             )}
             {anafCheck ? (
               <div className="mt-2">
-                {anafStale ? <p className="mb-1 text-[11px] text-amber-600 dark:text-amber-400">The invoice changed after ANAF checked it.</p> : null}
+                {anafStale ? <p className="mb-1 text-[11px] text-amber-700 dark:text-amber-400">The invoice changed after ANAF checked it.</p> : null}
                 <ValidationResult v={anafCheck.result} />
               </div>
             ) : null}

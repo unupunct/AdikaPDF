@@ -245,6 +245,10 @@ export function PDFCanvas() {
     <div
       ref={containerRef}
       data-testid="pdf-canvas"
+      // Focusable, so the pages scroll with the keyboard.
+      tabIndex={0}
+      role="region"
+      aria-label="Pages"
       onScroll={onScroll}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}

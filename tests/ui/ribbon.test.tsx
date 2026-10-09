@@ -1,9 +1,12 @@
 import { describe, expect, it, beforeEach } from 'vitest';
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { TooltipProvider } from '@/components/ui/primitives';
 import { Ribbon, RIBBON_TABS } from '@/components/ribbon/Ribbon';
 import { usePDFStore } from '@/store/usePDFStore';
+import { TabBar } from '@/components/shell/TabBar';
+import { newTab, useTabs } from '@/store/tabs';
+import { axeProblems, describeProblems } from './axe';
 
 function renderRibbon() {
   return render(
@@ -80,5 +83,33 @@ describe('ribbon tabs (keyboard)', () => {
     fireEvent.keyDown(window, { key: 'Alt', altKey: true, ctrlKey: true });
     fireEvent.keyUp(window, { key: 'Alt' });
     expect(document.activeElement).toBe(document.body);
+  });
+});
+
+describe('document tabs (keyboard)', () => {
+  it('one tab stop; arrows, Home and End switch documents; no controls inside a tab', async () => {
+    const user = userEvent.setup();
+    const page = { id: 'p1', sourceId: 's1', sourcePageIndex: 0, rotation: 0, width: 595, height: 842 } as unknown as ReturnType<typeof usePDFStore.getState>['pages'][number];
+    act(() => {
+      usePDFStore.setState({ fileName: 'a.pdf', pages: [page] });
+      newTab();
+      usePDFStore.setState({ fileName: 'b.pdf', pages: [page] });
+    });
+    render(<TabBar />);
+    const list = screen.getByRole('tablist', { name: 'Open documents' });
+    const tabs = within(list).getAllByRole('tab');
+    expect(tabs.map((t) => t.textContent)).toEqual(['a.pdf', 'b.pdf']);
+    expect(tabs.map((t) => t.tabIndex)).toEqual([-1, 0]);
+    tabs[1].focus();
+    await user.keyboard('{ArrowLeft}');
+    expect(usePDFStore.getState().fileName).toBe('a.pdf');
+    await waitFor(() => expect(document.activeElement?.textContent).toBe('a.pdf'));
+    await user.keyboard('{End}');
+    expect(usePDFStore.getState().fileName).toBe('b.pdf');
+    await user.keyboard('{ArrowRight}');
+    expect(usePDFStore.getState().fileName).toBe('a.pdf');
+    const problems = await axeProblems(document.body);
+    expect(problems, describeProblems(problems)).toEqual([]);
+    act(() => useTabs.setState({ tabs: [useTabs.getState().tabs[0]], activeId: useTabs.getState().tabs[0].id }));
   });
 });

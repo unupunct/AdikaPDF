@@ -278,7 +278,9 @@ export function ColorSwatch({ value, onChange, label, allowNone }: { value: stri
   return (
     <Popover
       trigger={
-        <button type="button" aria-label={label} className="flex h-8 items-center gap-2 rounded-md border border-app bg-panel-2 px-2 text-xs hover-app">
+        <button type="button" className="flex h-8 items-center gap-2 rounded-md border border-app bg-panel-2 px-2 text-xs hover-app">
+          {/* Named by the label and the value shown (the name contains the visible text). */}
+          <span className="sr-only">{label}</span>
           <span className={cn('h-4 w-4 rounded border border-black/15', !value && 'checkerboard')} style={value ? { background: value } : undefined} />
           <span className="font-mono">{value ?? 'none'}</span>
         </button>

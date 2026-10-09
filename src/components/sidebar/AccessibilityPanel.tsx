@@ -145,7 +145,7 @@ export function AccessibilityPanel() {
             <div className="mt-2 rounded-md border border-app">
               <button type="button" className="flex w-full items-center gap-1 px-1.5 py-1 text-left font-medium hover-app" onClick={() => setShowManual((v) => !v)} data-testid="pdfua-manual-toggle">
                 {showManual ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-                <AlertTriangle size={12} className="text-amber-600" /> Needs a person to check
+                <AlertTriangle size={12} className="text-amber-700" /> Needs a person to check
               </button>
               {showManual
                 ? report.manual.map((m, k) => (

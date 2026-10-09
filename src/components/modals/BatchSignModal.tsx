@@ -347,7 +347,7 @@ export function BatchSignModal() {
               return (
                 <li key={f} className="flex items-center gap-2 border-b border-app px-2 py-1 last:border-0" title={f}>
                   {r ? (
-                    r.status === 'done' ? <CheckCircle2 size={13} className="text-accent-600" /> : r.status === 'skipped' ? <MinusCircle size={13} className="text-amber-600" /> : <XCircle size={13} className="text-rose-600" />
+                    r.status === 'done' ? <CheckCircle2 size={13} className="text-accent-600" /> : r.status === 'skipped' ? <MinusCircle size={13} className="text-amber-700" /> : <XCircle size={13} className="text-rose-600" />
                   ) : running && progress?.done === i ? (
                     <Loader2 size={13} className="animate-spin" />
                   ) : null}

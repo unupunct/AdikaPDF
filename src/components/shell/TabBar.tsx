@@ -1,3 +1,4 @@
+import type { KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { FileText, Plus, X } from 'lucide-react';
 import { useTabs, switchTab, tabInfo } from '@/store/tabs';
 import { usePDFStore } from '@/store/usePDFStore';
@@ -13,8 +14,21 @@ export function TabBar() {
   usePDFStore((s) => `${s.fileName}|${s.dirty}`);
   const hasDoc = usePDFStore((s) => s.pages.length > 0);
   if (tabs.length === 1 && !hasDoc) return null;
+  // Arrow keys, Home and End move between documents (one tab stop for the list); Ctrl+W closes.
+  const onKey = (e: ReactKeyboardEvent<HTMLDivElement>) => {
+    const i = tabs.findIndex((t) => t.id === activeId);
+    const n = tabs.length;
+    const next = e.key === 'ArrowRight' ? (i + 1) % n : e.key === 'ArrowLeft' ? (i - 1 + n) % n : e.key === 'Home' ? 0 : e.key === 'End' ? n - 1 : -1;
+    if (next < 0 || next === i) return;
+    e.preventDefault();
+    const id = tabs[next].id;
+    const list = e.currentTarget;
+    switchTab(id);
+    requestAnimationFrame(() => list.querySelector<HTMLElement>(`[data-tab-id="${id}"]`)?.focus());
+  };
   return (
-    <div role="tablist" aria-label="Open documents" className="flex h-8 shrink-0 items-end gap-0.5 overflow-x-auto border-b border-app bg-app px-2" data-testid="tab-bar">
+    <div className="flex h-8 shrink-0 items-end gap-0.5 overflow-x-auto border-b border-app bg-app px-2" data-testid="tab-bar">
+      <div role="tablist" aria-label="Open documents" className="flex items-end gap-0.5" onKeyDown={onKey}>
       {tabs.map((t) => {
         const info = tabInfo(t, activeId);
         const active = t.id === activeId;
@@ -23,6 +37,8 @@ export function TabBar() {
             key={t.id}
             role="tab"
             aria-selected={active}
+            tabIndex={active ? 0 : -1}
+            data-tab-id={t.id}
             data-testid="doc-tab"
             draggable={!!info.name}
             onDragEnd={(e) => {
@@ -47,10 +63,10 @@ export function TabBar() {
             <span className="min-w-0 flex-1 truncate" data-no-translate={info.name ? '' : undefined}>
               {info.name ?? 'New tab'}
             </span>
-            {info.dirty ? <span className="text-brand-600" aria-label="Unsaved changes">●</span> : null}
-            <button
-              type="button"
-              aria-label={`Close ${info.name ?? 'tab'}`}
+            {info.dirty ? <span className="text-brand-600" role="img" aria-label="Unsaved changes">●</span> : null}
+            {/* For the mouse only (a tab holds no controls): Ctrl+W closes the document from the keyboard. */}
+            <span
+              aria-hidden="true"
               data-testid="doc-tab-close"
               onClick={(e) => {
                 e.stopPropagation();
@@ -59,10 +75,11 @@ export function TabBar() {
               className="flex h-4 w-4 items-center justify-center rounded opacity-60 hover:bg-[var(--hover)] hover:opacity-100"
             >
               <X size={11} />
-            </button>
+            </span>
           </div>
         );
       })}
+      </div>
       <button type="button" aria-label="Open another PDF" title="Open another PDF (Ctrl+O)" onClick={() => void openDialog()} className="mb-0.5 flex h-6 w-6 items-center justify-center rounded text-muted hover-app">
         <Plus size={14} />
       </button>

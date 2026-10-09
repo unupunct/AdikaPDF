@@ -86,13 +86,13 @@ export function AccessibilityModal() {
                 {c.status === 'pass' ? (
                   <CheckCircle2 size={14} className="mt-0.5 shrink-0 text-accent-600" />
                 ) : c.status === 'warn' ? (
-                  <AlertTriangle size={14} className="mt-0.5 shrink-0 text-amber-600" />
+                  <AlertTriangle size={14} className="mt-0.5 shrink-0 text-amber-700" />
                 ) : (
                   <XCircle size={14} className="mt-0.5 shrink-0 text-rose-600" />
                 )}
                 <span className="w-44 shrink-0 font-medium">{c.title}</span>
                 <span className="min-w-0 flex-1 text-muted">{c.detail}</span>
-                {c.status !== 'pass' && c.fixable ? <span className="shrink-0 text-[10px] text-brand-600">Fixed below</span> : null}
+                {c.status !== 'pass' && c.fixable ? <span className="shrink-0 text-[10px] text-brand-700 dark:text-brand-300">Fixed below</span> : null}
               </div>
             ))}
           </div>

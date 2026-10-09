@@ -19,7 +19,7 @@ export function Toasts() {
             t.kind === 'error' ? 'border-rose-300 dark:border-rose-800' : t.kind === 'success' ? 'border-emerald-300 dark:border-emerald-800' : 'border-app',
           )}
         >
-          {t.kind === 'error' ? <XCircle size={16} className="mt-0.5 shrink-0 text-rose-600" /> : t.kind === 'success' ? <CheckCircle2 size={16} className="mt-0.5 shrink-0 text-emerald-600" /> : <Info size={16} className="mt-0.5 shrink-0 text-brand-600" />}
+          {t.kind === 'error' ? <XCircle size={16} className="mt-0.5 shrink-0 text-rose-600" /> : t.kind === 'success' ? <CheckCircle2 size={16} className="mt-0.5 shrink-0 text-emerald-700" /> : <Info size={16} className="mt-0.5 shrink-0 text-brand-600" />}
           <span className="min-w-0 flex-1 break-words">
             {t.message}
             {t.action ? (

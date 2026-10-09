@@ -80,8 +80,9 @@ function LanguageButton() {
     <DropdownMenu>
       <Tooltip content="Interface language">
         <DropdownTrigger asChild>
-          <Button variant="ghost" size="sm" className="h-8 gap-1 px-2 text-[11.5px] font-semibold" aria-label="Language" data-testid="lang-toggle">
+          <Button variant="ghost" size="sm" className="h-8 gap-1 px-2 text-[11.5px] font-semibold" data-testid="lang-toggle">
             <Languages size={15} />
+            <span className="sr-only">Language</span>
             <span data-no-translate>{lang.toUpperCase()}</span>
           </Button>
         </DropdownTrigger>
