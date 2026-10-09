@@ -18,7 +18,7 @@ import {
   type SigningIdentity,
 } from '@/lib/crypto/digitalSignature';
 import { appDataRead, appDataWrite, base64ToBytes, httpGet, httpPost, isDesktop, pkcs11Sign, systemCertificates, winstoreSign, type StoreCertificate, type TokenCertificate } from '@/lib/platform';
-import { downloadTrustedLists, trustIndex, type TrustedListCache } from '@/lib/crypto/euTrustedList';
+import { buildTrustedLists, downloadTrustedLists, trustIndex, type TrustedListCache, type TrustedListSources } from '@/lib/crypto/euTrustedList';
 import type { SignatureValidation } from '@/types';
 import { PDFDocument } from 'pdf-lib';
 import { displaySize, displayToPdfMatrix, normalizeRotation, transformRectBounds } from '@/lib/geometry';
@@ -365,20 +365,41 @@ export async function issuerChain(leaf: forge.pki.Certificate): Promise<forge.pk
 
 // ---------------------------------------------------------------- EU Trusted Lists
 
+/** The downloaded files (TrustedListSources); their signatures are checked again on every load. */
 const TL_FILE = 'eu-trusted-lists.json';
 let tlCache: TrustedListCache | null = null;
+let tlLoading: Promise<TrustedListCache | null> | null = null;
 let tlIndex: ReturnType<typeof trustIndex> | null = null;
+let tlProblem: string | null = null;
 
-/** The downloaded EU Trusted Lists (null until downloaded once). */
+/** Why the saved lists could not be used (their signature check failed), or null. */
+export const euTrustedListsProblem = () => tlProblem;
+
+/** The downloaded EU Trusted Lists, signatures verified (null until downloaded once). */
 export async function euTrustedLists(): Promise<TrustedListCache | null> {
   if (tlCache) return tlCache;
-  try {
-    const raw = await appDataRead(TL_FILE);
-    tlCache = raw.length ? (JSON.parse(new TextDecoder().decode(raw)) as TrustedListCache) : null;
-  } catch {
-    tlCache = null; // missing or damaged: download again
-  }
-  return tlCache;
+  tlLoading ??= (async () => {
+    let src: TrustedListSources | null = null;
+    try {
+      const raw = await appDataRead(TL_FILE);
+      src = raw.length ? (JSON.parse(new TextDecoder().decode(raw)) as TrustedListSources) : null;
+    } catch {
+      src = null; // missing or damaged: download again
+    }
+    // Saved by an older version (parsed lists without the signed files): download again.
+    if (!src || typeof src.lotl !== 'string' || !Array.isArray(src.lists)) return null;
+    try {
+      tlCache = await buildTrustedLists(src);
+      tlProblem = null;
+    } catch (e) {
+      tlProblem = e instanceof Error ? e.message : String(e);
+      tlCache = null;
+    }
+    return tlCache;
+  })().finally(() => {
+    tlLoading = null;
+  });
+  return tlLoading;
 }
 
 async function euTrust() {
@@ -395,12 +416,16 @@ export async function updateEuTrustedLists(): Promise<TrustedListCache | null> {
     downloadTrustedLists(httpGet, (done, total) => progress(`Downloading the EU Trusted Lists (${done} / ${total})…`, total ? done / total : null)),
   );
   if (!res) return null;
-  await appDataWrite(TL_FILE, new TextEncoder().encode(JSON.stringify(res)));
+  await appDataWrite(TL_FILE, new TextEncoder().encode(JSON.stringify(res.sources)));
   tlCache = res;
   tlIndex = null;
-  const failed = res.lists.filter((l) => l.error).map((l) => l.territory);
-  const summary = `EU Trusted Lists updated: ${res.services.length} qualified services from ${res.lists.length - failed.length} countries.`;
-  store.toast(failed.length ? `${summary} Not available: ${failed.join(', ')}.` : summary, 'success');
+  tlProblem = null;
+  const rejected = res.rejected ?? [];
+  const failed = res.lists.filter((l) => l.error && !rejected.includes(l.territory)).map((l) => l.territory);
+  let summary = `EU Trusted Lists updated and their signatures verified: ${res.services.length} qualified services from ${res.lists.length - failed.length - rejected.length} countries.`;
+  if (rejected.length) summary += ` Not used (signature not valid): ${rejected.join(', ')}.`;
+  if (failed.length) summary += ` Not available: ${failed.join(', ')}.`;
+  store.toast(summary, rejected.length ? 'info' : 'success');
   return res;
 }
 

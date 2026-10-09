@@ -48,7 +48,10 @@ export function reportRows(v: SignatureValidation, t: (s: string) => string = (s
   if (v.algorithm) rows.push([t('Algorithm'), v.algorithm, 'info']);
   if (v.padesLevel) rows.push([t('PAdES level'), `PAdES ${v.padesLevel}`, 'info']);
   if (v.qualified) rows.push([t('Qualified'), v.qualified === 'qscd' ? t('Qualified electronic signature (qualified certificate, key on a secure device)') : t('Qualified certificate'), 'ok']);
-  if (v.euTrusted) rows.push([t('EU Trusted List'), `${v.euTrusted} (${t('downloaded over HTTPS; the list’s own signature is not verified')})`, 'ok']);
+  if (v.euTrusted) {
+    const how = v.euTrustedVerified ? `${t('the lists’ signatures verified')} ${v.euTrustedVerified.slice(0, 10)}` : t('the lists’ signatures not verified');
+    rows.push([t('EU Trusted List'), `${v.euTrusted} (${how})`, v.euTrustedVerified ? 'ok' : 'warn']);
+  }
   if (v.ltv) rows.push([t('Long-term validation'), t('Validation data is stored in the file.'), 'ok']);
   if (v.certified) rows.push([t('Certification'), t(['', 'No changes allowed', 'Form filling and signing allowed', 'Form filling, signing and comments allowed'][v.certified]), 'info']);
   for (const w of v.warnings ?? []) rows.push([t('Warning'), w, 'warn']);

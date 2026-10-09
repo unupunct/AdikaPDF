@@ -40,8 +40,20 @@ export const escapeXmlText = (s: string) => s.replace(/&/g, '&amp;').replace(/</
 export const escapeXmlAttr = (s: string) =>
   escapeXmlText(s).replace(/"/g, '&quot;').replace(/\n/g, '&#10;').replace(/\r/g, '&#13;').replace(/\t/g, '&#9;');
 
+export interface ParseOptions {
+  /**
+   * As an XML processor reports it (for canonicalisation): line ends become
+   * LF, white space in attribute values becomes spaces, and comments and
+   * processing instructions are kept as '#comment' / '#pi' elements (a
+   * '#pi' has the target as its only attribute name and the data as text).
+   */
+  infoset?: boolean;
+}
+
 /** Parses a document; the result is a synthetic root whose children are the top-level nodes. */
-export function parseXmlDoc(xml: string): XEl {
+export function parseXmlDoc(xml: string, opts: ParseOptions = {}): XEl {
+  const infoset = !!opts.infoset;
+  if (infoset) xml = xml.replace(/\r\n?/g, '\n');
   const root: XEl = { name: '#document', attrs: [], children: [] };
   const stack: XEl[] = [root];
   const n = xml.length;
@@ -63,6 +75,7 @@ export function parseXmlDoc(xml: string): XEl {
     if (lt > i && stack.length > 1) addText(decodeXmlEntities(xml.slice(i, lt)));
     if (xml.startsWith('<!--', lt)) {
       const e = xml.indexOf('-->', lt + 4);
+      if (infoset) top().children.push({ name: '#comment', attrs: [], children: [xml.slice(lt + 4, e < 0 ? n : e)] });
       i = e < 0 ? n : e + 3;
       continue;
     }
@@ -74,6 +87,10 @@ export function parseXmlDoc(xml: string): XEl {
     }
     if (xml.startsWith('<?', lt)) {
       const e = xml.indexOf('?>', lt + 2);
+      if (infoset) {
+        const m = /^([^\s?]+)\s*([\s\S]*)$/.exec(xml.slice(lt + 2, e < 0 ? n : e));
+        if (m && m[1].toLowerCase() !== 'xml') top().children.push({ name: '#pi', attrs: [[m[1], '']], children: m[2] ? [m[2]] : [] });
+      }
       i = e < 0 ? n : e + 2;
       continue;
     }
@@ -120,7 +137,10 @@ export function parseXmlDoc(xml: string): XEl {
       attrRe.lastIndex = 0;
       const rest = inner.slice(sp);
       let m: RegExpExecArray | null;
-      while ((m = attrRe.exec(rest))) el.attrs.push([m[1], decodeXmlEntities(m[3] ?? m[4] ?? '')]);
+      while ((m = attrRe.exec(rest))) {
+        const v = m[3] ?? m[4] ?? '';
+        el.attrs.push([m[1], decodeXmlEntities(infoset ? v.replace(/[\t\n]/g, ' ') : v)]);
+      }
     }
     top().children.push(el);
     if (!selfClose) stack.push(el);
