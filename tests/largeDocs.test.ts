@@ -32,6 +32,7 @@ import {
 } from '@/lib/pdf/pageSizes';
 import { beginEstimated, correctPage, correctPages, forgetSource, hasEstimated, isEstimated, onSizesCorrected, pageCorrector, pageSizesReady, reportSizes } from '@/lib/pdf/pageSizeRegistry';
 import type { EditorObject, PageRef } from '@/types';
+import { setPageOrder } from '@/lib/pdf/exportPdf';
 
 const S = () => usePDFStore.getState();
 const enc = (s: string) => new TextEncoder().encode(s);
@@ -144,6 +145,22 @@ describe('estimated page sizes', () => {
     expect(fix(pages)).toBe(fix(pages));
     forgetSource('srcA');
     expect(correctPages(pages)).toBe(pages);
+  });
+});
+
+describe('saving', () => {
+  it('sets the page order in one pass (pages, cache and count stay consistent)', async () => {
+    const doc = await PDFDocument.create();
+    const sizes: Array<[number, number]> = [[100, 200], [300, 400], [500, 600]];
+    for (const s of sizes) doc.addPage(s);
+    const [a, b, c] = doc.getPages();
+    const blank = doc.addPage([10, 20]);
+    setPageOrder(doc, [c, a, blank]);
+    expect(doc.getPageCount()).toBe(3);
+    expect(doc.getPages()).toEqual([c, a, blank]);
+    const again = await PDFDocument.load(await doc.save());
+    expect(again.getPages().map((p) => p.getSize().width)).toEqual([500, 100, 10]);
+    void b;
   });
 });
 

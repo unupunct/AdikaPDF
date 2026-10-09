@@ -13,6 +13,8 @@ import * as pdfjs from 'pdfjs-dist/legacy/build/pdf.mjs';
 import { containsToken, firstPagesToRead, loadPageSizes } from '../../src/lib/pdf/pageSizes';
 import { verifyPdfSignatures } from '../../src/lib/crypto/digitalSignature';
 import { readPortfolio } from '../../src/lib/pdf/portfolio';
+import { buildPdf } from '../../src/lib/pdf/exportPdf';
+import type { EditorObject, PageRef } from '../../src/types';
 
 const DIR = process.env.LARGE_DIR ?? join(tmpdir(), 'adika-large-docs');
 const MODE = process.env.LARGE_MODE ?? 'lazy';
@@ -104,6 +106,28 @@ async function measure(label: string, bytes: Uint8Array) {
   console.log(after);
   appendFileSync(join(DIR, 'results.txt'), `${after}\n`);
   await doc.loadingTask.destroy();
+  if (process.env.LARGE_SAVE) await save(label, bytes);
+}
+
+/** Saving with one rectangle on page ~4,000: time, progress calls, memory. */
+async function save(label: string, bytes: Uint8Array) {
+  const count = (await PDFDocument.load(bytes, { updateMetadata: false })).getPageCount();
+  const pages: PageRef[] = Array.from({ length: count }, (_, i) => ({ id: `p${i}`, kind: 'source', sourceId: 's', sourceIndex: i, baseRotation: 0, userRotation: 0, width: 595, height: 842 }));
+  const target = pages[Math.min(3999, count - 1)].id;
+  const objects = [{ id: 'r', type: 'rect', pageId: target, x: 50, y: 50, width: 100, height: 60, rotation: 0, opacity: 1, stroke: '#ff0000', strokeWidth: 2, fill: null }] as unknown as EditorObject[];
+  let calls = 0;
+  let peak = 0;
+  const watch = setInterval(() => (peak = Math.max(peak, process.memoryUsage().rss)), 50);
+  const r0 = process.memoryUsage().rss;
+  const t0 = performance.now();
+  const out = await buildPdf(
+    { sources: { s: { id: 's', name: 'big.pdf', bytes, pageCount: count } }, pages, objects, fieldValues: {} },
+    { measure: () => (t: string) => t.length * 5, loadFont: async () => new Uint8Array(), onProgress: () => void calls++ },
+  );
+  clearInterval(watch);
+  const line = `${label.padEnd(26)} ${MODE.padEnd(5)} | save ${(performance.now() - t0).toFixed(0)} ms, ${mb(out.length)} out, ${calls} progress calls, rss peak +${mb(Math.max(0, peak - r0))}`;
+  console.log(line);
+  appendFileSync(join(DIR, 'results.txt'), `${line}\n`);
 }
 
 it('large documents', async () => {

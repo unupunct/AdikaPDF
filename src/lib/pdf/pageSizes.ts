@@ -15,7 +15,7 @@ export const LAZY_MIN_PAGES = 60;
 /** Pages read before the document is shown (the first screenful). */
 export const FIRST_PAGES = 3;
 /** getPage calls in flight at once while reading the rest. */
-export const SIZE_BATCH = 200;
+export const SIZE_BATCH = 64;
 
 export interface PageSize {
   index: number;

@@ -194,6 +194,32 @@ function pinInheritedAttributes(page: PDFPage): void {
   }
 }
 
+/**
+ * Makes `pages` the document's pages, in this order, as kids of the root
+ * page tree node (inherited attributes are pinned on the pages first).
+ * pdf-lib's removePage / addPage walk the tree for every page: quadratic,
+ * 13 s for 10,000 pages.
+ */
+export function setPageOrder(doc: PDFDocument, pages: PDFPage[]): void {
+  const rootRef = doc.catalog.get(PDFName.of('Pages'));
+  if (!(rootRef instanceof PDFRef)) {
+    for (let i = doc.getPageCount() - 1; i >= 0; i--) doc.removePage(i);
+    for (const p of pages) doc.addPage(p);
+    return;
+  }
+  const root = doc.catalog.Pages();
+  root.set(PDFName.of('Kids'), doc.context.obj(pages.map((p) => p.ref)));
+  root.set(PDFName.of('Count'), PDFNumber.of(pages.length));
+  // pdf-lib's page cache (as insertPage keeps it).
+  const internal = doc as unknown as { pageMap: Map<unknown, PDFPage>; pageCache: { invalidate(): void }; pageCount?: number };
+  for (const p of pages) {
+    p.node.setParent(rootRef);
+    internal.pageMap.set(p.node, p);
+  }
+  internal.pageCache.invalidate();
+  internal.pageCount = pages.length;
+}
+
 function visibleBox(page: PDFPage): Rect {
   const b = page.getCropBox();
   return { x: b.x, y: b.y, width: b.width, height: b.height };
@@ -956,7 +982,15 @@ export async function buildPdf(input: ExportInput, options: ExportOptions = {}):
   input = await withRealSizes(input, options);
   const { sources, pages, objects } = input;
   if (pages.length === 0) throw new ExportError('The document has no pages.');
-  const progress = options.onProgress ?? (() => undefined);
+  // At most every 1% (a 5,000-page document would otherwise update the busy overlay 10,000 times).
+  let lastStep = '';
+  let lastFraction = -1;
+  const progress = (step: string, fraction: number) => {
+    if (step === lastStep && fraction - lastFraction < 0.01) return;
+    lastStep = step;
+    lastFraction = fraction;
+    options.onProgress?.(step, fraction);
+  };
   const opts = {
     measure: options.measure ?? canvasMeasure,
     loadFont: options.loadFont ?? loadFontBytes,
@@ -1134,9 +1168,8 @@ export async function buildPdf(input: ExportInput, options: ExportOptions = {}):
   }
 
   // 3. Replace the page tree contents with the planned order.
-  for (let i = doc.getPageCount() - 1; i >= 0; i--) doc.removePage(i);
+  setPageOrder(doc, planned.map((p) => p.page));
   for (const p of planned) {
-    doc.addPage(p.page);
     if (!p.rasterized) p.page.setRotation(degrees(totalRotation(p.ref)));
     else p.page.setRotation(degrees(0));
     if (p.ref.sourceId && p.ref.sourceId !== baseSourceId && !p.rasterized) attachCopiedFields(doc, p.page);
