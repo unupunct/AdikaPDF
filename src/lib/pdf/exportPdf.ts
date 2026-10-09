@@ -87,7 +87,8 @@ import {
 import { loadFontBytes, type FontVariant } from '@/lib/fonts';
 import { layoutText, canvasMeasure, type Measure } from '@/lib/textLayout';
 import { embedFontForText } from './fontEmbed';
-import { writeFreeText, writeMarkup, writeNote } from './annotations';
+import { writeFreeText, writeMarkup, writeNote, type RichFonts } from './annotations';
+import { richRuns, runVariants } from '@/lib/richText';
 import { addReviewReply, type ReviewState } from './review';
 import { writeAttachment, writeLink, writeMeasure, writePoly, writeStamp } from './commentAnnots';
 import { prepareFileAnnotEdits } from './fileAnnots';
@@ -428,6 +429,15 @@ async function fontFor(ctx: DrawContext, v: FontVariant): Promise<PDFFont> {
   return f;
 }
 
+/** The fonts of a comment text box's styled runs (none without runs). */
+async function richFontsFor(ctx: DrawContext, o: TextObject): Promise<RichFonts | undefined> {
+  const runs = richRuns(o);
+  if (!runs) return undefined;
+  const fonts = new Map<string, PDFFont>();
+  for (const { variant } of runVariants(o, runs).values()) fonts.set(variantKey(variant), await fontFor(ctx, variant));
+  return { font: (v) => fonts.get(variantKey(v)) ?? fonts.values().next().value!, measureFor: ctx.opts.measure };
+}
+
 /** Strings each font variant will draw (text boxes and signature captions). */
 function collectFontTexts(objects: EditorObject[]): Map<string, string[]> {
   const out = new Map<string, string[]>();
@@ -439,6 +449,7 @@ function collectFontTexts(objects: EditorObject[]): Map<string, string[]> {
   };
   for (const o of objects) {
     if (o.type === 'text') add({ family: o.fontFamily, bold: o.bold, italic: o.italic }, o.text);
+    if (o.type === 'text' && richRuns(o)) for (const { variant, text } of runVariants(o, o.runs!).values()) add(variant, text);
     if (o.type === 'signature' && o.showCaption) add({ family: 'sans', bold: false, italic: false }, `${signatureCaption(o)}…`);
     if (o.type === 'measure') add({ family: 'sans', bold: false, italic: false }, `0123456789.,- ${o.scale.realUnit}²`);
     if (o.type === 'stamp' && !o.src) {
@@ -1217,7 +1228,7 @@ export async function buildPdf(input: ExportInput, options: ExportOptions = {}):
           }
           if (o.annotation) {
             const v = { family: o.fontFamily, bold: o.bold, italic: o.italic };
-            writeFreeText(ctx.doc, page, pm, o, await fontFor(ctx, v), ctx.opts.measure(v, o.fontSize));
+            writeFreeText(ctx.doc, page, pm, o, await fontFor(ctx, v), ctx.opts.measure(v, o.fontSize), await richFontsFor(ctx, o));
           } else {
             const sh = replacerShift.get(o.id);
             const a = (o.rotation * Math.PI) / 180;
@@ -1523,7 +1534,7 @@ export async function buildIncrementalPdf(input: ExportInput, options: ExportOpt
         switch (o.type) {
           case 'text': {
             const v = { family: o.fontFamily, bold: o.bold, italic: o.italic };
-            writeFreeText(doc, page, pm, o, await fontFor(ctx, v), opts.measure(v, o.fontSize));
+            writeFreeText(doc, page, pm, o, await fontFor(ctx, v), opts.measure(v, o.fontSize), await richFontsFor(ctx, o));
             break;
           }
           case 'note':

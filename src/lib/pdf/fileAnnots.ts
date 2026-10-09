@@ -22,11 +22,13 @@ import {
   PDFNumber,
   PDFObjectCopier,
   PDFPage,
+  PDFRawStream,
   PDFRef,
   PDFStream,
   PDFString,
   appendBezierCurve,
   closePath,
+  decodePDFRawStream,
   fill,
   fillAndStroke,
   lineTo,
@@ -63,6 +65,7 @@ import { applyMatrix, displayToPdfMatrix, multiply, normalizeAngle, rotateCw, to
 import { uid } from '@/lib/uid';
 import { addToPage, appearance, hexToRgbTuple, linear, pdfDate, rotateEntry, text, transparency } from './annotations';
 import { parseSvgPath } from './vectorEdit';
+import { parseCss, parseRichText, type RunStyle } from '@/lib/richText';
 
 // ------------------------------------------------------------------ ids
 
@@ -106,6 +109,21 @@ function nums(d: PDFDict | PDFArray, key?: string): number[] | null {
 function str(d: PDFDict, key: string): string {
   const v = d.lookup(PDFName.of(key));
   return v instanceof PDFString || v instanceof PDFHexString ? v.decodeText() : '';
+}
+
+/** A text string, or a text stream (/RC may be either). */
+function textOrStream(d: PDFDict, key: string): string {
+  const v = d.lookup(PDFName.of(key));
+  if (v instanceof PDFRawStream) {
+    try {
+      const b = decodePDFRawStream(v).decode();
+      if (b[0] === 0xfe && b[1] === 0xff) return new TextDecoder('utf-16be').decode(b.subarray(2));
+      return new TextDecoder().decode(b);
+    } catch {
+      return '';
+    }
+  }
+  return str(d, key);
 }
 
 const hex2 = (v: number) => Math.round(Math.min(1, Math.max(0, v)) * 255).toString(16).padStart(2, '0');
@@ -375,19 +393,27 @@ function toObject(doc: PDFDocument, d: PDFDict, subtype: string, inv: Matrix, re
       const callout = cl && cl.length >= 4 ? (([ax, ay]) => ({ x: ax - box.x, y: ay - box.y }))(P(cl[0], cl[1])) : null;
       const q = num(d, 'Q') ?? 0;
       const bw = strokeWidth(d);
+      // Rich text (/RC) and default style (/DS): bold, italic, colours and sizes of parts are kept.
+      const fallback: RunStyle = { family: 'sans', bold: false, italic: false, underline: false, strike: false, color: fg, size };
+      const ds = str(d, 'DS');
+      const rc = textOrStream(d, 'RC');
+      const rich = rc ? parseRichText(rc, ds, fallback) : null;
+      const style = rich?.base ?? { ...fallback, ...parseCss(ds) };
+      const runs = rich?.runs && rich.text.trim() ? rich.runs : undefined;
       return {
         ...base,
         type: 'text',
         x: box.x,
         y: box.y,
         width: Math.max(10, box.width),
-        height: Math.max(size * 1.25, box.height),
-        text: contents,
-        fontFamily: 'sans',
-        bold: false,
-        italic: false,
-        fontSize: size,
-        color: fg,
+        height: Math.max(style.size * 1.25, box.height),
+        text: runs ? rich!.text : contents,
+        ...(runs ? { runs } : {}),
+        fontFamily: style.family,
+        bold: style.bold,
+        italic: style.italic,
+        fontSize: style.size,
+        color: style.color,
         align: q === 1 ? 'center' : q === 2 ? 'right' : 'left',
         lineHeight: 1.25,
         background: color(d, 'IC'),

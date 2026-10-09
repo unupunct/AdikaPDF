@@ -40,6 +40,8 @@ import {
 import type { MarkupObject, NoteObject, TextObject } from '@/types';
 import { applyMatrix, multiply, rotateCw, transformRectBounds, translate, type Matrix } from '@/lib/geometry';
 import { layoutText, type Measure } from '@/lib/textLayout';
+import { defaultStyleString, layoutRich, richRuns, richTextXml, variantOf, type MeasureFor } from '@/lib/richText';
+import type { FontVariant } from '@/lib/fonts';
 
 type RGB = [number, number, number];
 
@@ -275,9 +277,17 @@ export function calloutKnee(w: number, h: number, anchor: { x: number; y: number
   return { x: w / 2, y: anchor.y < 0 ? 0 : h };
 }
 
-export function writeFreeText(doc: PDFDocument, page: PDFPage, pm: Matrix, o: TextObject, font: PDFFont, measure: Measure): void {
+/** Fonts and measuring for text boxes with styled runs. */
+export interface RichFonts {
+  font(v: FontVariant): PDFFont;
+  measureFor: MeasureFor;
+}
+
+export function writeFreeText(doc: PDFDocument, page: PDFPage, pm: Matrix, o: TextObject, font: PDFFont, measure: Measure, rich?: RichFonts): void {
+  const runs = rich ? richRuns(o) : null;
   const layout = layoutText(o, measure);
-  const h = Math.max(o.height, layout.contentHeight);
+  const richLayout = runs && rich ? layoutRich(o, runs, rich.measureFor) : null;
+  const h = Math.max(o.height, richLayout ? richLayout.contentHeight : layout.contentHeight);
   const local = multiply(pm, multiply(translate(o.x, o.y), rotateCw(o.rotation)));
   const frame = multiply(local, [1, 0, 0, -1, 0, h]);
   const anchor = o.callout ?? null;
@@ -312,17 +322,40 @@ export function writeFreeText(doc: PDFDocument, page: PDFPage, pm: Matrix, o: Te
       stroke(),
     );
   }
-  ops.push(setFillingRgbColor(...color));
-  for (const line of layout.lines) {
-    if (!line.text) continue;
-    ops.push(beginText(), setFontAndSize(fontName, o.fontSize), moveText(line.x, h - line.baseline), showText(font.encodeText(line.text)), endText());
+  const fontRes: Record<string, PDFRef> = { F1: font.ref };
+  if (richLayout && rich) {
+    const names = new Map<PDFFont, string>([[font, 'F1']]);
+    for (const line of richLayout.lines) {
+      for (const seg of line.segments) {
+        const f = rich.font(variantOf(seg.style));
+        let nm = names.get(f);
+        if (!nm) {
+          nm = `F${names.size + 1}`;
+          names.set(f, nm);
+          fontRes[nm] = f.ref;
+        }
+        const x = line.x + seg.x;
+        const y = h - line.baseline;
+        ops.push(setFillingRgbColor(...hexToRgbTuple(seg.style.color)));
+        if (seg.text.trim()) ops.push(beginText(), setFontAndSize(PDFName.of(nm), seg.style.size), moveText(x, y), showText(f.encodeText(seg.text)), endText());
+        const t = Math.max(0.5, seg.style.size * 0.06);
+        if (seg.style.underline) ops.push(rectangle(x, y - seg.style.size * 0.12 - t / 2, seg.width, t), fill());
+        if (seg.style.strike) ops.push(rectangle(x, y + seg.style.size * 0.28 - t / 2, seg.width, t), fill());
+      }
+    }
+  } else {
+    ops.push(setFillingRgbColor(...color));
+    for (const line of layout.lines) {
+      if (!line.text) continue;
+      ops.push(beginText(), setFontAndSize(fontName, o.fontSize), moveText(line.x, h - line.baseline), showText(font.encodeText(line.text)), endText());
+    }
   }
   ops.push(popGraphicsState());
   const gsRef = o.opacity < 1 ? transparency(doc, o.opacity) : null;
   if (gsRef) ops.unshift(setGraphicsState(PDFName.of('GS0')));
   // BBox in the flipped appearance frame: display-local y maps to h - y.
   const bbox: [number, number, number, number] = [bx0, h - by1, bx1, h - by0];
-  const ap = appearance(doc, ops, bbox, linear(frame), doc.context.obj(gsRef ? { Font: { F1: font.ref }, ExtGState: { GS0: gsRef } } : { Font: { F1: font.ref } }));
+  const ap = appearance(doc, ops, bbox, linear(frame), doc.context.obj(gsRef ? { Font: fontRes, ExtGState: { GS0: gsRef } } : { Font: fontRes }));
   const [cr, cg, cb] = color;
   const intent = anchor ? 'FreeTextCallout' : border ? null : 'FreeTextTypeWriter';
   const extra: Record<string, unknown> = {};
@@ -339,6 +372,11 @@ export function writeFreeText(doc: PDFDocument, page: PDFPage, pm: Matrix, o: Te
   }
   if (o.background) extra.IC = hexToRgbTuple(o.background);
   if (border) extra.C = border;
+  if (runs) {
+    // Rich text, so other apps keep the styles when they edit it.
+    extra.RC = text(richTextXml(o, runs));
+    extra.DS = text(defaultStyleString(o));
+  }
   const ref = doc.context.register(
     doc.context.obj({
       Type: 'Annot',
