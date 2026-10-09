@@ -4,6 +4,7 @@
  * rewritten in full, which also drops earlier revisions of the file.
  */
 import { create } from 'zustand';
+import { policies } from './policy';
 
 const KEY = 'adika.save';
 
@@ -32,3 +33,8 @@ export const useSaveSettings = create<SaveSettings>()((set) => ({
     }
   },
 }));
+
+/** The setting, unless the SaveIncremental policy fixes it (signed documents are saved incrementally either way). */
+export function preferIncremental(): boolean {
+  return policies().saveIncremental ?? useSaveSettings.getState().preferIncremental;
+}

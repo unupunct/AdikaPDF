@@ -27,6 +27,7 @@ import { isDesktop, pickFiles, pickPaths, pkcs11DetectModules, pkcs11ListTokens,
 import { saveFileQuiet } from '@/actions/saveGuard';
 import type { SignatureValidation } from '@/types';
 import { cn } from '@/lib/cn';
+import { defaultTsaUrl, onlineAllowed, usePolicy } from '@/lib/policy';
 
 export function useSignMeta(): [SignMeta, (m: SignMeta) => void] {
   return useState<SignMeta>({ reason: 'I approve this document', location: '', contactInfo: '', tsaUrl: null, pades: true });
@@ -45,6 +46,7 @@ export function usePlacement(): [PlacementState, (p: PlacementState) => void] {
 export function MetaFields({ meta, onChange }: { meta: SignMeta; onChange: (m: SignMeta) => void }) {
   const [useTsa, setUseTsa] = useState(meta.tsaUrl !== null);
   const signed = usePDFStore((s) => s.signatureStatus.length > 0);
+  const online = usePolicy((s) => onlineAllowed('timestamp', s.policies));
   return (
     <>
       <div className="grid grid-cols-2 gap-3">
@@ -56,19 +58,20 @@ export function MetaFields({ meta, onChange }: { meta: SignMeta; onChange: (m: S
         </Field>
       </div>
       <Checkbox
-        checked={useTsa}
+        checked={useTsa && online}
+        disabled={!online}
         label="Add a trusted timestamp (RFC 3161, needs internet)"
         onChange={(v) => {
           setUseTsa(v);
-          onChange({ ...meta, tsaUrl: v ? meta.tsaUrl || 'http://timestamp.digicert.com' : null });
+          onChange({ ...meta, tsaUrl: v ? meta.tsaUrl || defaultTsaUrl() : null });
         }}
       />
-      {useTsa ? (
+      {useTsa && online ? (
         <Field label="Timestamp authority URL">
           <Input value={meta.tsaUrl ?? ''} onChange={(e) => onChange({ ...meta, tsaUrl: e.target.value })} />
         </Field>
       ) : null}
-      <Checkbox checked={!!meta.ltv} label="Add long-term validation data (LTV: the signature can be verified offline for years; needs internet)" onChange={(ltv) => onChange({ ...meta, ltv })} />
+      <Checkbox checked={!!meta.ltv && online} disabled={!online} label="Add long-term validation data (LTV: the signature can be verified offline for years; needs internet)" onChange={(ltv) => onChange({ ...meta, ltv })} />
       {meta.ltv && useTsa ? (
         <Checkbox
           checked={!!meta.archive}
@@ -566,7 +569,9 @@ export function VerifyModal() {
   const open = usePDFStore((s) => s.modal === 'verify');
   const status = usePDFStore((s) => s.signatureStatus);
   const close = () => usePDFStore.getState().openModal(null);
-  const [checkRevocation, setCheckRevocation] = useState(isDesktop);
+  const online = usePolicy((s) => onlineAllowed('revocation', s.policies));
+  const [checkRevocationSetting, setCheckRevocation] = useState(isDesktop);
+  const checkRevocation = checkRevocationSetting && online;
   const [ran, setRan] = useState(false);
   const [tl, setTl] = useState<TrustedListCache | null>(null);
 
@@ -589,7 +594,7 @@ export function VerifyModal() {
       testId="verify-modal"
       footer={
         <>
-          <Checkbox checked={checkRevocation} onChange={setCheckRevocation} label="Check revocation online (OCSP / CRL)" disabled={!isDesktop} />
+          <Checkbox checked={checkRevocation} onChange={setCheckRevocation} label="Check revocation online (OCSP / CRL)" disabled={!isDesktop || !online} />
           <div className="flex-1" />
           {status.length ? (
             <Button onClick={() => void import('@/actions/reports').then((m) => m.saveValidationReport())} data-testid="verify-report" title="Save what was checked as a PDF report">
@@ -598,8 +603,8 @@ export function VerifyModal() {
           ) : null}
           {signatures.length ? (
             <Button
-              onClick={() => void addArchiveTimestamp('http://timestamp.digicert.com').then(() => setRan(true))}
-              disabled={!isDesktop}
+              onClick={() => void addArchiveTimestamp(defaultTsaUrl()).then(() => setRan(true))}
+              disabled={!isDesktop || !online}
               data-testid="verify-add-archive"
               title="Adds validation data and a document timestamp over the whole file (PAdES B-LTA); repeat it every few years to keep the signatures verifiable"
             >
@@ -607,7 +612,7 @@ export function VerifyModal() {
             </Button>
           ) : null}
           {signatures.length && signatures.some((s) => !s.ltv) ? (
-            <Button onClick={() => void addLongTermValidation().then(() => setRan(true))} disabled={!isDesktop} data-testid="verify-add-ltv" title="Store the certificate chains and OCSP / CRL answers in the file (the signatures stay valid)">
+            <Button onClick={() => void addLongTermValidation().then(() => setRan(true))} disabled={!isDesktop || !online} data-testid="verify-add-ltv" title="Store the certificate chains and OCSP / CRL answers in the file (the signatures stay valid)">
               Add long-term validation
             </Button>
           ) : null}
@@ -629,7 +634,7 @@ export function VerifyModal() {
         </span>
         <Button
           size="sm"
-          disabled={!isDesktop}
+          disabled={!isDesktop || !online}
           data-testid="eu-tl-update"
           onClick={() =>
             void updateEuTrustedLists().then(async (res) => {

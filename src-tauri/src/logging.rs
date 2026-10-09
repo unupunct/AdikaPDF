@@ -3,6 +3,7 @@
 //! Location: `<install dir>\logs` (the installer creates it and makes it
 //! writable for users); if that is not writable (per-user install, locked
 //! down machine) the fallback is `%LOCALAPPDATA%\Adika PDF Editor\logs`.
+//! A portable copy logs to `<exe>\Data\logs`.
 //!
 //! * `adika-YYYY-MM-DD.log` — one line per event (errors, warnings, key actions)
 //! * `crash-YYYYMMDD-HHMMSS-mmm-<pid>.log` — full details of every crash: Rust panics
@@ -32,6 +33,11 @@ fn writable(dir: &Path) -> bool {
 }
 
 fn choose_dir() -> PathBuf {
+    if let Some(p) = crate::deploy::portable_dir() {
+        let dir = p.join("logs");
+        let _ = fs::create_dir_all(&dir);
+        return dir;
+    }
     if let Some(install) = std::env::current_exe().ok().and_then(|p| p.parent().map(Path::to_path_buf)) {
         let dir = install.join("logs");
         if writable(&dir) {

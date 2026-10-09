@@ -7,12 +7,14 @@
 import { CscClient, checkRedirectUri, type CscAuthorizer, type CscCredential, type CscProvider, type CscSecrets } from '@/lib/crypto/csc';
 import { apiRequest, oauthLoopbackCancel, oauthLoopbackStart, oauthLoopbackWait, openExternal } from '@/lib/platform';
 import { usePDFStore } from '@/store/usePDFStore';
+import { assertOnline } from '@/lib/policy';
 import { signWithExternalSigner, type SignMeta, type SignPlacement } from './sign';
 
 const clients = new Map<string, CscClient>();
 let waiting: number | null = null;
 
 const browserAuthorizer: CscAuthorizer = async (buildUrl, fixed) => {
+  assertOnline('cloudSign');
   const target = fixed ? checkRedirectUri(fixed) : { port: 0, path: '/callback' };
   const { id, port } = await oauthLoopbackStart(target.port, target.path);
   waiting = id;
@@ -35,7 +37,13 @@ export function cancelBrowserWait(): void {
 export function cscClient(provider: CscProvider): CscClient {
   const existing = clients.get(provider.id);
   if (existing && JSON.stringify(existing.provider) === JSON.stringify(provider)) return existing;
-  const client = new CscClient(provider, { transport: apiRequest, authorize: browserAuthorizer });
+  const client = new CscClient(provider, {
+    transport: (req) => {
+      assertOnline('cloudSign');
+      return apiRequest(req);
+    },
+    authorize: browserAuthorizer,
+  });
   clients.set(provider.id, client);
   return client;
 }

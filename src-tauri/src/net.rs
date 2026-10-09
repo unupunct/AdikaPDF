@@ -17,6 +17,7 @@ fn header<'a>(request: &'a Request<'_>, name: &str) -> Option<&'a str> {
 /// (GET/POST), `x-content-type`. Body: raw bytes for POST.
 #[tauri::command]
 pub async fn http_request(request: Request<'_>) -> Result<Response, String> {
+    crate::deploy::check_online()?;
     let url = percent_encoding::percent_decode_str(header(&request, "x-url").ok_or("missing x-url")?)
         .decode_utf8()
         .map_err(|e| e.to_string())?
@@ -80,6 +81,7 @@ pub fn check_api_url(url: &str) -> Result<(), String> {
 /// bodies are never logged: they carry access tokens and PINs.
 #[tauri::command]
 pub async fn api_request(url: String, method: String, authorization: Option<String>, content_type: Option<String>, body: Option<String>) -> Result<ApiResponse, String> {
+    crate::deploy::check_online()?;
     check_api_url(&url)?;
     let method = method.to_ascii_uppercase();
     if method != "GET" && method != "POST" {
