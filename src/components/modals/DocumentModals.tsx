@@ -688,7 +688,7 @@ export function OcrModal() {
               type="button"
               aria-pressed={langs.includes(l.code)}
               onClick={() => toggleLang(l.code)}
-              className={cn('rounded-full border px-2.5 py-1 text-xs', langs.includes(l.code) ? 'border-brand-600 bg-brand-600 text-white' : 'border-app hover-app')}
+              className={cn('rounded-full border px-2.5 py-1 text-xs', langs.includes(l.code) ? 'border-brand-700 bg-brand-700 text-white' : 'border-app hover-app')}
             >
               {l.label}
             </button>

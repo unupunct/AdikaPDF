@@ -321,7 +321,7 @@ function StyleQuick() {
       <label className="flex h-[19px] items-center gap-1.5 px-1 text-[11.5px]">
         <span className="w-10 text-muted">Fill</span>
         <input type="color" aria-label="Fill colour" value={style.fill ?? '#ffffff'} onChange={(e) => setStyle({ fill: e.target.value })} className="h-4 w-7 rounded border border-app" />
-        <button type="button" className={cn('rounded px-1 text-[10px]', style.fill === null ? 'bg-brand-600 text-white' : 'hover-app')} onClick={() => setStyle({ fill: null })}>
+        <button type="button" className={cn('rounded px-1 text-[10px]', style.fill === null ? 'bg-brand-700 text-white' : 'hover-app')} onClick={() => setStyle({ fill: null })}>
           none
         </button>
       </label>

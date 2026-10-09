@@ -36,7 +36,7 @@ export const PageThumbnail = memo(function PageThumbnail({ page, width }: { page
       <canvas ref={canvasRef} className="h-full w-full" />
       {!ready ? <div className="absolute inset-0 animate-pulse bg-slate-100" /> : null}
       {objectCount > 0 ? (
-        <span className="absolute right-1 top-1 rounded bg-brand-600 px-1 text-[9px] font-semibold text-white" title={`${objectCount} edit(s) on this page`}>
+        <span className="absolute right-1 top-1 rounded bg-brand-700 px-1 text-[9px] font-semibold text-white" title={`${objectCount} edit(s) on this page`}>
           {objectCount}
         </span>
       ) : null}

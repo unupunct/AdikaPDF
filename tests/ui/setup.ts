@@ -48,7 +48,7 @@ Element.prototype.scrollIntoView ??= function () {};
 Element.prototype.hasPointerCapture ??= () => false;
 Element.prototype.releasePointerCapture ??= function () {};
 // Canvas drawing (signature pads, thumbnails): a 2D context that draws nothing.
-HTMLCanvasElement.prototype.getContext = function () {
+HTMLCanvasElement.prototype.getContext = function (this: HTMLCanvasElement) {
   return new Proxy({}, { get: (_t, p) => (p === 'canvas' ? this : p === 'measureText' ? () => ({ width: 0 }) : p === 'getImageData' ? () => ({ data: new Uint8ClampedArray(4) }) : () => undefined) });
 } as unknown as typeof HTMLCanvasElement.prototype.getContext;
 HTMLCanvasElement.prototype.toDataURL = () => 'data:image/png;base64,';

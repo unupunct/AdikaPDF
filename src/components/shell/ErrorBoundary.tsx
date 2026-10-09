@@ -45,7 +45,7 @@ Components:${info.componentStack ?? ''}`).then((reportPath) =>
             Open logs folder
           </button>
         ) : null}
-        <button type="button" className="rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white" onClick={() => location.reload()}>
+        <button type="button" className="rounded-md bg-brand-700 px-4 py-2 text-sm font-medium text-white" onClick={() => location.reload()}>
           Reload Adika
         </button>
       </div>

@@ -19,7 +19,7 @@ function App() {
   return (
     <div>
       <input aria-label="Page number" />
-      {/* jsdom has no isContentEditable, so editable content is covered by tests/shortcutKeys.test.ts. */}
+      {/* jsdom has no isContentEditable: a text area stands in for editable content. */}
       <textarea aria-label="Note" />
     </div>
   );
