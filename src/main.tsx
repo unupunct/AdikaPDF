@@ -63,6 +63,7 @@ void (async () => {
     autoScroll,
     updates,
     i18n: await import('./lib/i18n'),
+    anaf: await import('./actions/anaf'),
     customize: (await import('./store/customize')).useCustomize,
     // Closes this window without asking (a test closing a window it opened).
     closeWindow: async () => {

@@ -16,6 +16,7 @@ import { apiRequest, appDataRead, appDataWrite, isDesktop, oauthLoopbackCancel, 
 import {
   AnafAuthError,
   AnafClient,
+  type AnafTransport,
   AnafCompanyLookup,
   loopbackRedirect,
   parseCallback,
@@ -39,17 +40,33 @@ import { saveFile } from './saveGuard';
 
 // ---------------------------------------------------------------- public services
 
+/** End-to-end tests replace the network, the browser and Credential Manager (nothing reaches ANAF). */
+const e2e: { transport: AnafTransport | null; authorize: AnafAuthorizer | null; secrets: Map<string, string> | null } = { transport: null, authorize: null, secrets: null };
+
+export function e2eAnaf(fake: { transport: AnafTransport; authorize: AnafAuthorizer } | null): void {
+  e2e.transport = fake?.transport ?? null;
+  e2e.authorize = fake?.authorize ?? null;
+  e2e.secrets = fake ? new Map() : null;
+  lookup = null;
+  client = null;
+}
+
+const transport: AnafTransport = (req) => (e2e.transport ?? apiRequest)(req);
+const getSecret = (name: string) => (e2e.secrets ? Promise.resolve(e2e.secrets.get(name) ?? null) : secretRead(name));
+const putSecret = (name: string, value: string) => (e2e.secrets ? Promise.resolve(void e2e.secrets.set(name, value)) : secretStore(name, value));
+const dropSecret = (name: string) => (e2e.secrets ? Promise.resolve(void e2e.secrets.delete(name)) : secretDelete(name));
+
 let lookup: AnafCompanyLookup | null = null;
 
 /** The company with this CUI in ANAF's VAT register (null: unknown to ANAF). */
 export async function lookupCompany(cui: string): Promise<AnafCompany | null> {
-  lookup ??= new AnafCompanyLookup(apiRequest);
+  lookup ??= new AnafCompanyLookup(transport);
   return lookup.lookupOne(cui);
 }
 
 /** ANAF's own validation of an invoice XML. */
 export function checkXmlWithAnaf(xml: string): Promise<AnafValidation> {
-  return validateWithAnaf(apiRequest, xml);
+  return validateWithAnaf(transport, xml);
 }
 
 // ---------------------------------------------------------------- settings
@@ -102,17 +119,17 @@ export const useAnafSettings = create<AnafSettings & { update: (p: Partial<AnafS
 }));
 
 export async function readClientSecret(): Promise<string> {
-  if (!isDesktop) return localStorage.getItem(BROWSER_SECRET) ?? '';
-  return (await secretRead(SECRET).catch(() => null)) ?? '';
+  if (!isDesktop && !e2e.secrets) return localStorage.getItem(BROWSER_SECRET) ?? '';
+  return (await getSecret(SECRET).catch(() => null)) ?? '';
 }
 
 export async function saveClientSecret(secret: string): Promise<void> {
-  if (!isDesktop) {
+  if (!isDesktop && !e2e.secrets) {
     localStorage.setItem(BROWSER_SECRET, secret);
     return;
   }
-  if (secret) await secretStore(SECRET, secret);
-  else await secretDelete(SECRET);
+  if (secret) await putSecret(SECRET, secret);
+  else await dropSecret(SECRET);
 }
 
 // ---------------------------------------------------------------- sign-in
@@ -167,10 +184,10 @@ async function appConfig(): Promise<AnafApp> {
 function onTokens(test: boolean) {
   return (t: { refresh?: string; expiresAt: number } | null) => {
     useAnafSession.setState({ connected: !!t, expiresAt: t?.expiresAt ?? null });
-    if (!isDesktop) return;
+    if (!isDesktop && !e2e.secrets) return;
     const name = refreshName(test);
-    if (t?.refresh && useAnafSettings.getState().rememberSignIn) void secretStore(name, t.refresh).catch(() => undefined);
-    else if (!t) void secretDelete(name).catch(() => undefined);
+    if (t?.refresh && useAnafSettings.getState().rememberSignIn) void putSecret(name, t.refresh).catch(() => undefined);
+    else if (!t) void dropSecret(name).catch(() => undefined);
   };
 }
 
@@ -178,10 +195,10 @@ function onTokens(test: boolean) {
 export async function anafClient(): Promise<AnafClient> {
   const app = await appConfig();
   if (client && JSON.stringify(client.app) === JSON.stringify(app)) return client;
-  client = new AnafClient(app, { transport: apiRequest, authorize: browserAuthorizer, onTokens: onTokens(app.test) });
+  client = new AnafClient(app, { transport, authorize: e2e.authorize ?? browserAuthorizer, onTokens: onTokens(app.test) });
   useAnafSession.setState({ connected: false, expiresAt: null });
   if (useAnafSettings.getState().rememberSignIn) {
-    const rt = await secretRead(refreshName(app.test)).catch(() => null);
+    const rt = await getSecret(refreshName(app.test)).catch(() => null);
     if (rt) {
       client.useRefreshToken(rt);
       useAnafSession.setState({ connected: true, expiresAt: null });
@@ -200,17 +217,17 @@ export async function disconnectAnaf(): Promise<void> {
   client?.signOut();
   client = null;
   useAnafSession.setState({ connected: false, expiresAt: null });
-  await secretDelete(refreshName(test)).catch(() => undefined);
+  await dropSecret(refreshName(test)).catch(() => undefined);
 }
 
 /** Turning "remember" off forgets the stored refresh tokens. */
 export async function setRememberSignIn(on: boolean): Promise<void> {
   useAnafSettings.getState().update({ rememberSignIn: on });
   if (!on) {
-    await secretDelete(refreshName(false)).catch(() => undefined);
-    await secretDelete(refreshName(true)).catch(() => undefined);
-  } else if (client?.tokens?.refresh && isDesktop) {
-    await secretStore(refreshName(client.app.test), client.tokens.refresh).catch(() => undefined);
+    await dropSecret(refreshName(false)).catch(() => undefined);
+    await dropSecret(refreshName(true)).catch(() => undefined);
+  } else if (client?.tokens?.refresh && (isDesktop || e2e.secrets)) {
+    await putSecret(refreshName(client.app.test), client.tokens.refresh).catch(() => undefined);
   }
 }
 
