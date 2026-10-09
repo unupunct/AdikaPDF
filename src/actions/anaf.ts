@@ -311,5 +311,5 @@ export async function downloadAnafMessage(id: string, action: 'open' | 'save', n
 
 export function anafErrorText(e: unknown): string {
   if (e instanceof AnafAuthError) void disconnectAnaf();
-  return errorMessage(e);
+  return translate(errorMessage(e));
 }
