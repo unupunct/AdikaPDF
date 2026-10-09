@@ -58,7 +58,7 @@ describe('PDF/A: DeviceCMYK is converted', () => {
     expect(r.notes.join('\n')).toMatch(/DeviceCMYK colours were converted to RGB/);
     const doc = await PDFDocument.load(r.bytes);
     const all = contents(doc).join('\n');
-    const ops = contents(doc).flatMap((c) => scanContentOps(new TextEncoder().encode(c)).map((o) => o.op));
+    const ops = contents(doc).flatMap((c) => [...scanContentOps(new TextEncoder().encode(c))].map((o) => o.op));
     expect(ops).not.toContain('k');
     expect(ops).not.toContain('K');
     expect(all).not.toMatch(/DeviceCMYK/);

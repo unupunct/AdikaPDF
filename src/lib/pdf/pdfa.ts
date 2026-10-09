@@ -474,6 +474,39 @@ async function fixAnnotations(doc: PDFDocument, needAppearances: boolean, fieldF
       }
     }
   }
+  // Squares and circles without an appearance get one drawn from /Rect, /C, /IC and the border width.
+  let drawn = 0;
+  for (const a of pageAnnots(doc)) {
+    const sub = nameOf(a.get(PDFName.of('Subtype')));
+    if ((sub !== 'Square' && sub !== 'Circle') || hasNormalAppearance(doc, a) || !needsAppearance(doc, a)) continue;
+    const r = arrayOf(doc, a.get(PDFName.of('Rect')))?.asArray().map((v) => numberOf(doc, v) ?? 0);
+    if (!r || r.length !== 4) continue;
+    const [x0, y0, x1, y1] = [Math.min(r[0], r[2]), Math.min(r[1], r[3]), Math.max(r[0], r[2]), Math.max(r[1], r[3])];
+    const colour = (key: string, stroking: boolean) => {
+      const c = arrayOf(doc, a.get(PDFName.of(key)))?.asArray().map((v) => numberOf(doc, v) ?? 0) ?? [];
+      const op = c.length === 1 ? 'g' : c.length === 3 ? 'rg' : c.length === 4 ? 'k' : '';
+      return op ? `${c.join(' ')} ${stroking ? op.toUpperCase() : op}` : '';
+    };
+    const stroke = colour('C', true);
+    const fill = colour('IC', false);
+    const bw = numberOf(doc, dictOf(doc, a.get(PDFName.of('BS')))?.get(PDFName.of('W'))) ?? 1;
+    const w = x1 - x0;
+    const h = y1 - y0;
+    const i = bw / 2;
+    let path: string;
+    if (sub === 'Square') path = `${i} ${i} ${w - bw} ${h - bw} re`;
+    else {
+      const k = 0.5523;
+      const [cx, cy, rx, ry] = [w / 2, h / 2, w / 2 - i, h / 2 - i];
+      path = `${cx + rx} ${cy} m ${cx + rx} ${cy + k * ry} ${cx + k * rx} ${cy + ry} ${cx} ${cy + ry} c ${cx - k * rx} ${cy + ry} ${cx - rx} ${cy + k * ry} ${cx - rx} ${cy} c ${cx - rx} ${cy - k * ry} ${cx - k * rx} ${cy - ry} ${cx} ${cy - ry} c ${cx + k * rx} ${cy - ry} ${cx + rx} ${cy - k * ry} ${cx + rx} ${cy} c h`;
+    }
+    const op = stroke && bw > 0 ? (fill ? 'B' : 'S') : fill ? 'f' : 'n';
+    const content = `q ${fill} ${stroke} ${bw} w ${path} ${op} Q`;
+    const ap = doc.context.stream(content, { Type: 'XObject', Subtype: 'Form', BBox: [0, 0, w, h] });
+    a.set(PDFName.of('AP'), doc.context.obj({ N: doc.context.register(ap) }));
+    drawn++;
+  }
+  if (drawn) notes.push(`${drawn} comment(s) without an appearance were given one.`);
   let fixedFlags = 0;
   for (const a of pageAnnots(doc)) {
     if (nameOf(a.get(PDFName.of('Subtype'))) === 'Popup') continue;

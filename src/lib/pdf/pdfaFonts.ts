@@ -31,6 +31,22 @@ export interface PdfAFontSources {
   readInstalled?: (path: string) => Promise<Uint8Array>;
 }
 
+/** In the app: pdf.js' standard fonts (public/pdfjs) and the fonts installed in Windows. */
+export function defaultPdfAFontSources(): PdfAFontSources {
+  return {
+    standardFont: async (file) => {
+      try {
+        const r = await fetch(new URL(`${import.meta.env.BASE_URL}pdfjs/standard_fonts/${file}`, document.baseURI).href);
+        return r.ok ? new Uint8Array(await r.arrayBuffer()) : null;
+      } catch {
+        return null;
+      }
+    },
+    installed: async () => (await import('@/lib/platform')).systemFonts().catch(() => []),
+    readInstalled: async (path) => (await import('@/lib/platform')).readSystemFont(path),
+  };
+}
+
 export interface FontEmbedReport {
   embedded: Array<{ font: string; with: string }>;
   /** Fonts left without a program. */

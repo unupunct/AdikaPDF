@@ -4,7 +4,7 @@ import { PDFDocument, PDFName, StandardFonts } from 'pdf-lib';
 import { addDocumentTimestamp, addValidationData, qcStatementsOf, signPdf, verifyPdfSignatures, type SigningIdentity } from '@/lib/crypto/digitalSignature';
 import { downloadTrustedLists, LOTL_URL, parseLotl, parseTrustedList, subjectKey, trustIndex } from '@/lib/crypto/euTrustedList';
 import { sha256Hex } from '@/lib/crypto/xmlDsig';
-import { issue, type TestCa } from './helpers/sigPki';
+import { issue as issueCa, type TestCa } from './helpers/sigPki';
 import { signXml } from './helpers/xmlSign';
 
 const a = forge.asn1;
@@ -216,7 +216,7 @@ ${cert.replace(/(.{64})/g, '$1\n')}
   let lotlSigner: TestCa;
   let roSigner: TestCa;
   beforeAll(async () => {
-    [lotlSigner, roSigner] = await Promise.all([issue({ cn: 'EC LOTL', bits: 1024 }), issue({ cn: 'RO TL', bits: 1024 })]);
+    [lotlSigner, roSigner] = await Promise.all([issueCa({ cn: 'EC LOTL', bits: 1024 }), issueCa({ cn: 'RO TL', bits: 1024 })]);
   });
   const ids = (c?: TestCa) => (c ? `<ServiceDigitalIdentities><ServiceDigitalIdentity><DigitalId><X509Certificate>${b64(c.cert)}</X509Certificate></DigitalId></ServiceDigitalIdentity></ServiceDigitalIdentities>` : '');
   const lotl = () => `<?xml version="1.0"?>
