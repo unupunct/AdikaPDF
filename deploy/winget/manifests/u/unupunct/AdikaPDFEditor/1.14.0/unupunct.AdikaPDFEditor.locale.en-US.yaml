@@ -1,0 +1,24 @@
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.defaultLocale.1.6.0.schema.json
+PackageIdentifier: unupunct.AdikaPDFEditor
+PackageVersion: 1.14.0
+PackageLocale: en-US
+Publisher: unupunct
+PublisherUrl: https://github.com/unupunct
+PublisherSupportUrl: https://github.com/unupunct/AdikaPDF/issues
+PackageName: Adika PDF Editor
+PackageUrl: https://github.com/unupunct/AdikaPDF
+License: MIT
+LicenseUrl: https://github.com/unupunct/AdikaPDF/blob/main/LICENSE
+Copyright: 'Copyright (c) 2026 unupunct'
+ShortDescription: 'Privacy-first offline PDF editor with e-signatures'
+Description: 'Adika PDF Editor reads, comments, edits, signs, organises, protects, OCRs and converts PDF files entirely on your computer. No uploads.'
+Moniker: adikapdf
+Tags:
+- pdf
+- pdf-editor
+- e-signature
+- ocr
+- offline
+ReleaseNotesUrl: https://github.com/unupunct/AdikaPDF/releases/tag/v1.14.0
+ManifestType: defaultLocale
+ManifestVersion: 1.6.0
