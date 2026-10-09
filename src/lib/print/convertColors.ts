@@ -1,6 +1,7 @@
 /**
- * Converts a document's colours to grey (for black-and-white printing) or to
- * CMYK (for presses): the colour operators of every content stream (pages,
+ * Converts a document's colours to grey (for black-and-white printing), to
+ * CMYK (for presses) or CMYK to RGB (PDF/A with an sRGB output intent): the
+ * colour operators of every content stream (pages,
  * forms, tiling patterns, annotation appearances), colour space resources
  * (also indexed palettes), transparency groups, images and axial / radial
  * shadings. What cannot be converted safely (spot colours, mesh shadings,
@@ -9,10 +10,20 @@
 import { PDFArray, PDFDict, PDFDocument, PDFHexString, PDFName, PDFNumber, PDFRawStream, PDFRef, PDFStream, PDFString, decodePDFRawStream, type PDFObject } from 'pdf-lib';
 import { parseContent } from '@/lib/pdf/textRemoval';
 import { decodeStreamWithPredictors } from '@/lib/pdf/predictor';
-import { cmykToGray, rgbToCmyk, rgbToGray, type CMYK, type RGB } from './color';
+import { cmykToGray, cmykToRgb, rgbToCmyk, rgbToGray, type CMYK, type RGB } from './color';
 
-export type ColorTarget = 'gray' | 'cmyk';
-type Kind = 'rgb' | 'cmyk' | 'gray' | 'pattern' | 'other';
+export type ColorTarget = 'gray' | 'cmyk' | 'rgb';
+/** 'icc': a device-independent space left alone in device-only mode. */
+type Kind = 'rgb' | 'cmyk' | 'gray' | 'pattern' | 'icc' | 'other';
+
+export interface ConvertOptions {
+  /**
+   * Only device colours (DeviceRGB / DeviceCMYK / DeviceGray) are converted;
+   * ICC-based and calibrated spaces stay (PDF/A allows them with any output
+   * intent).
+   */
+  deviceOnly?: boolean;
+}
 
 export interface ConvertReport {
   streams: number;
@@ -33,10 +44,13 @@ const n3 = (v: number) => +v.toFixed(4);
 function convertColor(kind: Kind, vals: number[], target: ColorTarget): number[] | null {
   if (kind === 'rgb' && vals.length >= 3) {
     const rgb: RGB = [vals[0], vals[1], vals[2]];
-    return target === 'gray' ? [rgbToGray(rgb)] : rgbToCmyk(rgb);
+    return target === 'gray' ? [rgbToGray(rgb)] : target === 'cmyk' ? rgbToCmyk(rgb) : rgb;
   }
-  if (kind === 'cmyk' && vals.length >= 4) return target === 'gray' ? [cmykToGray(vals.slice(0, 4) as CMYK)] : vals.slice(0, 4);
-  if (kind === 'gray' && vals.length >= 1) return target === 'gray' ? [vals[0]] : [0, 0, 0, 1 - vals[0]];
+  if (kind === 'cmyk' && vals.length >= 4) {
+    const cmyk = vals.slice(0, 4) as CMYK;
+    return target === 'gray' ? [cmykToGray(cmyk)] : target === 'rgb' ? cmykToRgb(cmyk) : cmyk;
+  }
+  if (kind === 'gray' && vals.length >= 1) return target === 'gray' ? [vals[0]] : target === 'rgb' ? [vals[0], vals[0], vals[0]] : [0, 0, 0, 1 - vals[0]];
   return null;
 }
 
@@ -47,7 +61,23 @@ class Converter {
     private doc: PDFDocument,
     private target: ColorTarget,
     private hooks: ConvertHooks,
+    private opts: ConvertOptions = {},
   ) {}
+
+  /** Colours of this kind are changed (grey stays grey for an RGB target: it is allowed with any output intent). */
+  private converts(kind: Kind): boolean {
+    if (this.target === 'gray') return kind === 'rgb' || kind === 'cmyk';
+    if (this.target === 'cmyk') return kind === 'rgb' || kind === 'gray';
+    return kind === 'cmyk';
+  }
+  private get channels() {
+    return this.target === 'gray' ? 1 : this.target === 'cmyk' ? 4 : 3;
+  }
+  /** Operator setting a colour of the target space. */
+  private opFor(stroking: boolean) {
+    const op = this.target === 'gray' ? 'g' : this.target === 'cmyk' ? 'k' : 'rg';
+    return stroking ? op.toUpperCase() : op;
+  }
 
   private get ctx() {
     return this.doc.context;
@@ -59,17 +89,20 @@ class Converter {
     if (!this.report.kept.includes(what)) this.report.kept.push(what);
   }
   private get targetName() {
-    return PDFName.of(this.target === 'gray' ? 'DeviceGray' : 'DeviceCMYK');
+    return PDFName.of(this.target === 'gray' ? 'DeviceGray' : this.target === 'cmyk' ? 'DeviceCMYK' : 'DeviceRGB');
   }
 
   /** What a colour space is (named resource or inline). */
   kindOf(cs: unknown, res: PDFDict | undefined): Kind {
     let v = this.look(cs);
+    const dev = this.opts.deviceOnly;
     if (v instanceof PDFName) {
       const n = v.decodeText();
-      if (n === 'DeviceRGB' || n === 'RGB' || n === 'CalRGB') return 'rgb';
+      if (n === 'DeviceRGB' || n === 'RGB') return 'rgb';
       if (n === 'DeviceCMYK' || n === 'CMYK') return 'cmyk';
-      if (n === 'DeviceGray' || n === 'G' || n === 'CalGray') return 'gray';
+      if (n === 'DeviceGray' || n === 'G') return 'gray';
+      if (n === 'CalRGB') return dev ? 'icc' : 'rgb';
+      if (n === 'CalGray') return dev ? 'icc' : 'gray';
       if (n === 'Pattern') return 'pattern';
       const csDict = res?.lookup(PDFName.of('ColorSpace'));
       if (csDict instanceof PDFDict) {
@@ -81,6 +114,7 @@ class Converter {
     if (v instanceof PDFArray) {
       const fam = this.look(v.get(0));
       const f = fam instanceof PDFName ? fam.decodeText() : '';
+      if (dev && (f === 'CalRGB' || f === 'CalGray' || f === 'ICCBased')) return 'icc';
       if (f === 'CalRGB') return 'rgb';
       if (f === 'CalGray') return 'gray';
       if (f === 'ICCBased') {
@@ -105,7 +139,7 @@ class Converter {
     if (cs instanceof PDFDict) {
       for (const [name, val] of cs.entries()) {
         const kind = this.kindOf(val, undefined);
-        if (kind === 'rgb' || (kind === 'cmyk' && this.target === 'gray')) {
+        if (this.converts(kind) && kind !== 'gray') {
           // Keep the name so content referring to it still works; its operands are converted too.
           if (!this.namedKinds.has(res)) this.namedKinds.set(res, new Map());
           this.namedKinds.get(res)!.set(name.decodeText(), kind);
@@ -118,7 +152,9 @@ class Converter {
           if (fixed) cs.set(name, fixed);
         } else if (arr instanceof PDFArray) {
           const fam = (this.look(arr.get(0)) as PDFName | undefined)?.decodeText?.() ?? '';
-          if (fam === 'Separation' || fam === 'DeviceN') this.keep('spot colours (Separation / DeviceN) are kept');
+          if ((fam === 'Separation' || fam === 'DeviceN') && this.target === 'rgb') {
+            if (!this.convertSpotAlternate(arr)) this.keep('spot colours whose alternate is DeviceCMYK could not be converted');
+          } else if (fam === 'Separation' || fam === 'DeviceN') this.keep('spot colours (Separation / DeviceN) are kept');
           else if (fam === 'Lab') this.keep('Lab colours are kept');
         }
       }
