@@ -183,19 +183,21 @@ describe('PDF/A annotations, forms and colours', () => {
     expect((widget.lookup(PDFName.of('F')) as unknown as { asNumber(): number }).asNumber() & 4).toBe(4);
     expect(out.catalog.lookup(PDFName.of('AcroForm'), PDFDict).has(PDFName.of('NeedAppearances'))).toBe(false);
     const w = (await pdfaWarnings(r.bytes, '2b')).join('\n');
-    // The square annotation has no appearance Adika could draw: still reported.
-    expect(w).toMatch(/1 annotation\(s\) or form field\(s\) have no appearance/);
+    // The square annotation is given an appearance too.
+    expect(r.notes.join('\n')).toMatch(/1 comment\(s\) without an appearance were given one/);
+    expect(w).not.toMatch(/have no appearance/);
     expect(w).not.toMatch(/not set to print|NeedAppearances/);
     // The regenerated appearance uses an embedded font (the source's unused /DR Helvetica is still reported).
     expect(w).not.toMatch(/NotoSans/);
   });
 
-  it('warns about DeviceCMYK under an sRGB output intent', async () => {
+  it('warns about DeviceCMYK under an sRGB output intent (and the conversion fixes it)', async () => {
     const doc = await PDFDocument.create();
     const page = doc.addPage([200, 200]);
     page.node.set(PDFName.of('Contents'), doc.context.register(doc.context.stream('0 0 0 1 k 10 10 50 50 re f')));
-    const out = await convertToPdfA(await doc.save(), { title: 'C', author: '' });
-    expect((await pdfaWarnings(out, '2b')).join('\n')).toMatch(/1 page\(s\), image\(s\) or drawing\(s\) use DeviceCMYK/);
+    const src = await doc.save();
+    expect((await pdfaWarnings(src, '2b')).join('\n')).toMatch(/1 page\(s\), image\(s\) or drawing\(s\) use DeviceCMYK/);
+    expect((await pdfaWarnings(await convertToPdfA(src, { title: 'C', author: '' }), '2b')).join('\n')).not.toMatch(/DeviceCMYK/);
     const rgb = await PDFDocument.create();
     rgb.addPage([200, 200]).drawRectangle({ x: 10, y: 10, width: 20, height: 20 });
     expect((await pdfaWarnings(await convertToPdfA(await rgb.save(), { title: 'R', author: '' }), '2b')).join('\n')).not.toMatch(/DeviceCMYK/);

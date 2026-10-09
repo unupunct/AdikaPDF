@@ -519,9 +519,32 @@ export async function runPdfA(meta: PdfAMeta): Promise<string[] | undefined> {
     const bytes = await exportCurrentPdf({}, progress);
     signal.throwIfAborted();
     const fieldFont = await loadFontBytes({ family: 'sans', bold: false, italic: false }).catch(() => undefined);
-    const r = await convertToPdfADetailed(bytes, { fieldFont, ...meta });
-    signal.throwIfAborted();
-    return { pdfa: r.bytes, warnings: [...r.notes, ...(await pdfaWarnings(r.bytes, level))] };
+    const { defaultPdfAFontSources } = await import('@/lib/pdf/pdfaFonts');
+    const { colorHooks } = await import('./printProduction');
+    const pdf = await openPdf(bytes);
+    try {
+      const r = await convertToPdfADetailed(bytes, {
+        fieldFont,
+        fonts: defaultPdfAFontSources(),
+        colorHooks,
+        // PDF/A-1: pages with transparency are flattened.
+        rasterRgb: async (i, dpi) => {
+          progress(`Flattening page ${i + 1}…`, null);
+          const { renderPageToCanvas } = await import('@/lib/pdf/convert');
+          const { canvas } = await renderPageToCanvas(pdf, i + 1, dpi);
+          const d = (canvas.getContext('2d') as CanvasRenderingContext2D).getImageData(0, 0, canvas.width, canvas.height);
+          canvas.width = canvas.height = 0;
+          const rgb = new Uint8Array(d.width * d.height * 3);
+          for (let p = 0; p < d.width * d.height; p++) rgb.set(d.data.subarray(p * 4, p * 4 + 3), p * 3);
+          return { data: rgb, width: d.width, height: d.height };
+        },
+        ...meta,
+      });
+      signal.throwIfAborted();
+      return { pdfa: r.bytes, warnings: [...r.notes, ...(await pdfaWarnings(r.bytes, level))] };
+    } finally {
+      await pdf.loadingTask.destroy();
+    }
   });
   if (!out) return undefined;
   await saveDerived(out.pdfa, `-pdfa${level}`, true);

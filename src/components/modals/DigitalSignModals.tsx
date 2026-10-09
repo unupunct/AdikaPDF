@@ -12,6 +12,7 @@ import {
   addArchiveTimestamp,
   addLongTermValidation,
   euTrustedLists,
+  euTrustedListsProblem,
   padesLevelOf,
   signWithIdentity,
   signWithStoreCert,
@@ -574,11 +575,16 @@ export function VerifyModal() {
   const checkRevocation = checkRevocationSetting && online;
   const [ran, setRan] = useState(false);
   const [tl, setTl] = useState<TrustedListCache | null>(null);
+  const [tlProblem, setTlProblem] = useState<string | null>(null);
+  const loadTl = (res: TrustedListCache | null) => {
+    setTl(res);
+    setTlProblem(res ? null : euTrustedListsProblem());
+  };
 
   useEffect(() => {
     if (open) {
       setRan(false);
-      void euTrustedLists().then(setTl);
+      void euTrustedLists().then(loadTl);
       void verifyCurrentSignatures(false).then(() => setRan(true));
     }
   }, [open]);
@@ -629,8 +635,11 @@ export function VerifyModal() {
         <ShieldCheck size={14} className="shrink-0 text-brand-600" />
         <span className="min-w-0 flex-1">
           {tl
-            ? `EU Trusted Lists: ${tl.services.length} qualified services, downloaded ${new Date(tl.fetched).toLocaleDateString()}.`
-            : 'EU Trusted Lists not downloaded: qualified EU signatures are recognised only through the Windows roots.'}
+            ? `EU Trusted Lists: ${tl.services.length} qualified services, signatures verified ${new Date(tl.verified ?? tl.fetched).toLocaleDateString()} (downloaded ${new Date(tl.fetched).toLocaleDateString()}).`
+            : tlProblem
+              ? 'The saved EU Trusted Lists failed their signature check and are not used: download them again.'
+              : 'EU Trusted Lists not downloaded: qualified EU signatures are recognised only through the Windows roots.'}
+          {tl?.rejected?.length ? <span className="block text-[11px] text-muted" data-testid="eu-tl-rejected">{`Not used (signature not valid): ${tl.rejected.join(', ')}`}</span> : null}
         </span>
         <Button
           size="sm"
@@ -638,7 +647,7 @@ export function VerifyModal() {
           data-testid="eu-tl-update"
           onClick={() =>
             void updateEuTrustedLists().then(async (res) => {
-              if (res) setTl(res);
+              if (res) loadTl(res);
               await verifyCurrentSignatures(false);
               setRan(true);
             })
@@ -719,7 +728,11 @@ function SignatureCard({ sig }: { sig: SignatureValidation }) {
                     : 'Issuer is a qualified trust service'
               : 'Declared by the certificate, not confirmed (download the EU Trusted Lists)'}
             {sig.euTrusted ? <span className="block text-[11px] text-muted">{sig.euTrusted}</span> : null}
-            {sig.euTrusted ? <span className="block text-[11px] text-muted">The list’s own signature is not verified (downloaded over HTTPS).</span> : null}
+            {sig.euTrusted ? (
+              <span className="block text-[11px] text-muted">
+                {sig.euTrustedVerified ? `The trusted lists’ signatures were verified on ${new Date(sig.euTrustedVerified).toLocaleDateString()}.` : 'The trusted lists’ signatures were not verified.'}
+              </span>
+            ) : null}
           </Row>
         ) : null}
         <Row label={sig.documentTimestamp ? 'Timestamp authority' : 'Signer identity'}>

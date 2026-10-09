@@ -708,6 +708,7 @@ export function PdfaModal() {
   const [title, setTitle] = useState('');
   const [author, setAuthor] = useState('');
   const [level, setLevel] = useState<PdfALevel>('2b');
+  const [keepCmyk, setKeepCmyk] = useState(false);
   const [attachments, setAttachments] = useState<Array<{ name: string; mime: string; bytes: Uint8Array }>>([]);
   const [warnings, setWarnings] = useState<string[] | null>(null);
 
@@ -723,13 +724,13 @@ export function PdfaModal() {
       open={open}
       onOpenChange={(o) => !o && close()}
       title="Convert to PDF/A (archival)"
-      description="Embeds an sRGB output intent and XMP metadata, and removes JavaScript and encryption."
+      description="Embeds the fonts, an output intent and XMP metadata, converts device colours to match it, and removes JavaScript and encryption."
       width={560}
       testId="pdfa-modal"
       footer={
         <>
           <Button onClick={close}>Close</Button>
-          <Button variant="primary" onClick={async () => setWarnings((await runPdfA({ title, author, level, attachments: level === '3b' ? attachments : undefined })) ?? null)} data-testid="pdfa-run">
+          <Button variant="primary" onClick={async () => setWarnings((await runPdfA({ title, author, level, keepCmyk, attachments: level === '3b' ? attachments : undefined })) ?? null)} data-testid="pdfa-run">
             Convert and save copy
           </Button>
         </>
@@ -755,6 +756,9 @@ export function PdfaModal() {
           ]}
         />
       </Field>
+      <div className="mb-3" title="Colours stay CMYK under a CMYK output intent (RGB colours are converted to CMYK). Otherwise CMYK colours are converted to RGB for the sRGB output intent.">
+        <Checkbox checked={keepCmyk} onChange={setKeepCmyk} label="Keep CMYK (print)" />
+      </div>
       {level === '3b' ? (
         <div className="mb-3">
           <Button

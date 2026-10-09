@@ -60,3 +60,64 @@ jobs:
       # Renders a PDF with Windows.Data.Pdf, also on a single-threaded apartment like Explorer.
       - run: cargo test --locked
         working-directory: src-tauri/thumbs
+
+  verapdf:
+    name: PDF/A validation (veraPDF)
+    runs-on: ubuntu-latest
+    env:
+      # Official greenfield CLI release, pinned (https://software.verapdf.org/releases/).
+      VERAPDF_VERSION: 1.28.2
+      VERAPDF_SHA256: d1693a5f0bf0997180f6d97e8a5568b0cf39e27eee338d439c8adb58435c1e89
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - run: npm ci
+      - name: Install veraPDF
+        run: |
+          curl -sSfL -o verapdf.zip "https://software.verapdf.org/releases/1.28/verapdf-greenfield-${VERAPDF_VERSION}-installer.zip"
+          echo "${VERAPDF_SHA256}  verapdf.zip" | sha256sum -c -
+          unzip -q verapdf.zip -d verapdf-installer
+          cat > auto-install.xml <<XML
+          <?xml version="1.0" encoding="UTF-8" standalone="no"?>
+          <AutomatedInstallation langpack="eng">
+            <com.izforge.izpack.panels.htmlhello.HTMLHelloPanel id="welcome"/>
+            <com.izforge.izpack.panels.target.TargetPanel id="install_dir"><installpath>$RUNNER_TEMP/verapdf</installpath></com.izforge.izpack.panels.target.TargetPanel>
+            <com.izforge.izpack.panels.packs.PacksPanel id="sdk_pack_select">
+              <pack index="0" name="veraPDF GUI" selected="true"/>
+              <pack index="1" name="veraPDF Batch files" selected="true"/>
+              <pack index="2" name="veraPDF Validation model" selected="false"/>
+              <pack index="3" name="veraPDF Documentation" selected="false"/>
+              <pack index="4" name="veraPDF Sample Plugins" selected="false"/>
+            </com.izforge.izpack.panels.packs.PacksPanel>
+            <com.izforge.izpack.panels.install.InstallPanel id="install"/>
+            <com.izforge.izpack.panels.finish.FinishPanel id="finish"/>
+          </AutomatedInstallation>
+          XML
+          java -jar verapdf-installer/verapdf-greenfield-${VERAPDF_VERSION}/verapdf-izpack-installer-${VERAPDF_VERSION}.jar auto-install.xml
+          "$RUNNER_TEMP/verapdf/verapdf" --version
+      - name: Make PDF/A samples with the app's converter
+        run: PDFA_OUT="$RUNNER_TEMP/pdfa" npx vitest run --config tests/pdfa-ci/vitest.config.ts
+      - name: Validate
+        run: |
+          status=0
+          for level in 1b 2b 3b; do
+            for f in "$RUNNER_TEMP/pdfa/$level"/*.pdf; do
+              "$RUNNER_TEMP/verapdf/verapdf" --flavour "$level" --format text --verbose "$f" | tee -a "$RUNNER_TEMP/pdfa/report.txt"
+              "$RUNNER_TEMP/verapdf/verapdf" --flavour "$level" --format mrr "$f" > "$f.xml"
+              if ! grep -q 'isCompliant="true"' "$f.xml"; then echo "::error::$f is not PDF/A-$level compliant"; status=1; fi
+            done
+          done
+          exit $status
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pdfa-samples
+          path: ${{ runner.temp }}/pdfa
+          retention-days: 7

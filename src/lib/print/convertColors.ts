@@ -1,6 +1,7 @@
 /**
- * Converts a document's colours to grey (for black-and-white printing) or to
- * CMYK (for presses): the colour operators of every content stream (pages,
+ * Converts a document's colours to grey (for black-and-white printing), to
+ * CMYK (for presses) or CMYK to RGB (PDF/A with an sRGB output intent): the
+ * colour operators of every content stream (pages,
  * forms, tiling patterns, annotation appearances), colour space resources
  * (also indexed palettes), transparency groups, images and axial / radial
  * shadings. What cannot be converted safely (spot colours, mesh shadings,
@@ -9,10 +10,20 @@
 import { PDFArray, PDFDict, PDFDocument, PDFHexString, PDFName, PDFNumber, PDFRawStream, PDFRef, PDFStream, PDFString, decodePDFRawStream, type PDFObject } from 'pdf-lib';
 import { parseContent } from '@/lib/pdf/textRemoval';
 import { decodeStreamWithPredictors } from '@/lib/pdf/predictor';
-import { cmykToGray, rgbToCmyk, rgbToGray, type CMYK, type RGB } from './color';
+import { cmykToGray, cmykToRgb, rgbToCmyk, rgbToGray, type CMYK, type RGB } from './color';
 
-export type ColorTarget = 'gray' | 'cmyk';
-type Kind = 'rgb' | 'cmyk' | 'gray' | 'pattern' | 'other';
+export type ColorTarget = 'gray' | 'cmyk' | 'rgb';
+/** 'icc': a device-independent space left alone in device-only mode. */
+type Kind = 'rgb' | 'cmyk' | 'gray' | 'pattern' | 'icc' | 'other';
+
+export interface ConvertOptions {
+  /**
+   * Only device colours (DeviceRGB / DeviceCMYK / DeviceGray) are converted;
+   * ICC-based and calibrated spaces stay (PDF/A allows them with any output
+   * intent).
+   */
+  deviceOnly?: boolean;
+}
 
 export interface ConvertReport {
   streams: number;
@@ -33,10 +44,13 @@ const n3 = (v: number) => +v.toFixed(4);
 function convertColor(kind: Kind, vals: number[], target: ColorTarget): number[] | null {
   if (kind === 'rgb' && vals.length >= 3) {
     const rgb: RGB = [vals[0], vals[1], vals[2]];
-    return target === 'gray' ? [rgbToGray(rgb)] : rgbToCmyk(rgb);
+    return target === 'gray' ? [rgbToGray(rgb)] : target === 'cmyk' ? rgbToCmyk(rgb) : rgb;
   }
-  if (kind === 'cmyk' && vals.length >= 4) return target === 'gray' ? [cmykToGray(vals.slice(0, 4) as CMYK)] : vals.slice(0, 4);
-  if (kind === 'gray' && vals.length >= 1) return target === 'gray' ? [vals[0]] : [0, 0, 0, 1 - vals[0]];
+  if (kind === 'cmyk' && vals.length >= 4) {
+    const cmyk = vals.slice(0, 4) as CMYK;
+    return target === 'gray' ? [cmykToGray(cmyk)] : target === 'rgb' ? cmykToRgb(cmyk) : cmyk;
+  }
+  if (kind === 'gray' && vals.length >= 1) return target === 'gray' ? [vals[0]] : target === 'rgb' ? [vals[0], vals[0], vals[0]] : [0, 0, 0, 1 - vals[0]];
   return null;
 }
 
@@ -47,7 +61,23 @@ class Converter {
     private doc: PDFDocument,
     private target: ColorTarget,
     private hooks: ConvertHooks,
+    private opts: ConvertOptions = {},
   ) {}
+
+  /** Colours of this kind are changed (grey stays grey for an RGB target: it is allowed with any output intent). */
+  private converts(kind: Kind): boolean {
+    if (this.target === 'gray') return kind === 'rgb' || kind === 'cmyk';
+    if (this.target === 'cmyk') return kind === 'rgb' || kind === 'gray';
+    return kind === 'cmyk';
+  }
+  private get channels() {
+    return this.target === 'gray' ? 1 : this.target === 'cmyk' ? 4 : 3;
+  }
+  /** Operator setting a colour of the target space. */
+  private opFor(stroking: boolean) {
+    const op = this.target === 'gray' ? 'g' : this.target === 'cmyk' ? 'k' : 'rg';
+    return stroking ? op.toUpperCase() : op;
+  }
 
   private get ctx() {
     return this.doc.context;
@@ -59,17 +89,20 @@ class Converter {
     if (!this.report.kept.includes(what)) this.report.kept.push(what);
   }
   private get targetName() {
-    return PDFName.of(this.target === 'gray' ? 'DeviceGray' : 'DeviceCMYK');
+    return PDFName.of(this.target === 'gray' ? 'DeviceGray' : this.target === 'cmyk' ? 'DeviceCMYK' : 'DeviceRGB');
   }
 
   /** What a colour space is (named resource or inline). */
   kindOf(cs: unknown, res: PDFDict | undefined): Kind {
     let v = this.look(cs);
+    const dev = this.opts.deviceOnly;
     if (v instanceof PDFName) {
       const n = v.decodeText();
-      if (n === 'DeviceRGB' || n === 'RGB' || n === 'CalRGB') return 'rgb';
+      if (n === 'DeviceRGB' || n === 'RGB') return 'rgb';
       if (n === 'DeviceCMYK' || n === 'CMYK') return 'cmyk';
-      if (n === 'DeviceGray' || n === 'G' || n === 'CalGray') return 'gray';
+      if (n === 'DeviceGray' || n === 'G') return 'gray';
+      if (n === 'CalRGB') return dev ? 'icc' : 'rgb';
+      if (n === 'CalGray') return dev ? 'icc' : 'gray';
       if (n === 'Pattern') return 'pattern';
       const csDict = res?.lookup(PDFName.of('ColorSpace'));
       if (csDict instanceof PDFDict) {
@@ -81,6 +114,7 @@ class Converter {
     if (v instanceof PDFArray) {
       const fam = this.look(v.get(0));
       const f = fam instanceof PDFName ? fam.decodeText() : '';
+      if (dev && (f === 'CalRGB' || f === 'CalGray' || f === 'ICCBased')) return 'icc';
       if (f === 'CalRGB') return 'rgb';
       if (f === 'CalGray') return 'gray';
       if (f === 'ICCBased') {
@@ -105,7 +139,7 @@ class Converter {
     if (cs instanceof PDFDict) {
       for (const [name, val] of cs.entries()) {
         const kind = this.kindOf(val, undefined);
-        if (kind === 'rgb' || (kind === 'cmyk' && this.target === 'gray')) {
+        if (this.converts(kind) && kind !== 'gray') {
           // Keep the name so content referring to it still works; its operands are converted too.
           if (!this.namedKinds.has(res)) this.namedKinds.set(res, new Map());
           this.namedKinds.get(res)!.set(name.decodeText(), kind);
@@ -118,7 +152,9 @@ class Converter {
           if (fixed) cs.set(name, fixed);
         } else if (arr instanceof PDFArray) {
           const fam = (this.look(arr.get(0)) as PDFName | undefined)?.decodeText?.() ?? '';
-          if (fam === 'Separation' || fam === 'DeviceN') this.keep('spot colours (Separation / DeviceN) are kept');
+          if ((fam === 'Separation' || fam === 'DeviceN') && this.target === 'rgb') {
+            if (!this.convertSpotAlternate(arr)) this.keep('spot colours whose alternate is DeviceCMYK could not be converted');
+          } else if (fam === 'Separation' || fam === 'DeviceN') this.keep('spot colours (Separation / DeviceN) are kept');
           else if (fam === 'Lab') this.keep('Lab colours are kept');
         }
       }
@@ -148,12 +184,47 @@ class Converter {
   pendingForms: PDFRawStream[] = [];
   pendingImages: PDFRawStream[] = [];
 
+  /**
+   * A Separation / DeviceN space whose alternate is DeviceCMYK gets a DeviceRGB
+   * alternate: exponential tint transforms are recalculated, PostScript ones
+   * get the CMYK -> RGB conversion appended. Others stay (false).
+   */
+  private convertSpotAlternate(arr: PDFArray): boolean {
+    if (this.done.has(arr)) return true;
+    this.done.add(arr);
+    if (this.kindOf(arr.get(2), undefined) !== 'cmyk') return true;
+    const fn = this.look(arr.get(3));
+    const dict = fn instanceof PDFStream ? fn.dict : fn instanceof PDFDict ? fn : null;
+    const type = (dict?.lookup(PDFName.of('FunctionType')) as PDFNumber | undefined)?.asNumber();
+    if (type === 2 && this.convertFunction(fn, 'cmyk')) {
+      dict!.delete(PDFName.of('Range'));
+    } else if (type === 4 && fn instanceof PDFRawStream) {
+      let code: string;
+      try {
+        code = new TextDecoder('latin1').decode(decodePDFRawStream(fn).decode());
+      } catch {
+        return false;
+      }
+      const end = code.lastIndexOf('}');
+      if (end < 0) return false;
+      // c m y k -> r g b with the generic model: (1 - c)(1 - k), ...
+      const toRgb = ' 1 exch sub 1 4 index sub 1 index mul 1 4 index sub 2 index mul 1 4 index sub 3 index mul 7 3 roll pop pop pop pop ';
+      const fresh = this.ctx.flateStream(code.slice(0, end) + toRgb + code.slice(end));
+      for (const [k, v] of fn.dict.entries()) if (!['Filter', 'DecodeParms', 'Length', 'Range'].includes(k.decodeText())) fresh.dict.set(k, v);
+      fresh.dict.set(PDFName.of('Range'), this.ctx.obj([0, 1, 0, 1, 0, 1]));
+      const ref = this.ctx.getObjectRef(fn);
+      if (ref) this.ctx.assign(ref, fresh);
+      else arr.set(3, this.ctx.register(fresh));
+    } else return false;
+    arr.set(2, this.targetName);
+    return true;
+  }
+
   private convertIndexed(arr: PDFArray): PDFArray | null {
     const base = arr.get(1);
     const kind = this.kindOf(base, undefined);
-    if (kind === 'gray' && this.target === 'gray') return null;
-    if (kind !== 'rgb' && kind !== 'cmyk' && kind !== 'gray') {
-      this.keep('indexed images with an unusual palette are kept');
+    if (!this.converts(kind)) {
+      if (kind === 'other') this.keep('indexed images with an unusual palette are kept');
       return null;
     }
     const hival = (this.look(arr.get(2)) as PDFNumber).asNumber();
@@ -163,7 +234,7 @@ class Converter {
     else if (lk instanceof PDFRawStream) table = decodePDFRawStream(lk).decode();
     else return null;
     const inN = kind === 'rgb' ? 3 : kind === 'cmyk' ? 4 : 1;
-    const outN = this.target === 'gray' ? 1 : 4;
+    const outN = this.channels;
     const out = new Uint8Array((hival + 1) * outN);
     for (let i = 0; i <= hival; i++) {
       const vals = Array.from(table.subarray(i * inN, i * inN + inN), (v) => v / 255);
@@ -203,8 +274,13 @@ class Converter {
   convertShading(sh: PDFDict): void {
     if (this.done.has(sh)) return;
     this.done.add(sh);
-    const kind = this.kindOf(sh.get(PDFName.of('ColorSpace')), undefined);
-    if (kind === 'other' || kind === 'pattern' || (kind === 'gray' && this.target === 'gray') || (kind === 'cmyk' && this.target === 'cmyk')) return;
+    const csv = this.look(sh.get(PDFName.of('ColorSpace')));
+    if (this.target === 'rgb' && csv instanceof PDFArray && ['Separation', 'DeviceN'].includes((this.look(csv.get(0)) as PDFName | undefined)?.decodeText?.() ?? '')) {
+      if (!this.convertSpotAlternate(csv)) this.keep('spot colours whose alternate is DeviceCMYK could not be converted');
+      return;
+    }
+    const kind = this.kindOf(csv, undefined);
+    if (!this.converts(kind)) return;
     const type = (sh.lookup(PDFName.of('ShadingType')) as PDFNumber | undefined)?.asNumber();
     const fn = sh.get(PDFName.of('Function'));
     if ((type === 2 || type === 3) && fn) {
@@ -235,30 +311,35 @@ class Converter {
     const nums = (args: { k: string; v?: unknown }[]) => args.filter((a) => a.k === 'n').map((a) => a.v as number);
     const emit = (vals: number[], op: string) => `${vals.map(n3).join(' ')} ${op}`;
     const set = (i: (typeof instrs)[number], text: string) => pieces.push({ start: i.start, end: i.end, text });
-    const opFor = (stroking: boolean) => (this.target === 'gray' ? (stroking ? 'G' : 'g') : stroking ? 'K' : 'k');
+    const opFor = (stroking: boolean) => this.opFor(stroking);
+    const after = (kind: Kind): Kind => (this.converts(kind) ? this.target : kind);
     const nameKind = (name: string): Kind => (res && this.namedKinds.get(res)?.get(name)) ?? this.kindOf(PDFName.of(name), res);
     for (const ins of instrs) {
       const op = ins.op;
       if (op === 'q') stack.push([fill, stroke]);
       else if (op === 'Q') [fill, stroke] = stack.pop() ?? [fill, stroke];
       else if (op === 'rg' || op === 'RG') {
-        const c = convertColor('rgb', nums(ins.args), this.target);
+        const c = this.converts('rgb') ? convertColor('rgb', nums(ins.args), this.target) : null;
         if (c) set(ins, emit(c, opFor(op === 'RG')));
-        if (op === 'rg') fill = this.target === 'gray' ? 'gray' : 'cmyk';
-        else stroke = this.target === 'gray' ? 'gray' : 'cmyk';
-      } else if ((op === 'k' || op === 'K') && this.target === 'gray') {
-        const c = convertColor('cmyk', nums(ins.args), this.target);
-        if (c) set(ins, emit(c, op === 'K' ? 'G' : 'g'));
-      } else if ((op === 'g' || op === 'G') && this.target === 'cmyk') {
-        const c = convertColor('gray', nums(ins.args), this.target);
-        if (c) set(ins, emit(c, op === 'G' ? 'K' : 'k'));
+        if (op === 'rg') fill = after('rgb');
+        else stroke = after('rgb');
+      } else if (op === 'k' || op === 'K') {
+        const c = this.converts('cmyk') ? convertColor('cmyk', nums(ins.args), this.target) : null;
+        if (c) set(ins, emit(c, opFor(op === 'K')));
+        if (op === 'k') fill = after('cmyk');
+        else stroke = after('cmyk');
+      } else if (op === 'g' || op === 'G') {
+        const c = this.converts('gray') ? convertColor('gray', nums(ins.args), this.target) : null;
+        if (c) set(ins, emit(c, opFor(op === 'G')));
+        if (op === 'g') fill = after('gray');
+        else stroke = after('gray');
       } else if (op === 'cs' || op === 'CS') {
         const a = ins.args[0];
         const name = a?.k === 'name' ? (a.v as string) : '';
         const kind = nameKind(name);
         // Device spaces are replaced here; named ones were replaced in the resources.
-        if (['DeviceRGB', 'RGB', 'CalRGB', 'DeviceCMYK', 'CMYK', 'DeviceGray', 'G'].includes(name) && (kind === 'rgb' || (kind === 'cmyk' && this.target === 'gray') || (kind === 'gray' && this.target === 'cmyk'))) {
-          set(ins, `/${this.target === 'gray' ? 'DeviceGray' : 'DeviceCMYK'} ${op}`);
+        if (['DeviceRGB', 'RGB', 'CalRGB', 'DeviceCMYK', 'CMYK', 'DeviceGray', 'G'].includes(name) && this.converts(kind)) {
+          set(ins, `/${this.targetName.decodeText()} ${op}`);
         }
         // The operands that follow are converted from the original kind.
         if (op === 'cs') fill = kind;
@@ -268,7 +349,7 @@ class Converter {
         const hasPattern = ins.args.some((x) => x.k === 'name');
         if (hasPattern) continue;
         const c = convertColor(kind, nums(ins.args), this.target);
-        if (c && kind !== (this.target === 'gray' ? 'gray' : 'cmyk')) set(ins, emit(c, op));
+        if (c && this.converts(kind)) set(ins, emit(c, op));
       } else if (op === 'BI') {
         this.keep('inline images are kept in their colours');
       }
@@ -296,7 +377,7 @@ class Converter {
     const g = dict.lookup(PDFName.of('Group'));
     if (g instanceof PDFDict && g.has(PDFName.of('CS'))) {
       const kind = this.kindOf(g.get(PDFName.of('CS')), undefined);
-      if (kind === 'rgb' || (kind === 'cmyk' && this.target === 'gray')) g.set(PDFName.of('CS'), this.targetName);
+      if (this.converts(kind) && kind !== 'gray') g.set(PDFName.of('CS'), this.targetName);
     }
   }
 
@@ -342,8 +423,12 @@ class Converter {
         this.report.images++;
         continue;
       }
+      if (this.target === 'rgb' && csArr instanceof PDFArray && ['Separation', 'DeviceN'].includes((this.look(csArr.get(0)) as PDFName | undefined)?.decodeText?.() ?? '')) {
+        if (!this.convertSpotAlternate(csArr)) this.keep('spot colours whose alternate is DeviceCMYK could not be converted');
+        continue;
+      }
       const kind = this.kindOf(csv, undefined);
-      if (kind === 'other' || kind === 'pattern' || (kind === 'gray' && this.target === 'gray') || (kind === 'cmyk' && this.target === 'cmyk')) {
+      if (!this.converts(kind)) {
         if (kind === 'other') this.keep('some images in special colour spaces are kept');
         continue;
       }
@@ -378,12 +463,17 @@ class Converter {
         this.keep(filters.includes('JPXDecode') ? 'JPEG 2000 images are kept in colour' : 'some images are kept in colour');
         continue;
       }
-      const outN = this.target === 'gray' ? 1 : 4;
+      const outN = this.channels;
       const out = new Uint8Array(w * h * outN);
       const vals: number[] = [0, 0, 0, 0];
+      // A /Decode array maps samples (inverted CMYK images: [1 0 1 0 1 0 1 0]); decoded JPEGs come back as RGB.
+      const decode = channels === inN ? (d.lookup(PDFName.of('Decode')) as PDFArray | undefined)?.asArray?.().map((x) => (x instanceof PDFNumber ? x.asNumber() : 0)) : undefined;
+      const srcKind: Kind = channels === 3 ? 'rgb' : channels === 1 ? 'gray' : kind === 'cmyk' ? 'cmyk' : 'rgb';
       for (let i = 0; i < w * h; i++) {
-        for (let k = 0; k < channels; k++) vals[k] = px[i * channels + k] / 255;
-        const srcKind: Kind = channels === 4 && kind !== 'cmyk' ? 'rgb' : channels === 1 ? 'gray' : kind;
+        for (let k = 0; k < channels; k++) {
+          const v = px[i * channels + k] / 255;
+          vals[k] = decode && decode.length >= 2 * channels ? decode[2 * k] + v * (decode[2 * k + 1] - decode[2 * k]) : v;
+        }
         const c = convertColor(srcKind, vals.slice(0, channels), this.target)!;
         for (let k = 0; k < outN; k++) out[i * outN + k] = Math.round(c[k] * 255);
       }
@@ -419,8 +509,9 @@ class Converter {
           if (!(a instanceof PDFDict)) continue;
           for (const key of ['C', 'IC']) {
             const c = a.lookup(PDFName.of(key));
-            if (c instanceof PDFArray && c.size() === 3) {
-              const v = convertColor('rgb', c.asArray().map((x) => (x instanceof PDFNumber ? x.asNumber() : 0)), this.target);
+            const kind: Kind | null = c instanceof PDFArray ? (c.size() === 3 ? 'rgb' : c.size() === 4 ? 'cmyk' : null) : null;
+            if (c instanceof PDFArray && kind && this.converts(kind)) {
+              const v = convertColor(kind, c.asArray().map((x) => (x instanceof PDFNumber ? x.asNumber() : 0)), this.target);
               if (v) a.set(PDFName.of(key), this.ctx.obj(v.map(n3)));
             }
           }
@@ -440,8 +531,8 @@ class Converter {
   }
 }
 
-export async function convertDocumentColors(doc: PDFDocument, target: ColorTarget, hooks: ConvertHooks = {}): Promise<ConvertReport> {
-  return new Converter(doc, target, hooks).run();
+export async function convertDocumentColors(doc: PDFDocument, target: ColorTarget, hooks: ConvertHooks = {}, opts: ConvertOptions = {}): Promise<ConvertReport> {
+  return new Converter(doc, target, hooks, opts).run();
 }
 
 export async function convertColors(bytes: Uint8Array, target: ColorTarget, hooks: ConvertHooks = {}): Promise<{ bytes: Uint8Array; report: ConvertReport }> {

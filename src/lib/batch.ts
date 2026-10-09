@@ -108,7 +108,8 @@ export async function runBatchOp(bytes: Uint8Array, op: BatchOp, ctx: BatchConte
     case 'pdfa': {
       const { convertToPdfADetailed, pdfaWarnings } = await import('./pdf/pdfa');
       const fieldFont = await ctx.loadFont({ family: 'sans', bold: false, italic: false }).catch(() => undefined);
-      const r = await convertToPdfADetailed(bytes, { title: ctx.fileName.replace(/\.pdf$/i, ''), author: '', level: '2b', fieldFont });
+      const { defaultPdfAFontSources } = await import('./pdf/pdfaFonts');
+      const r = await convertToPdfADetailed(bytes, { title: ctx.fileName.replace(/\.pdf$/i, ''), author: '', level: '2b', fieldFont, fonts: defaultPdfAFontSources(), colorHooks: ctx.colorHooks });
       // Without the closing "validate with veraPDF" reminder, which would repeat for every file.
       const warnings = (await pdfaWarnings(r.bytes, '2b')).slice(0, -1);
       return { bytes: r.bytes, note: [...r.notes, ...warnings].join(' ') || undefined };

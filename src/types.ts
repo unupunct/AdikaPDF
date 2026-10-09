@@ -492,4 +492,6 @@ export interface SignatureValidation {
   qualified?: 'qc' | 'qscd' | null;
   /** The signer (or timestamp) certificate chains to an EU Trusted List service. */
   euTrusted?: string | null;
+  /** When the EU Trusted Lists' own signatures were verified (ISO), with euTrusted. */
+  euTrustedVerified?: string | null;
 }

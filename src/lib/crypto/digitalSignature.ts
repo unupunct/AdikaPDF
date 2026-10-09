@@ -146,6 +146,8 @@ export interface VerifyOptions {
 export interface EuTrustIndex {
   /** Services whose status was granted at t (default: now). */
   find(subjectHex: string, kind: 'ca' | 'tsa', at?: Date): Array<{ der: Uint8Array; label: string }>;
+  /** When the lists' signatures were verified (ISO). */
+  verified?: string;
 }
 
 /** Fields added to SignatureValidation for the verify tool (optional in types.ts). */
@@ -542,6 +544,8 @@ interface CertMeta {
   /** subjectPublicKey BIT STRING content (for OCSP issuerKeyHash). */
   publicKeyBits: Uint8Array;
   keyAlgorithm: KeyAlgorithm | 'other';
+  /** An RSASSA-PSS key (id-RSASSA-PSS in the certificate): PKCS#1 v1.5 signatures are refused. */
+  pssOnly: boolean;
   curve: (typeof CURVES)[string] | null;
   sigOid: string;
   sigValue: Uint8Array;
@@ -565,8 +569,15 @@ function computeMeta(d: Uint8Array): CertMeta {
   const keyOid = oidOf(d, spkiAlgKids[0]);
   let keyAlgorithm: CertMeta['keyAlgorithm'] = 'other';
   let curve: CertMeta['curve'] = null;
+  let spki = raw(d, spkiT);
+  let pssOnly = false;
   if (keyOid === OID.rsaEncryption) keyAlgorithm = 'rsa';
-  else if (keyOid === OID.ecPublicKey) {
+  else if (keyOid === OID.rsaPss) {
+    // An RSA key restricted to PSS: the same key under rsaEncryption, for Web Crypto.
+    keyAlgorithm = 'rsa';
+    pssOnly = true;
+    spki = der(0x30, algId(OID.rsaEncryption, true), raw(d, spkiBits));
+  } else if (keyOid === OID.ecPublicKey) {
     keyAlgorithm = 'ecdsa';
     if (spkiAlgKids[1]?.tag === 0x06) curve = CURVES[oidOf(d, spkiAlgKids[1])] ?? null;
   }
@@ -584,9 +595,10 @@ function computeMeta(d: Uint8Array): CertMeta {
     serial: content(d, serialT),
     issuerDer: raw(d, issuerT),
     subjectDer: raw(d, subjectT),
-    spki: raw(d, spkiT),
+    spki,
     publicKeyBits: bitString(d, spkiBits),
     keyAlgorithm,
+    pssOnly,
     curve,
     sigOid: oidOf(d, kids(d, sigAlgT)[0]),
     sigValue: bitString(d, sigT),
@@ -618,7 +630,7 @@ function parseCertificate(d: Uint8Array): forge.pki.Certificate {
   const bytes = d.slice();
   const meta = computeMeta(bytes);
   let cert: forge.pki.Certificate;
-  if (meta.keyAlgorithm === 'rsa') {
+  if (meta.keyAlgorithm === 'rsa' && !meta.pssOnly) {
     cert = forge.pki.certificateFromAsn1(forge.asn1.fromDer(bytesToBinary(bytes)));
   } else {
     dummyRsaSpki ??= binaryToBytes(
@@ -1045,7 +1057,7 @@ async function verifyWithCert(
   const hash = hashOid ? HASH_NAME[hashOid] : undefined;
   if (!hash) return null;
   const family = sigFamily(sigOid);
-  if (family && family !== m.keyAlgorithm) return false;
+  if ((family && family !== m.keyAlgorithm) || m.pssOnly) return false;
   const subtle = globalThis.crypto?.subtle;
   if (!subtle) return null;
   try {
@@ -1107,6 +1119,30 @@ function rsaVerifyAbsentNull(keyCert: forge.pki.Certificate, hashOid: string, da
 function verifyCertSignature(child: forge.pki.Certificate, issuer: forge.pki.Certificate): Promise<boolean | null> {
   const m = metaOf(child);
   return verifyWithCert(issuer, m.sigOid, m.tbs, m.sigValue);
+}
+
+/**
+ * Verifies a bare signature value with a DER certificate (XML signatures):
+ * `sigOid` is an RSA / ECDSA signature OID, or RSASSA-PSS with `pssHashOid`
+ * (salt as long as the hash). ECDSA values are r || s as XMLDSig writes them.
+ */
+export async function verifyRawSignature(certDer: Uint8Array, sigOid: string, data: Uint8Array, sig: Uint8Array, pssHashOid?: string): Promise<boolean> {
+  let cert: forge.pki.Certificate;
+  try {
+    cert = parseCertificate(certDer);
+  } catch {
+    return false;
+  }
+  if (sigOid === OID.rsaPss) {
+    const len = { [OID.sha256]: 32, [OID.sha384]: 48, [OID.sha512]: 64 }[pssHashOid ?? ''];
+    if (!len) return false;
+    return (await verifyWithCert(cert, sigOid, data, sig, undefined, { hashOid: pssHashOid!, saltLength: len })) === true;
+  }
+  if (sigFamily(sigOid) === 'ecdsa') {
+    if (!sig.length || sig.length % 2) return false;
+    sig = ecdsaRawToDer(sig);
+  }
+  return (await verifyWithCert(cert, sigOid, data, sig)) === true;
 }
 
 /** True when `issuer` issued `cert` (name match and a verifying signature; RSA and ECDSA). */
@@ -2549,6 +2585,7 @@ export async function verifyPdfSignatures(pdfBytes: Uint8Array, opts: VerifyOpti
         if (opts.euTrust) {
           const eu = await euTrustOf(info.cert, pool, isDocTs ? 'tsa' : 'ca', when.at, opts.euTrust);
           r.euTrusted = eu;
+          if (eu) r.euTrustedVerified = opts.euTrust.verified ?? null;
           if (eu && r.chainStatus !== 'trusted' && r.chainStatus !== 'expired') {
             r.chainStatus = 'trusted';
             r.chainDetails = [...(r.chainDetails ?? []), `Trusted through the EU Trusted List (${eu}).`];
@@ -3293,7 +3330,7 @@ function summarise(r: ExtendedValidation, notes: string[]): string {
   else if (r.euTrusted && r.qualified === 'qc') parts.push(`Advanced electronic signature with an EU qualified certificate; issuer on the EU Trusted List (${r.euTrusted}).`);
   else if (r.euTrusted) parts.push(`The issuer is a qualified trust service on the EU Trusted List (${r.euTrusted}).`);
   else if (r.qualified) parts.push('The certificate declares itself EU qualified, but its issuer was not confirmed on the EU Trusted List.');
-  if (r.euTrusted) parts.push('The EU Trusted Lists were downloaded over HTTPS; their own XML signatures are not verified.');
+  if (r.euTrusted) parts.push(r.euTrustedVerified ? `The EU Trusted Lists' own signatures were verified (${r.euTrustedVerified.slice(0, 10)}).` : "The EU Trusted Lists' own signatures were not verified.");
   if (r.certified) parts.push(['', 'Certified: no changes are allowed.', 'Certified: filling in forms and signing are allowed.', 'Certified: filling in forms, signing and comments are allowed.'][r.certified]);
   if (r.ltv) parts.push('Long-term validation: the validation data of the whole chain is saved in the file.');
   return parts.join(' ');
