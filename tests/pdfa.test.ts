@@ -190,12 +190,13 @@ describe('PDF/A annotations, forms and colours', () => {
     expect(w).not.toMatch(/NotoSans/);
   });
 
-  it('warns about DeviceCMYK under an sRGB output intent', async () => {
+  it('warns about DeviceCMYK under an sRGB output intent (and the conversion fixes it)', async () => {
     const doc = await PDFDocument.create();
     const page = doc.addPage([200, 200]);
     page.node.set(PDFName.of('Contents'), doc.context.register(doc.context.stream('0 0 0 1 k 10 10 50 50 re f')));
-    const out = await convertToPdfA(await doc.save(), { title: 'C', author: '' });
-    expect((await pdfaWarnings(out, '2b')).join('\n')).toMatch(/1 page\(s\), image\(s\) or drawing\(s\) use DeviceCMYK/);
+    const src = await doc.save();
+    expect((await pdfaWarnings(src, '2b')).join('\n')).toMatch(/1 page\(s\), image\(s\) or drawing\(s\) use DeviceCMYK/);
+    expect((await pdfaWarnings(await convertToPdfA(src, { title: 'C', author: '' }), '2b')).join('\n')).not.toMatch(/DeviceCMYK/);
     const rgb = await PDFDocument.create();
     rgb.addPage([200, 200]).drawRectangle({ x: 10, y: 10, width: 20, height: 20 });
     expect((await pdfaWarnings(await convertToPdfA(await rgb.save(), { title: 'R', author: '' }), '2b')).join('\n')).not.toMatch(/DeviceCMYK/);
