@@ -182,7 +182,7 @@ pub fn online_disabled() -> bool {
 /// Native network entry points call this first.
 pub fn check_online() -> Result<(), String> {
     if online_disabled() {
-        return Err("POLICY: Online features are turned off by your organisation (DisableOnlineFeatures).".into());
+        return Err("Online features are turned off by your organisation (DisableOnlineFeatures).".into());
     }
     Ok(())
 }
