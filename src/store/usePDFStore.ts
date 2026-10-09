@@ -90,6 +90,7 @@ export type ModalId =
   | 'spell'
   | 'einvoice'
   | 'einvoiceNew'
+  | 'anaf'
   | 'portfolio'
   | 'pageSize'
   | 'customize'
