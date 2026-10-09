@@ -44,7 +44,7 @@ import type { AttachmentObject, LinkObject, MeasureObject, PolyObject, StampObje
 import { measureValue, realPerPoint, scaleText } from '@/lib/measure';
 import { applyMatrix, multiply, rotateCw, transformRectBounds, translate, type Matrix } from '@/lib/geometry';
 import { cloudScallops } from '@/lib/cloud';
-import { addToPage, appearance, hexToRgbTuple, linear, pdfDate, text, transparency } from './annotations';
+import { addToPage, appearance, hexToRgbTuple, linear, pdfDate, rotateEntry, text, transparency } from './annotations';
 
 /** Local (display, y-down) frame of an object → PDF user space, and the y-up appearance frame for a w × h box. */
 function frames(pm: Matrix, o: { x: number; y: number; rotation: number }, h: number): { local: Matrix; flipped: Matrix } {
@@ -117,12 +117,15 @@ export function writeStamp(doc: PDFDocument, page: PDFPage, pm: Matrix, o: Stamp
     resources.Font = { F1: font.ref, F2: bold.ref };
   }
   ops.push(popGraphicsState());
+  // The turn is in the appearance /Matrix (standard); /Rotate repeats it for Acrobat.
   const ap = appearance(doc, ops, [0, 0, w, h], linear(flipped), doc.context.obj(resources));
+  const rotate = rotateEntry(flipped);
   const ref = doc.context.register(
     doc.context.obj({
       Type: 'Annot',
       Subtype: 'Stamp',
       Rect: [r.x, r.y, r.x + r.width, r.y + r.height],
+      ...(rotate ? { Rotate: rotate } : {}),
       Name: o.name || 'Draft',
       C: color,
       CA: o.opacity,

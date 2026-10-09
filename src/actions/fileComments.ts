@@ -91,7 +91,8 @@ async function stampPicture(page: PageRef, id: string): Promise<string | null> {
   try {
     const p = await pdf.getPage(1);
     const scale = Math.min(4, Math.max(1, 600 / Math.max(pic.width, pic.height)));
-    const viewport = p.getViewport({ scale, rotation: totalRotation(page) });
+    // Upright: the stamp's turn (and the page's) is the object's rotation.
+    const viewport = p.getViewport({ scale });
     const canvas = document.createElement('canvas');
     canvas.width = Math.ceil(viewport.width);
     canvas.height = Math.ceil(viewport.height);

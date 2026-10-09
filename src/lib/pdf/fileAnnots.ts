@@ -59,9 +59,9 @@ import type {
   TextObject,
   VectorObject,
 } from '@/types';
-import { applyMatrix, displayToPdfMatrix, multiply, rotateCw, totalRotation, transformRectBounds, translate, type Matrix, type Rect } from '@/lib/geometry';
+import { applyMatrix, displayToPdfMatrix, multiply, normalizeAngle, rotateCw, totalRotation, transformRectBounds, translate, type Matrix, type Rect } from '@/lib/geometry';
 import { uid } from '@/lib/uid';
-import { addToPage, appearance, hexToRgbTuple, pdfDate, text, transparency } from './annotations';
+import { addToPage, appearance, hexToRgbTuple, linear, pdfDate, rotateEntry, text, transparency } from './annotations';
 import { parseSvgPath } from './vectorEdit';
 
 // ------------------------------------------------------------------ ids
@@ -145,6 +145,72 @@ function strokeWidth(d: PDFDict): number {
 function invert([a, b, c, d, e, f]: Matrix): Matrix {
   const det = a * d - b * c || 1;
   return [d / det, -b / det, -c / det, a / det, (c * f - d * e) / det, (b * e - a * f) / det];
+}
+
+// ------------------------------------------------------------------ stamp appearances
+
+interface StampForm {
+  /** /AP /N as it is referenced (a ref, or the stream itself). */
+  normal: PDFRef | PDFStream;
+  bbox: [number, number, number, number];
+  /** Its /Matrix. */
+  matrix: Matrix;
+  /** The turn the matrix gives (radians, counter-clockwise in user space). */
+  angle: number;
+}
+
+function stampForm(d: PDFDict): StampForm | null {
+  const ap = d.lookup(PDFName.of('AP'));
+  if (!(ap instanceof PDFDict)) return null;
+  const normal = ap.get(PDFName.of('N'));
+  const stream = ap.lookup(PDFName.of('N'));
+  if (!(stream instanceof PDFStream) || !(normal instanceof PDFRef || normal instanceof PDFStream)) return null;
+  const b = nums(stream.dict, 'BBox');
+  if (!b || b.length < 4) return null;
+  const mx = nums(stream.dict, 'Matrix');
+  const matrix: Matrix = mx && mx.length === 6 ? (mx as Matrix) : [1, 0, 0, 1, 0, 0];
+  return { normal, bbox: [Math.min(b[0], b[2]), Math.min(b[1], b[3]), Math.max(b[0], b[2]), Math.max(b[1], b[3])], matrix, angle: Math.atan2(matrix[1], matrix[0]) };
+}
+
+/** The appearance with its turn taken out (y up), and the box it then covers. */
+function uprightForm(f: StampForm): { cm: Matrix; width: number; height: number } {
+  const c = Math.cos(f.angle);
+  const s = Math.sin(f.angle);
+  const unturn: Matrix = [c, -s, s, c, 0, 0];
+  const [x0, y0, x1, y1] = f.bbox;
+  const m = multiply(unturn, f.matrix);
+  const pts = [applyMatrix(m, x0, y0), applyMatrix(m, x1, y0), applyMatrix(m, x1, y1), applyMatrix(m, x0, y1)];
+  const minX = Math.min(...pts.map((p) => p[0]));
+  const minY = Math.min(...pts.map((p) => p[1]));
+  const width = Math.max(1e-3, Math.max(...pts.map((p) => p[0])) - minX);
+  const height = Math.max(1e-3, Math.max(...pts.map((p) => p[1])) - minY);
+  return { cm: multiply(translate(-minX, -minY), unturn), width, height };
+}
+
+/**
+ * Where a stamp of the file sits as an editor object: its unturned size, and
+ * the turn of its appearance (/Matrix; Acrobat's /Rotate says the same) as the
+ * object's rotation, so the editor shows it as viewers draw it.
+ */
+function stampPlacement(d: PDFDict, inv: Matrix): { x: number; y: number; width: number; height: number; rotation: number } | null {
+  const f = stampForm(d);
+  const r = nums(d, 'Rect');
+  if (!f || !r || r.length < 4) return null;
+  const up = uprightForm(f);
+  // The appearance (turned) is fitted into /Rect: the same factor for the unturned box.
+  const c = Math.abs(Math.cos(f.angle));
+  const s = Math.abs(Math.sin(f.angle));
+  const turnedW = up.width * c + up.height * s;
+  const turnedH = up.width * s + up.height * c;
+  const k = Math.sqrt((Math.abs(r[2] - r[0]) / turnedW) * (Math.abs(r[3] - r[1]) / turnedH)) || 1;
+  const width = up.width * k;
+  const height = up.height * k;
+  // The turn on screen: user space y-up → display y-down; rotateCw(rot) · flip = that linear map.
+  const lin = multiply([inv[0], inv[1], inv[2], inv[3], 0, 0], [Math.cos(f.angle), Math.sin(f.angle), -Math.sin(f.angle), Math.cos(f.angle), 0, 0]);
+  const rotation = normalizeAngle(Math.round(((Math.atan2(lin[1], lin[0]) * 180) / Math.PI) * 100) / 100);
+  const [cx, cy] = applyMatrix(inv, (r[0] + r[2]) / 2, (r[1] + r[3]) / 2);
+  const [hx, hy] = applyMatrix(rotateCw(rotation), width / 2, height / 2);
+  return { x: cx - hx, y: cy - hy, width, height, rotation };
 }
 
 function pageMatrix(page: PDFPage, ref: PageRef): Matrix {
@@ -406,9 +472,9 @@ function toObject(doc: PDFDocument, d: PDFDict, subtype: string, inv: Matrix, re
       return { ...base, type: 'vector', x, y, width: w, height: h, path, naturalWidth: w, naturalHeight: h, fill: null, stroke: color(d, 'C') ?? '#000000', strokeWidth: sw, evenOdd: false } satisfies VectorObject;
     }
     case 'Stamp': {
-      const ap = d.lookup(PDFName.of('AP'));
-      if (!(ap instanceof PDFDict) || !(ap.lookup(PDFName.of('N')) instanceof PDFStream)) return null;
-      return { ...base, ...meta, type: 'stamp', x: rect.x, y: rect.y, width: rect.width, height: rect.height, label: '', subtitle: '', color: color(d, 'C') ?? '#b91c1c', name: name(d, 'Name') ?? 'Draft', text: contents } satisfies StampObject;
+      const place = stampPlacement(d, inv);
+      if (!place) return null;
+      return { ...base, ...meta, type: 'stamp', ...place, label: '', subtitle: '', color: color(d, 'C') ?? '#b91c1c', name: name(d, 'Name') ?? 'Draft', text: contents } satisfies StampObject;
     }
     case 'Link': {
       const target = linkTarget(doc, d, pageIdForIndex);
@@ -460,26 +526,26 @@ export function isUntouched(o: EditorObject): boolean {
 }
 
 /**
- * A one-page PDF holding just the stamp's own appearance (Rect at the
- * origin), for rendering it into a picture with pdf.js.
+ * A one-page PDF holding just the stamp's own appearance, upright (its turn
+ * is the object's rotation), for rendering it into a picture with pdf.js.
  */
 export async function stampPicturePdf(doc: PDFDocument, id: string): Promise<{ bytes: Uint8Array; width: number; height: number } | null> {
   const ref = parseAnnotId(id);
   const d = ref ? doc.context.lookup(ref) : null;
   if (!(d instanceof PDFDict)) return null;
-  const ap = d.lookup(PDFName.of('AP'));
-  const r = nums(d, 'Rect');
-  if (!(ap instanceof PDFDict) || !r || r.length < 4) return null;
-  const n = ap.get(PDFName.of('N'));
-  const w = Math.abs(r[2] - r[0]) || 1;
-  const h = Math.abs(r[3] - r[1]) || 1;
+  const f = stampForm(d);
+  if (!f) return null;
+  const up = uprightForm(f);
   const out = await PDFDocument.create();
-  const page = out.addPage([w, h]);
-  if (!n) return null;
-  const normal = PDFObjectCopier.for(doc.context, out.context).copy(n);
-  const annot = out.context.register(out.context.obj({ Type: 'Annot', Subtype: 'Stamp', Rect: [0, 0, w, h], F: 4, AP: { N: normal } }));
-  page.node.set(PDFName.of('Annots'), out.context.obj([annot]));
-  return { bytes: await out.save(), width: w, height: h };
+  const page = out.addPage([up.width, up.height]);
+  const copied = PDFObjectCopier.for(doc.context, out.context).copy(f.normal);
+  const form = copied instanceof PDFRef ? out.context.lookup(copied) : copied;
+  if (form instanceof PDFStream) form.dict.set(PDFName.of('Subtype'), PDFName.of('Form'));
+  const formRef = copied instanceof PDFRef ? copied : out.context.register(copied);
+  const content = out.context.stream(`q ${up.cm.map((v) => +v.toFixed(6)).join(' ')} cm /S Do Q`);
+  page.node.set(PDFName.of('Contents'), out.context.register(content));
+  page.node.set(PDFName.of('Resources'), out.context.obj({ XObject: { S: formRef } }));
+  return { bytes: await out.save(), width: up.width, height: up.height };
 }
 
 // ------------------------------------------------------------------ writers for taken-over shapes
@@ -612,10 +678,40 @@ function writeInk(doc: PDFDocument, page: PDFPage, pm: Matrix, o: VectorObject):
   });
 }
 
-/** A stamp keeps its own appearance: only where it is and its comment change (the appearance scales to /Rect). */
-function writeStampPlace(doc: PDFDocument, page: PDFPage, pm: Matrix, o: StampObject): void {
-  const r = transformRectBounds(frame(pm, o), { x: 0, y: 0, width: o.width, height: o.height });
-  register(doc, page, { Subtype: 'Stamp', Rect: [r.x, r.y, r.x + r.width, r.y + r.height], Contents: text(o.text) });
+/**
+ * A stamp keeps its own appearance. Not turned (before or after): only where
+ * it is and its comment change (the appearance scales to /Rect). Turned: a new
+ * appearance draws the original one upright, turned by its /Matrix, with /Rect
+ * the turned box and /Rotate for Acrobat.
+ */
+function writeStampPlace(doc: PDFDocument, page: PDFPage, pm: Matrix, o: StampObject, target: PDFRef): void {
+  const local = frame(pm, o);
+  const r = transformRectBounds(local, { x: 0, y: 0, width: o.width, height: o.height });
+  const rect = [r.x, r.y, r.x + r.width, r.y + r.height];
+  const original = doc.context.lookup(target);
+  const f = original instanceof PDFDict ? stampForm(original) : null;
+  const flipped = multiply(local, [1, 0, 0, -1, 0, o.height]);
+  const turned = (m: Matrix) => Math.abs(Math.atan2(m[1], m[0])) > 1e-4;
+  if (!f || (!turned(f.matrix) && !turned(flipped))) {
+    register(doc, page, { Subtype: 'Stamp', Rect: rect, Contents: text(o.text) });
+    return;
+  }
+  const up = uprightForm(f);
+  const normal = f.normal instanceof PDFRef ? f.normal : doc.context.register(f.normal);
+  const fit = multiply([o.width / up.width, 0, 0, o.height / up.height, 0, 0], up.cm);
+  const ops = `q /GS0 gs ${fit.map((v) => +v.toFixed(6)).join(' ')} cm /S Do Q`;
+  const ap = doc.context.register(
+    doc.context.stream(ops, {
+      Type: 'XObject',
+      Subtype: 'Form',
+      BBox: [0, 0, o.width, o.height],
+      Matrix: linear(flipped),
+      Resources: { XObject: { S: normal }, ExtGState: { GS0: transparency(doc, o.opacity) } },
+    }),
+  );
+  const rotate = rotateEntry(flipped);
+  const keep = original instanceof PDFDict ? original.get(PDFName.of('C')) : undefined;
+  register(doc, page, { Subtype: 'Stamp', Rect: rect, Contents: text(o.text), CA: o.opacity, ...(keep ? { C: keep } : {}), ...(rotate ? { Rotate: rotate } : {}), AP: { N: ap } });
 }
 
 // ------------------------------------------------------------------ saving
@@ -623,7 +719,7 @@ function writeStampPlace(doc: PDFDocument, page: PDFPage, pm: Matrix, o: StampOb
 /** Entries of the original that are kept whatever the edit (identity, thread, structure). */
 const KEEP = new Set(['Type', 'Subtype', 'NM', 'T', 'CreationDate', 'Popup', 'IRT', 'RT', 'P', 'StructParent', 'OC', 'F', 'Name', 'Open', 'State', 'StateModel', 'Subj', 'Measure']);
 /** Entries an annotation writer owns: stale when a new appearance was written without them. */
-const OWNED = ['Rect', 'Contents', 'RC', 'DS', 'C', 'IC', 'CA', 'ca', 'BS', 'Border', 'BE', 'RD', 'AP', 'AS', 'QuadPoints', 'Vertices', 'L', 'LE', 'InkList', 'CL', 'DA', 'Q', 'A', 'Dest', 'H', 'Path'];
+const OWNED = ['Rect', 'Contents', 'RC', 'DS', 'C', 'IC', 'CA', 'ca', 'BS', 'Border', 'BE', 'RD', 'AP', 'AS', 'QuadPoints', 'Vertices', 'L', 'LE', 'InkList', 'CL', 'DA', 'Q', 'A', 'Dest', 'H', 'Path', 'Rotate'];
 
 function annotsOf(page: PDFPage): PDFArray | null {
   return page.node.Annots() ?? null;
@@ -785,7 +881,7 @@ export function prepareFileAnnotEdits(planned: PlannedAnnotPage[], objects: Edit
         case 'stamp':
           // Into its original: only the place changes. Elsewhere (a copy) the picture is written as a new stamp.
           if (!targets.has(o.id)) return false;
-          writeStampPlace(doc, page, pm, o);
+          writeStampPlace(doc, page, pm, o, targets.get(o.id)!);
           return true;
         default:
           return false;

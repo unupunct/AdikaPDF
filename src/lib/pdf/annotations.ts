@@ -78,6 +78,15 @@ export function linear(m: Matrix): Matrix {
   return [m[0], m[1], m[2], m[3], 0, 0];
 }
 
+/**
+ * Acrobat's /Rotate of a stamp (or free text): the turn its appearance /Matrix
+ * gives it, in whole degrees counter-clockwise in user space; 0 = none.
+ */
+export function rotateEntry(m: Matrix): number {
+  const deg = Math.round((Math.atan2(m[1], m[0]) * 180) / Math.PI);
+  return ((deg % 360) + 360) % 360;
+}
+
 export function appearance(doc: PDFDocument, ops: PDFOperator[], bbox: [number, number, number, number], matrix: Matrix, resources?: PDFDict): PDFRef {
   const stream = doc.context.formXObject(ops, {
     BBox: bbox,
