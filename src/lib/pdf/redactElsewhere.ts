@@ -39,6 +39,8 @@ export interface ElsewhereHit {
   detail?: string;
   /** The matched text. */
   text: string;
+  /** Annotations: their reference ("12 0 R"). */
+  ref?: string;
 }
 
 export interface ElsewhereOptions {
@@ -172,14 +174,14 @@ function annotationSpots(doc: PDFDocument, finder: Finder, opts: ElsewhereOption
         const fs = dictOf(doc, dict.get(N('FS')));
         const names = fs ? [str(fs.lookup(N('UF'))), str(fs.lookup(N('F'))), str(fs.lookup(N('Desc')))] : [];
         const hit = firstHit(finder, [contents, richToPlain(rc), str(dict.lookup(N('T'))), str(dict.lookup(N('Subj'))), ...names]);
-        if (hit) out.push({ kind: 'attachment', where: 'Attachment', pageIndex, detail: names[0] || names[1] || undefined, text: hit, apply: () => drop(ref) });
+        if (hit) out.push({ kind: 'attachment', where: 'Attachment', pageIndex, ref: String(ref), detail: names[0] || names[1] || undefined, text: hit, apply: () => drop(ref) });
         continue;
       }
       if (subtype === 'Link') {
         const a = dictOf(doc, dict.get(N('A')));
         const uri = a ? str(a.lookup(N('URI'))) || textOf(doc, a.get(N('F'))) : '';
         const hit = firstHit(finder, [uri, contents]);
-        if (hit) out.push({ kind: 'link', where: 'Link', pageIndex, text: hit, apply: () => drop(ref) });
+        if (hit) out.push({ kind: 'link', where: 'Link', pageIndex, ref: String(ref), text: hit, apply: () => drop(ref) });
         continue;
       }
       if (isComment(dict)) {
@@ -189,6 +191,7 @@ function annotationSpots(doc: PDFDocument, finder: Finder, opts: ElsewhereOption
           kind: 'comment',
           where: 'Comment',
           pageIndex,
+          ref: String(ref),
           text: hit,
           apply: () => {
             if ((opts.comments ?? 'remove') === 'remove') return drop(ref);
@@ -203,7 +206,7 @@ function annotationSpots(doc: PDFDocument, finder: Finder, opts: ElsewhereOption
       }
       // Widgets and other annotations: /Contents is their alternate description.
       const hit = firstHit(finder, [contents]);
-      if (hit) out.push({ kind: 'altText', where: 'Alternate text', pageIndex, text: hit, apply: () => void dict.delete(N('Contents')) });
+      if (hit) out.push({ kind: 'altText', where: 'Alternate text', pageIndex, ref: String(ref), text: hit, apply: () => void dict.delete(N('Contents')) });
     }
   });
 }
