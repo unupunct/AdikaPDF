@@ -36,7 +36,12 @@ function assert(c, m) {
 const idle = () => page.waitForFunction(() => !window.__adika.store.getState().busy && !window.__adika.document.isSaving?.(), null, { timeout: 120000 });
 
 async function openContract() {
-  await S(() => window.__adika.store.setState({ dirty: false }));
+  // An already-open file only switches to its tab: close the tabs so the unsigned contract is read again.
+  await S(() => {
+    const t = window.__adika.tabs;
+    window.__adika.store.setState({ dirty: false });
+    for (const tab of [...t.useTabs.getState().tabs]) t.removeTab(tab.id);
+  });
   await S((p) => window.__adika.document.openPdfPath(p), pdfPath);
   await idle();
 }
