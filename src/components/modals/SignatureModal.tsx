@@ -148,7 +148,7 @@ export function SignatureModal() {
   );
 }
 
-function SignaturePad({ canvasRef, ink, onInk }: { canvasRef: React.RefObject<HTMLCanvasElement>; ink: string; onInk: (v: boolean) => void }) {
+function SignaturePad({ canvasRef, ink, onInk }: { canvasRef: React.RefObject<HTMLCanvasElement | null>; ink: string; onInk: (v: boolean) => void }) {
   const last = useRef<{ x: number; y: number; w: number; t: number } | null>(null);
   const [empty, setEmpty] = useState(true);
 
