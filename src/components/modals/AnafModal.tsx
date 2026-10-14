@@ -13,7 +13,7 @@ type Tab = 'send' | 'messages' | 'uploads' | 'settings';
 
 const KIND_LABEL: Record<MessageKind, string> = { sent: 'Sent', received: 'Received', errors: 'Errors', 'buyer-message': 'Buyer message', other: 'Other' };
 const STATE_LABEL: Record<UploadRecord['state'], string> = { sent: 'Sent', processing: 'Being processed', ok: 'Accepted', nok: 'Rejected (errors)', rejected: 'Rejected at upload', unknown: 'Unknown' };
-const stateClass = (s: UploadRecord['state']) => (s === 'ok' ? 'text-emerald-600 dark:text-emerald-400' : s === 'nok' || s === 'rejected' ? 'text-rose-600 dark:text-rose-400' : 'text-amber-600 dark:text-amber-400');
+const stateClass = (s: UploadRecord['state']) => (s === 'ok' ? 'text-emerald-700 dark:text-emerald-400' : s === 'nok' || s === 'rejected' ? 'text-rose-600 dark:text-rose-400' : 'text-amber-700 dark:text-amber-400');
 
 export function AnafModal() {
   const open = usePDFStore((s) => s.modal === 'anaf');
@@ -413,7 +413,7 @@ export function AnafModal() {
             disabled={!isDesktop}
             label="Stay connected: keep ANAF's refresh token in Windows Credential Manager (valid up to a year; anyone using this Windows account could send invoices)"
           />
-          {appProblem ? <p className="mt-2 text-xs text-amber-600 dark:text-amber-400">{translate(appProblem)}</p> : null}
+          {appProblem ? <p className="mt-2 text-xs text-amber-700 dark:text-amber-400">{translate(appProblem)}</p> : null}
           <div className="mt-3 flex items-center gap-2">
             <Button onClick={() => void saveSettings()} disabled={!!busy}>
               Save settings
@@ -432,7 +432,7 @@ export function ValidationResult({ v }: { v: AnafValidation }) {
   return (
     <div className="rounded-lg border border-app p-3 text-xs" data-testid="anaf-validation">
       {v.ok ? (
-        <p className="font-medium text-emerald-600 dark:text-emerald-400">ANAF found no errors in the XML.</p>
+        <p className="font-medium text-emerald-700 dark:text-emerald-400">ANAF found no errors in the XML.</p>
       ) : (
         <p className="font-medium text-rose-600 dark:text-rose-400">ANAF found errors in the XML:</p>
       )}

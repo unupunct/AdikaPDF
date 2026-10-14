@@ -14,7 +14,7 @@ function Toggle({ label, active, onClick, children, testId }: { label: string; a
       aria-pressed={active}
       data-testid={testId}
       onClick={onClick}
-      className={`flex h-7 w-7 items-center justify-center rounded-md ${active ? 'bg-brand-600 text-white' : 'hover-app'}`}
+      className={`flex h-7 w-7 items-center justify-center rounded-md ${active ? 'bg-brand-700 text-white' : 'hover-app'}`}
     >
       {children}
     </button>

@@ -59,7 +59,7 @@ export function CommandPalette() {
   const [query, setQuery] = useState('');
   const [items, setItems] = useState<Item[]>([]);
   const [active, setActive] = useState(0);
-  const hidden = useRef<HTMLDivElement>(null);
+  const hidden = useRef<HTMLDivElement | null>(null);
   const input = useRef<HTMLInputElement>(null);
   const close = () => usePalette.setState({ open: false });
 
@@ -123,13 +123,14 @@ export function CommandPalette() {
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/20 pt-[12vh]" onMouseDown={close} data-testid="palette">
-      <div className="w-[560px] max-w-[92vw] overflow-hidden rounded-xl border border-app bg-panel shadow-2xl" onMouseDown={(e) => e.stopPropagation()}>
+      <div role="dialog" aria-modal="true" aria-label="Tool search" className="w-[560px] max-w-[92vw] overflow-hidden rounded-xl border border-app bg-panel shadow-2xl" onMouseDown={(e) => e.stopPropagation()}>
         <div className="flex items-center gap-2 border-b border-app px-3">
           <Search size={16} className="text-muted" />
           <input
             ref={input}
             value={query}
             data-testid="palette-input"
+            aria-label="Search tools and commands…"
             placeholder="Search tools and commands…"
             className="h-11 flex-1 bg-transparent text-[14px] outline-none"
             onChange={(e) => {
@@ -172,7 +173,7 @@ export function CommandPalette() {
         </ul>
       </div>
       {/* The ribbon of every tab, off-screen: the search index. */}
-      <div ref={hidden} aria-hidden="true" style={{ position: 'fixed', left: -20000, top: 0, width: 6000, pointerEvents: 'none' }}>
+      <div ref={(el) => { hidden.current = el; el?.setAttribute('inert', ''); }} aria-hidden="true" style={{ position: 'fixed', left: -20000, top: 0, width: 6000, pointerEvents: 'none' }}>
         {RIBBON_TABS.map((t) => (
           <div key={t.id} data-tab={t.id} className="flex">
             <TabContent tab={t.id} />

@@ -32,8 +32,12 @@ export default defineConfig({
     minify: process.env.ADIKA_NO_MINIFY ? false : 'esbuild',
   },
   test: {
-    environment: 'node',
-    include: ['tests/**/*.test.ts'],
     testTimeout: 60000,
+    // Engines and stores run in Node; interface components (tests/ui) in jsdom.
+    projects: [
+      { extends: true, test: { name: 'unit', environment: 'node', include: ['tests/**/*.test.ts'] } },
+      // fs.strict off: `?url` font assets resolve through a linked node_modules in worktrees.
+      { extends: true, server: { fs: { strict: false } }, test: { name: 'ui', environment: 'jsdom', include: ['tests/ui/**/*.test.tsx'], setupFiles: ['tests/ui/setup.ts'] } },
+    ],
   },
 });

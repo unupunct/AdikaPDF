@@ -18,8 +18,8 @@ export const buttonVariants = cva(
   {
     variants: {
       variant: {
-        primary: 'bg-brand-600 text-white hover:bg-brand-700 shadow-sm',
-        accent: 'bg-accent-600 text-white hover:bg-accent-500 shadow-sm',
+        primary: 'bg-brand-700 text-white hover:bg-brand-800 shadow-sm',
+        accent: 'bg-accent-700 text-white hover:bg-accent-800 shadow-sm',
         outline: 'border border-app bg-panel hover-app',
         ghost: 'hover-app',
         danger: 'bg-rose-600 text-white hover:bg-rose-700',
@@ -159,7 +159,7 @@ export function DropdownItem({ children, onSelect, disabled, icon }: { children:
     <DropdownPrimitive.Item
       disabled={disabled}
       onSelect={onSelect}
-      className="flex cursor-default items-center gap-2 rounded-md px-2 py-1.5 text-[13px] outline-none data-[disabled]:opacity-40 data-[highlighted]:bg-brand-600 data-[highlighted]:text-white"
+      className="flex cursor-default items-center gap-2 rounded-md px-2 py-1.5 text-[13px] outline-none data-[disabled]:opacity-40 data-[highlighted]:bg-brand-700 data-[highlighted]:text-white"
     >
       {icon}
       {children}
@@ -278,7 +278,9 @@ export function ColorSwatch({ value, onChange, label, allowNone }: { value: stri
   return (
     <Popover
       trigger={
-        <button type="button" aria-label={label} className="flex h-8 items-center gap-2 rounded-md border border-app bg-panel-2 px-2 text-xs hover-app">
+        <button type="button" className="flex h-8 items-center gap-2 rounded-md border border-app bg-panel-2 px-2 text-xs hover-app">
+          {/* Named by the label and the value shown (the name contains the visible text). */}
+          <span className="sr-only">{label}</span>
           <span className={cn('h-4 w-4 rounded border border-black/15', !value && 'checkerboard')} style={value ? { background: value } : undefined} />
           <span className="font-mono">{value ?? 'none'}</span>
         </button>

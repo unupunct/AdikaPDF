@@ -202,6 +202,17 @@ The end-to-end suite launches the release executable with `ADIKA_E2E=1`, which e
 hooks and replaces file dialogs with a queue; it covers every ribbon feature and verifies each
 output file independently with pdf-lib and pdf.js.
 
+`npm test` runs two Vitest projects: `unit` (engines and stores, Node) and `ui` (components in
+jsdom with Testing Library, `tests/ui/`: ribbon and document tab keyboard navigation, dialogs and
+focus, prompts, toasts, the busy overlay, shortcuts while typing, Customize). Accessibility is
+checked three ways: axe-core on rendered dialogs, panels and every ribbon tab (`tests/ui/a11y.test.tsx`,
+serious and critical rules fail), the theme colours against WCAG AA in both themes
+(`tests/contrast.test.ts`), and axe-core inside the running app, with real layout and colour
+contrast (`npm run test:e2e -- "accessibility: axe"`; it lists violations by rule and fails on critical
+ones; `ADIKA_A11Y_JSON=<file>` writes every node). `tests/translationQuality.test.ts` checks the six
+interface languages (placeholders, plurals, English left over, form of address, core terms,
+typography); open doubts for native speakers are in `docs/translation-review.md`.
+
 ## Notes and limits
 
 - Hardware-token signing is tested end to end against a SoftHSM2 token (RSA-2048 and ECDSA P-256, verified independently with pyHanko): `bash tests/token/setup-softhsm.sh && node tests/e2e/token.mjs`.

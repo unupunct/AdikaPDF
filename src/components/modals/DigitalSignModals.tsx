@@ -682,7 +682,7 @@ function SignatureCard({ sig }: { sig: SignatureValidation }) {
       )}
     >
       <div className="mb-2 flex items-center gap-2">
-        {tone === 'good' ? <BadgeCheck className="text-accent-600" size={20} /> : tone === 'warn' ? <ShieldAlert className="text-amber-600" size={20} /> : <BadgeX className="text-rose-600" size={20} />}
+        {tone === 'good' ? <BadgeCheck className="text-accent-600" size={20} /> : tone === 'warn' ? <ShieldAlert className="text-amber-700" size={20} /> : <BadgeX className="text-rose-600" size={20} />}
         <div>
           <div className="text-[13px] font-semibold">
             {sig.documentTimestamp ? <span className="mr-1 font-normal text-muted">Document timestamp ·</span> : null}

@@ -19,14 +19,14 @@ export function Toasts() {
             t.kind === 'error' ? 'border-rose-300 dark:border-rose-800' : t.kind === 'success' ? 'border-emerald-300 dark:border-emerald-800' : 'border-app',
           )}
         >
-          {t.kind === 'error' ? <XCircle size={16} className="mt-0.5 shrink-0 text-rose-600" /> : t.kind === 'success' ? <CheckCircle2 size={16} className="mt-0.5 shrink-0 text-emerald-600" /> : <Info size={16} className="mt-0.5 shrink-0 text-brand-600" />}
+          {t.kind === 'error' ? <XCircle size={16} className="mt-0.5 shrink-0 text-rose-600" /> : t.kind === 'success' ? <CheckCircle2 size={16} className="mt-0.5 shrink-0 text-emerald-700" /> : <Info size={16} className="mt-0.5 shrink-0 text-brand-600" />}
           <span className="min-w-0 flex-1 break-words">
             {t.message}
             {t.action ? (
               <button
                 type="button"
                 data-testid="toast-action"
-                className="ml-2 font-medium text-brand-600 underline hover:text-brand-700"
+                className="ml-2 font-medium text-brand-700 underline hover:text-brand-800 dark:text-brand-300 dark:hover:text-brand-200"
                 onClick={() => {
                   dismiss(t.id);
                   t.action?.run();
