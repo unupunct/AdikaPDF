@@ -71,7 +71,7 @@ describe('translations: nothing left in English', () => {
 describe('translations: one form of address per language', () => {
   // Romanian, German, French and Hungarian address the user formally; Italian and Spanish informally.
   const WRONG: Record<Lang, RegExp> = {
-    ro: /(?<!\p{L})(tu|tău|tale|poți|vrei|ești)(?!\p{L})/iu,
+    ro: /(?<!\p{L})(tu|ta|tău|tale|poți|vrei|ești)(?!\p{L})/iu,
     de: /(?<!\p{L})(du|dein|deine|deinen|deinem|deiner|dich|dir|kannst|willst|musst)(?!\p{L})/u,
     fr: /(?<!\p{L})(tu|ton|tes|toi|peux|veux|dois)(?!\p{L})/iu,
     hu: /(?<!\p{L})(kattints|válaszd|nyisd|mentsd|próbáld|szeretnéd|akarod)(?!\p{L})/iu,

@@ -294,6 +294,10 @@
     DeleteRegValue SHCTX "${MANUPRODUCTKEY}" "NoShell"
     DeleteRegValue SHCTX "${MANUPRODUCTKEY}" "DisableUpdateCheck"
     DeleteRegValue SHCTX "${MANUPRODUCTKEY}" "DefaultLanguage"
+    ; The install folder Tauri remembers (the folder is gone now); then the key and its parent when empty.
+    DeleteRegValue SHCTX "${MANUPRODUCTKEY}" ""
+    DeleteRegKey /ifempty SHCTX "${MANUPRODUCTKEY}"
+    DeleteRegKey /ifempty SHCTX "Software\${MANUFACTURER}"
   ${EndIf}
   RMDir /r "$INSTDIR\logs"
   ; A thumbnail DLL still in use is deleted at the next restart: the folder goes then too.
