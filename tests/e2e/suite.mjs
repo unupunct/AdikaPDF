@@ -185,7 +185,8 @@ const state = () => S(() => {
 });
 
 async function idle(timeout = 120000) {
-  await page.waitForFunction(() => !window.__adika.store.getState().busy, null, { timeout });
+  // A save is under way from the key press on, before it shows as busy (checks and code loading come first).
+  await page.waitForFunction(() => !window.__adika.store.getState().busy && !window.__adika.document.isSaving?.(), null, { timeout });
 }
 
 async function open(path) {

@@ -33,7 +33,7 @@ await S((d) => window.__adika.platform.e2eSetSaveDir(d), out);
 function assert(c, m) {
   if (!c) throw new Error(`Assertion failed: ${m}`);
 }
-const idle = () => page.waitForFunction(() => !window.__adika.store.getState().busy, null, { timeout: 120000 });
+const idle = () => page.waitForFunction(() => !window.__adika.store.getState().busy && !window.__adika.document.isSaving?.(), null, { timeout: 120000 });
 
 async function openContract() {
   await S(() => window.__adika.store.setState({ dirty: false }));

@@ -284,7 +284,25 @@ export function suggestedName(suffix = ''): string {
   return `${base}${suffix}.pdf`;
 }
 
+let saving = false;
+
+/** True from the moment a save starts (before its checks and prompts) until it ends. */
+export function isSaving(): boolean {
+  return saving;
+}
+
 export async function saveDocument(saveAs = false): Promise<boolean> {
+  // A second Ctrl+S while a save is still starting does nothing.
+  if (saving) return false;
+  saving = true;
+  try {
+    return await saveDocumentNow(saveAs);
+  } finally {
+    saving = false;
+  }
+}
+
+async function saveDocumentNow(saveAs: boolean): Promise<boolean> {
   const s = usePDFStore.getState();
   if (s.pages.length === 0) return false;
   if (s.readOnlyReason) {
