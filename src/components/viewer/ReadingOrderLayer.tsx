@@ -38,11 +38,13 @@ async function toView(page: PageRef, boxes: Array<Box | null>): Promise<Array<Re
 
 const COLORS: Record<string, string> = { H: '#7c3aed', Figure: '#059669', Formula: '#059669', Table: '#d97706', TH: '#d97706', TD: '#d97706', L: '#0891b2', LI: '#0891b2', LBody: '#0891b2', Lbl: '#0891b2', Link: '#db2777', Form: '#db2777', Annot: '#db2777' };
 const colorOf = (role: string) => COLORS[/^H\d?$/.test(role) ? 'H' : role] ?? '#2563eb';
+// One shared empty selection: a new [] per call would make the store selector loop.
+const NONE: string[] = [];
 
 export const ReadingOrderLayer = memo(function ReadingOrderLayer({ page, zoom }: { page: PageRef; zoom: number }) {
   const on = useA11y((s) => s.orderMode);
   const epoch = useA11y((s) => s.epoch);
-  const selected = useA11y((s) => (s.selectedPage === page.id ? s.selected : []));
+  const selected = useA11y((s) => (s.selectedPage === page.id ? s.selected : NONE));
   const [items, setItems] = useState<Array<{ item: OrderItem; r: Rect }>>([]);
   const [untagged, setUntagged] = useState<Rect[]>([]);
   const [tagged, setTagged] = useState(true);
