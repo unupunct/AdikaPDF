@@ -102,10 +102,13 @@ export function registerReplaceTests(test, ctx) {
     await page.waitForFunction(() => window.__adika.store.getState().objects.some((o) => o.type === 'redact'), null, { timeout: 15000 });
     await page.click('[data-testid="btn-apply-redactions"]');
     await idle();
-    const saved = await savedFile(/everywhere\.pdf$/);
+    const saved = readFileSync(await savedFile(/everywhere\.pdf$/));
     const out = await PD.load(saved, { updateMetadata: false });
     assert(!out.getAuthor(), 'author cleared');
-    assert(!out.getPage(0).node.lookup(PDFName.of('Annots')), 'comment removed');
+    // The field's widget stays (only its value is cleared); the comment goes.
+    const annots = out.getPage(0).node.lookup(PDFName.of('Annots'));
+    const subtypes = annots ? annots.asArray().map((r) => String(out.context.lookup(r).get(PDFName.of('Subtype')))) : [];
+    assert(!subtypes.includes('/Text'), `comment removed (${subtypes})`);
     assert(!(out.getForm().getTextField('client').getText() ?? '').includes('Popescu'), 'field value cleared');
     assert(!Buffer.from(saved).toString('latin1').includes('Popescu'), 'no plain copy of the name left in the file');
   });

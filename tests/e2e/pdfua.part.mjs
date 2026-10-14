@@ -59,6 +59,9 @@ export function registerPdfUaTests(test, ctx) {
     await page.keyboard.press('Control+z');
     await idle();
     await page.click('[data-testid="ro-close"]');
-    assert(!(await page.$('[data-testid="reading-order-layer"]')), 'layer closed');
+    const closed = await page
+      .waitForSelector('[data-testid="reading-order-layer"]', { state: 'detached', timeout: 5000 })
+      .then(() => true, () => false);
+    assert(closed, 'layer closed');
   });
 }
