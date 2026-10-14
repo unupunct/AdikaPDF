@@ -145,7 +145,7 @@ that is the maintainer's decision, nothing here submits it.
 
 ## Build from source
 
-Requirements: Node 20+, Rust (MSVC toolchain), Visual Studio 2022 Build Tools with the C++ workload.
+Requirements: Node 24 (or 22.22+; Vite 8 builds on 20.19+, the tests need Vitest 5 and jsdom), Rust (MSVC toolchain), Visual Studio 2022 Build Tools with the C++ workload.
 
 ```bash
 npm install

@@ -7,7 +7,9 @@
 const fs = require('fs');
 const path = require('path');
 
-const ts = require('typescript');
+// TypeScript 7 (the native compiler) has no in-process parser API; its
+// JavaScript compiler API lives on as @typescript/typescript6.
+const ts = require('@typescript/typescript6');
 
 function extractUiStrings(repo) {
   const files = [];

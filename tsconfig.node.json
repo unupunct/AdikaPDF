@@ -10,8 +10,7 @@
     "noEmit": true,
     "jsx": "react-jsx",
     "types": ["node", "vite/client"],
-    "baseUrl": ".",
-    "paths": { "@/*": ["src/*"] }
+    "paths": { "@/*": ["./src/*"] }
   },
   "include": ["vite.config.ts", "tests", "src/globals.d.ts"]
 }

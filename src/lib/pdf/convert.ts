@@ -76,7 +76,7 @@ export type ProgressFn = (done: number, total: number) => void;
 // XML helpers (pure)
 // ---------------------------------------------------------------------------
 
-const INVALID_XML = /[^\t\n\r -퟿-�\u{10000}-\u{10FFFF}]/gu;
+const INVALID_XML = /[^\t\n\r\u0020-\uD7FF\uE000-\uFFFD\u{10000}-\u{10FFFF}]/gu;
 
 export function stripInvalidXmlChars(s: string): string {
   return s.replace(INVALID_XML, '');
