@@ -15,7 +15,7 @@ UpgradeBehavior: install
 FileExtensions:
 - pdf
 ProductCode: 'Adika PDF Editor'
-ReleaseDate: 2026-10-09
+ReleaseDate: 2026-10-15
 AppsAndFeaturesEntries:
 - DisplayName: 'Adika PDF Editor'
   Publisher: unupunct
@@ -24,13 +24,13 @@ Installers:
 - Architecture: x64
   Scope: user
   InstallerUrl: https://github.com/unupunct/AdikaPDF/releases/download/v1.14.0/AdikaPDF_1.14.0_x64-setup.exe
-  InstallerSha256: 0000000000000000000000000000000000000000000000000000000000000000
+  InstallerSha256: 770B9501AE5A71F78D4276E6B109B1787118320DA0AFD9019D0B37A713F34431
   InstallerSwitches:
     Custom: /CURRENTUSER
 - Architecture: x64
   Scope: machine
   InstallerUrl: https://github.com/unupunct/AdikaPDF/releases/download/v1.14.0/AdikaPDF_1.14.0_x64-setup.exe
-  InstallerSha256: 0000000000000000000000000000000000000000000000000000000000000000
+  InstallerSha256: 770B9501AE5A71F78D4276E6B109B1787118320DA0AFD9019D0B37A713F34431
   InstallerSwitches:
     Custom: /ALLUSERS
 ManifestType: installer
