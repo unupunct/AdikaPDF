@@ -8,8 +8,9 @@ import * as TooltipPrimitive from '@radix-ui/react-tooltip';
 import * as PopoverPrimitive from '@radix-ui/react-popover';
 import * as DropdownPrimitive from '@radix-ui/react-dropdown-menu';
 import { cva, type VariantProps } from 'class-variance-authority';
-import { X } from 'lucide-react';
+import { CircleHelp, X } from 'lucide-react';
 import { cn } from '@/lib/cn';
+import { openHelp } from '@/store/help';
 
 // ------------------------------------------------------------------ Button
 
@@ -75,6 +76,7 @@ export function Dialog({
   footer,
   width = 520,
   testId,
+  help,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -84,6 +86,8 @@ export function Dialog({
   footer?: React.ReactNode;
   width?: number;
   testId?: string;
+  /** Help topic ("page" or "page#heading" of the user guide): a "?" button next to Close opens it, as does F1. */
+  help?: string;
 }) {
   return (
     <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
@@ -91,6 +95,7 @@ export function Dialog({
         <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-slate-950/45 backdrop-blur-[2px]" />
         <DialogPrimitive.Content
           data-testid={testId}
+          data-help-topic={help}
           style={{ width: `min(${width}px, calc(100vw - 32px))` }}
           className="fixed left-1/2 top-1/2 z-50 flex max-h-[calc(100vh-48px)] -translate-x-1/2 -translate-y-1/2 flex-col rounded-xl border border-app bg-panel shadow-2xl"
           onOpenAutoFocus={(e) => {
@@ -110,11 +115,18 @@ export function Dialog({
                 <DialogPrimitive.Description className="sr-only">{typeof title === 'string' ? title : 'Dialog'}</DialogPrimitive.Description>
               )}
             </div>
-            <DialogPrimitive.Close asChild>
-              <Button variant="ghost" size="icon" aria-label="Close" className="-mr-2 -mt-1 h-7 w-7">
-                <X size={16} />
-              </Button>
-            </DialogPrimitive.Close>
+            <div className="-mr-2 -mt-1 flex shrink-0 items-center">
+              {help ? (
+                <Button variant="ghost" size="icon" aria-label="Help for this dialog" title="Help (F1)" className="h-7 w-7" onClick={() => openHelp(help)} data-testid="dialog-help">
+                  <CircleHelp size={16} />
+                </Button>
+              ) : null}
+              <DialogPrimitive.Close asChild>
+                <Button variant="ghost" size="icon" aria-label="Close" className="h-7 w-7">
+                  <X size={16} />
+                </Button>
+              </DialogPrimitive.Close>
+            </div>
           </div>
           <div className="min-h-0 flex-1 overflow-auto px-5 py-4">{children}</div>
           {footer ? <div className="flex items-center justify-end gap-2 border-t border-app px-5 py-3">{footer}</div> : null}

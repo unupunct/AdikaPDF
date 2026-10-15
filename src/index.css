@@ -148,3 +148,31 @@ select,
     forced-color-adjust: none;
   }
 }
+
+/* Help viewer: the guide's Markdown. */
+.help-content {
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: var(--text);
+  max-width: 760px;
+}
+.help-content h1 { font-size: 22px; font-weight: 650; margin: 0 0 12px; }
+.help-content h2 { font-size: 17px; font-weight: 650; margin: 22px 0 8px; padding-bottom: 4px; border-bottom: 1px solid var(--border); }
+.help-content h3 { font-size: 14.5px; font-weight: 650; margin: 16px 0 6px; }
+.help-content h1:focus, .help-content h2:focus, .help-content h3:focus { outline: none; }
+.help-content p, .help-content ul, .help-content ol, .help-content table, .help-content blockquote { margin: 0 0 10px; }
+.help-content ul { list-style: disc; padding-left: 22px; }
+.help-content ol { list-style: decimal; padding-left: 22px; }
+.help-content li { margin: 2px 0; }
+.help-content a[href] { color: var(--color-brand-700); text-decoration: underline; cursor: pointer; }
+.dark .help-content a[href] { color: var(--color-brand-300); }
+.help-content a[href]:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; border-radius: 2px; }
+.help-content code { font-family: Consolas, 'Cascadia Mono', monospace; font-size: 12.5px; background: var(--hover); border-radius: 4px; padding: 0 4px; }
+.help-content pre { background: var(--hover); border-radius: 6px; padding: 8px 10px; overflow-x: auto; margin: 0 0 10px; }
+.help-content pre code { padding: 0; }
+.help-content blockquote { border-left: 3px solid var(--color-brand-600); background: var(--panel-2); padding: 6px 12px; border-radius: 0 6px 6px 0; }
+.help-content table { border-collapse: collapse; width: 100%; font-size: 12.5px; }
+.help-content th, .help-content td { border: 1px solid var(--border); padding: 4px 8px; text-align: left; vertical-align: top; }
+.help-content th { background: var(--panel-2); font-weight: 600; }
+.help-content img { max-width: 100%; height: auto; border: 1px solid var(--border); border-radius: 6px; margin: 4px 0 12px; }
+.help-content strong { font-weight: 650; }

@@ -359,6 +359,7 @@ export function EInvoiceCreateModal() {
       description="Made on this computer. ANAF is contacted only when you look up a CUI, check with ANAF or send the invoice."
       width={1040}
       testId="einvoice-new-modal"
+      help="efactura-create"
       footer={
         <>
           <div className="mr-auto flex flex-wrap items-center gap-x-4" data-testid="einv-outputs">
