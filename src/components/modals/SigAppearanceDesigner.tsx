@@ -16,6 +16,7 @@ import { imageFileToDataUrl } from '@/lib/objectFactory';
 import { uid } from '@/lib/uid';
 import { cn } from '@/lib/cn';
 import type { FontFamily } from '@/types';
+import { translate } from '@/lib/i18n';
 
 const SCRIPT_FONTS = ['Segoe Script', 'Ink Free', 'Lucida Handwriting', 'Brush Script MT', 'Gabriola', 'Segoe Print'];
 
@@ -62,7 +63,7 @@ export function SigAppearanceDesigner({
 }) {
   const { profiles, defaultId, upsert, remove, setDefault } = useSigProfiles();
   const saved = usePDFStore((s) => s.savedSignatures);
-  const [draft, setDraft] = useState<AppearanceProfile>(() => profiles.find((p) => p.id === defaultId) ?? profiles[0] ?? newProfile('My signature'));
+  const [draft, setDraft] = useState<AppearanceProfile>(() => profiles.find((p) => p.id === defaultId) ?? profiles[0] ?? newProfile(translate('My signature')));
   const [w, setW] = useState(Math.round(size.width));
   const [h, setH] = useState(Math.round(size.height));
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -81,7 +82,7 @@ export function SigAppearanceDesigner({
     const t = window.setTimeout(async () => {
       try {
         const name = signerName || 'Maria Ionescu';
-        const values = appearanceValues({ name, issuer: 'certSIGN Qualified CA', when: new Date(), reason: 'I approve this document', location: 'Cluj-Napoca', contact: 'maria@example.com' });
+        const values = appearanceValues({ name, issuer: 'Example Qualified CA', when: new Date(), reason: translate('I approve this document'), location: 'Cluj-Napoca', contact: 'maria@example.com' });
         const assets = await appearanceAssets(draft, name, null);
         const bytes = await appearancePreviewPdf(Math.max(10, w), Math.max(10, h), draft, values, assets);
         const { openPdf } = await import('@/lib/pdf/pdfService');
@@ -121,7 +122,7 @@ export function SigAppearanceDesigner({
   };
 
   const save = () => {
-    const p = { ...draft, name: draft.name.trim() || 'My signature' };
+    const p = { ...draft, name: draft.name.trim() || translate('My signature') };
     upsert(p);
     if (!defaultId) setDefault(p.id);
     setDraft(p);
@@ -137,6 +138,7 @@ export function SigAppearanceDesigner({
       description="How visible digital signatures look. Stored only on this computer."
       width={900}
       testId="sig-designer"
+      help="signing-appearance"
       footer={
         <>
           <Button onClick={onClose}>Close</Button>
@@ -173,7 +175,7 @@ export function SigAppearanceDesigner({
                 className="hidden text-rose-600 group-hover:block"
                 onClick={() => {
                   remove(p.id);
-                  if (p.id === draft.id) setDraft(newProfile('My signature'));
+                  if (p.id === draft.id) setDraft(newProfile(translate('My signature')));
                 }}
               >
                 <Trash2 size={11} />

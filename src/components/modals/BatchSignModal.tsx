@@ -9,6 +9,7 @@ import { CheckCircle2, Cloud, FilePlus2, FileSignature, FolderOpen, KeyRound, Lo
 import { usePDFStore } from '@/store/usePDFStore';
 import { useCscProviders } from '@/store/cscProviders';
 import { Button, Callout, Checkbox, Dialog, Field, Input, Select, Tabs } from '@/components/ui/primitives';
+import { translate } from '@/lib/i18n';
 import { identityFromCertificateDer, loadP12, type SigningIdentity } from '@/lib/crypto/digitalSignature';
 import { targetLevel, type BatchSignOptions, type BatchSignResult, type SignCorner } from '@/lib/batchSign';
 import type { CscClient, CscCredential } from '@/lib/crypto/csc';
@@ -62,7 +63,8 @@ export function BatchSignModal() {
   const [otpAsk, setOtpAsk] = useState<{ round: number; resolve: (otp: string | null) => void } | null>(null);
   const [otpAgain, setOtpAgain] = useState('');
   // options
-  const [reason, setReason] = useState('I approve this document');
+  // The reason is written into the signature: in the interface language.
+  const [reason, setReason] = useState(() => translate('I approve this document'));
   const [location, setLocation] = useState('');
   const [contact, setContact] = useState('');
   const [useTsa, setUseTsa] = useState(false);
@@ -314,6 +316,7 @@ export function BatchSignModal() {
       description="One digital signature on many PDFs: the PIN or authorization is asked once for the whole batch."
       width={720}
       testId="batchsign-modal"
+      help="signing-batch"
       footer={
         <>
           {finished && results ? (
@@ -362,7 +365,7 @@ export function BatchSignModal() {
                       {r.status === 'done' ? (
                         <>
                           <span data-no-translate>{`→ ${baseName(r.output!)}`}</span>
-                          {r.message ? <span data-no-translate>{` (${r.message})`}</span> : null}
+                          {r.message ? <span data-no-translate>{` (${r.message.split('; ').map((x) => translate(x)).join('; ')})`}</span> : null}
                         </>
                       ) : (
                         <span>{r.message}</span>

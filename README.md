@@ -4,6 +4,8 @@
 OCR and convert PDFs entirely on your computer. Nothing is uploaded. The interface is in
 **English, Română, Deutsch, Français, Magyar, Italiano or Español** (menu in the top bar; it follows the Windows language on first start).
 
+**User guide** (English and Romanian), focused on e-Factura and digital signatures: [docs/guide](docs/guide/en/index.md) · [Ghidul utilizatorului](docs/guide/ro/index.md). The same guide is built into the app (F1).
+
 ## Features
 
 | Area | What you can do |
@@ -27,6 +29,7 @@ OCR and convert PDFs entirely on your computer. Nothing is uploaded. The interfa
 | Print production | **Preflight** against PDF/X-4, PDF/X-1a:2003 or PDF/A-2b and **conversion to PDF/X** (trim boxes, output intent with an embedded CMYK profile, metadata; for X-1a CMYK colours and flattened transparency); colours to **grey or CMYK**; **output preview** of the separations and total ink; **bleed and printer marks** (crop, registration, colour bars, page information) |
 | Automation | **Command line** (`adika-pdf-editor.exe --batch --ocr --compress --out results *.pdf`, or a saved `--sequence`), exit codes for scripts; **watched folders**: PDFs copied into a folder are processed with a saved sequence while Adika runs; **Explorer menu**: Combine in Adika, Compress, Make searchable (OCR), Convert to PDF; **PDF thumbnails** in Explorer; **Send by e-mail** from your mail program; your own **Quick Access toolbar** and **keyboard shortcuts** |
 | Document properties | Title, authors, subject, keywords, **copyright** status, notice and URL, **custom properties**; written into the XMP metadata in step with the document information |
+| Help | **Built-in user guide** (F1, the **?** button in the top bar, and a **?** in the e-Factura and signing dialogs that opens the page about that dialog): getting started, e-Factura (reading, creating, credit notes, ANAF checks, sending to SPV, ANAF error messages) and digital signatures (concepts, every way to sign, appearance, batch signing, verification, troubleshooting), with screenshots; table of contents, search across pages (diacritics ignored), back / forward and links between pages; works offline; in Romanian when the interface is Romanian, otherwise English |
 | Updates | Optional update check (About → Check for updates, or once a week): asks GitHub for the latest version, nothing else is sent; **one-click updates**: shows what is new, downloads the installer with progress, checks its signature against Adika's update key and installs it (asks first when documents are unsaved and keeps recovery copies); nothing is contacted unless you check or turned the weekly check on; **automatic backup** of every unsaved document every few seconds and recovery after a crash; asks before closing with unsaved changes; **signed documents are saved as an incremental update** (signatures stay valid when you add comments or fill in fields; a setting does this for all documents); warns when the file changed on disk or a save would break signatures; long operations can be **cancelled** |
 
 ## Install

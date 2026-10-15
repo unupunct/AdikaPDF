@@ -29,9 +29,11 @@ import { saveFileQuiet } from '@/actions/saveGuard';
 import type { SignatureValidation } from '@/types';
 import { cn } from '@/lib/cn';
 import { defaultTsaUrl, onlineAllowed, usePolicy } from '@/lib/policy';
+import { translate } from '@/lib/i18n';
 
 export function useSignMeta(): [SignMeta, (m: SignMeta) => void] {
-  return useState<SignMeta>({ reason: 'I approve this document', location: '', contactInfo: '', tsaUrl: null, pades: true });
+  // The reason is written into the signature: in the interface language.
+  return useState<SignMeta>(() => ({ reason: translate('I approve this document'), location: '', contactInfo: '', tsaUrl: null, pades: true }));
 }
 
 export function usePlacement(): [PlacementState, (p: PlacementState) => void] {
@@ -164,6 +166,7 @@ export function CertificateModal() {
       description="A certificate-based signature proves who signed and that the document was not changed afterwards."
       width={620}
       testId="certificate-modal"
+      help="signing-sign#sign-with-a-certificate-file-pfx-or-p12"
       footer={
         <>
           <Button onClick={close}>Cancel</Button>
@@ -348,6 +351,7 @@ export function TokenModal() {
       description="USB tokens, smart cards and national eID cards through their PKCS#11 driver. The private key never leaves the device."
       width={660}
       testId="token-modal"
+      help="signing-sign#sign-with-a-usb-token-or-smart-card"
       footer={
         <>
           <Button onClick={close}>Cancel</Button>
@@ -489,6 +493,7 @@ export function StoreCertModal() {
       description="Certificates installed in Windows (Personal store): qualified certificates from your card or token driver, or imported .pfx files. Windows asks for the PIN; the key never leaves its device."
       width={660}
       testId="winstore-modal"
+      help="signing-sign#sign-with-a-certificate-installed-in-windows"
       footer={
         <>
           <Button onClick={close}>Cancel</Button>
@@ -598,6 +603,7 @@ export function VerifyModal() {
       description="Integrity of each signature, the certificate chain against the Windows trust store, and revocation (OCSP/CRL)."
       width={680}
       testId="verify-modal"
+      help="signing-verify"
       footer={
         <>
           <Checkbox checked={checkRevocation} onChange={setCheckRevocation} label="Check revocation online (OCSP / CRL)" disabled={!isDesktop || !online} />

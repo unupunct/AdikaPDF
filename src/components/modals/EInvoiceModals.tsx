@@ -34,6 +34,7 @@ export function EInvoiceModal() {
       title="E-invoice"
       width={640}
       testId="einvoice-modal"
+      help="efactura-read"
       footer={
         <>
           <Button onClick={() => void act((m) => m.openEInvoiceDialog())} data-testid="einvoice-open">

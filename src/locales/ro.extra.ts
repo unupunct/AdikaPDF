@@ -1900,4 +1900,13 @@ export const RO_EXTRA: Record<string, string> = {
   '{0} page(s), image(s) or drawing(s) use DeviceRGB colours, but the output intent is CMYK. PDF/A requires device colours to match the output intent.': '{0} pagini, imagini sau desene folosesc culori DeviceRGB, dar profilul de ieșire este CMYK. PDF/A cere ca culorile dispozitiv să corespundă profilului de ieșire.',
   'Flattening page {0}…': 'Se aplatizează pagina {0}…',
   'Annotation colour entries were removed (PDF/A-1 allows them only with an RGB output intent); the comments look the same.': 'Intrările de culoare ale adnotărilor au fost eliminate (PDF/A-1 le permite doar cu o intenție de ieșire RGB); comentariile arată la fel.',
+  'I approve this document': 'Aprob acest document',
+  'there is no page {0} in this file': 'fișierul nu are pagina {0}',
+  'no empty field “{0}”': 'nu există câmpul gol „{0}”',
+  'already signed: added as an approval signature': 'deja semnat: adăugată ca semnătură de aprobare',
+  'added after the existing signatures': 'adăugată după semnăturile existente',
+  'validation data incomplete: {0}': 'date de validare incomplete: {0}',
+  'archive timestamp not added: {0}': 'marca temporală de arhivare nu a fost adăugată: {0}',
+  'validation data not added: {0}': 'datele de validare nu au fost adăugate: {0}',
+  'My signature': 'Semnătura mea',
 };

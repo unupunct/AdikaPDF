@@ -1,10 +1,12 @@
-import { Info, Languages, Moon, PanelLeft, PanelRight, Search, Settings2, Sun } from 'lucide-react';
+import { CircleHelp, Info, Languages, Moon, PanelLeft, PanelRight, Search, Settings2, Sun } from 'lucide-react';
 import { QuickAccessBar } from './CustomizeModal';
 import { usePalette } from './CommandPalette';
 import { LANGS, useLang } from '@/lib/i18n';
 import { usePDFStore } from '@/store/usePDFStore';
 import { Button, DropdownContent, DropdownItem, DropdownMenu, DropdownTrigger, Tooltip } from '@/components/ui/primitives';
 import { AdikaLogo } from './AdikaLogo';
+import { openHelp } from '@/store/help';
+import { currentHelpTopic } from '@/components/help/HelpHost';
 
 export function TopBar() {
   const fileName = usePDFStore((s) => s.fileName);
@@ -62,6 +64,11 @@ export function TopBar() {
         <Tooltip content="Customize the Quick Access toolbar and keyboard shortcuts">
           <Button variant="ghost" size="icon" aria-label="Customize" data-testid="customize-open" onClick={() => s.openModal('customize')}>
             <Settings2 size={17} />
+          </Button>
+        </Tooltip>
+        <Tooltip content="Help (F1)">
+          <Button variant="ghost" size="icon" aria-label="Help" data-testid="help-open" onClick={() => openHelp(currentHelpTopic())}>
+            <CircleHelp size={17} />
           </Button>
         </Tooltip>
         <Tooltip content="About Adika PDF Editor">
