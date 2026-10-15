@@ -3048,5 +3048,6 @@
  "added after the existing signatures": "a meglévő aláírások után hozzáadva",
  "validation data incomplete: {0}": "hiányos érvényesítési adatok: {0}",
  "archive timestamp not added: {0}": "az archiváló időbélyeg nem került hozzáadásra: {0}",
- "validation data not added: {0}": "az érvényesítési adatok nem kerültek hozzáadásra: {0}"
+ "validation data not added: {0}": "az érvényesítési adatok nem kerültek hozzáadásra: {0}",
+ "My signature": "Saját aláírás"
 }

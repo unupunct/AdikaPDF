@@ -3048,5 +3048,6 @@
  "added after the existing signatures": "añadida después de las firmas existentes",
  "validation data incomplete: {0}": "datos de validación incompletos: {0}",
  "archive timestamp not added: {0}": "no se añadió la marca de tiempo de archivo: {0}",
- "validation data not added: {0}": "no se añadieron los datos de validación: {0}"
+ "validation data not added: {0}": "no se añadieron los datos de validación: {0}",
+ "My signature": "Mi firma"
 }

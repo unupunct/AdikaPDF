@@ -1908,4 +1908,5 @@ export const RO_EXTRA: Record<string, string> = {
   'validation data incomplete: {0}': 'date de validare incomplete: {0}',
   'archive timestamp not added: {0}': 'marca temporală de arhivare nu a fost adăugată: {0}',
   'validation data not added: {0}': 'datele de validare nu au fost adăugate: {0}',
+  'My signature': 'Semnătura mea',
 };
