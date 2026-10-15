@@ -154,7 +154,7 @@ export function placementIn(insp: Inspection, ap: BatchAppearance): { pageIndex:
   const n = insp.pageCount;
   const pageIndex = ap.page === 'first' ? 0 : ap.page === 'last' ? n - 1 : ap.page - 1;
   if (!ap.visible) return { pageIndex: 0, rect: [0, 0, 0, 0] };
-  if (pageIndex < 0 || pageIndex >= n) throw new BatchSkip(`has no page ${ap.page} (${n} page${n === 1 ? '' : 's'})`);
+  if (pageIndex < 0 || pageIndex >= n) throw new BatchSkip(`there is no page ${ap.page} in this file`);
   const box = insp.pages[pageIndex];
   const rotation = normalizeRotation(box.rotation);
   const disp = rotation % 180 === 0 ? { w: box.width, h: box.height } : { w: box.height, h: box.width };

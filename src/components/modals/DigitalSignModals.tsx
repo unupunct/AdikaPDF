@@ -29,9 +29,11 @@ import { saveFileQuiet } from '@/actions/saveGuard';
 import type { SignatureValidation } from '@/types';
 import { cn } from '@/lib/cn';
 import { defaultTsaUrl, onlineAllowed, usePolicy } from '@/lib/policy';
+import { translate } from '@/lib/i18n';
 
 export function useSignMeta(): [SignMeta, (m: SignMeta) => void] {
-  return useState<SignMeta>({ reason: 'I approve this document', location: '', contactInfo: '', tsaUrl: null, pades: true });
+  // The reason is written into the signature: in the interface language.
+  return useState<SignMeta>(() => ({ reason: translate('I approve this document'), location: '', contactInfo: '', tsaUrl: null, pades: true }));
 }
 
 export function usePlacement(): [PlacementState, (p: PlacementState) => void] {

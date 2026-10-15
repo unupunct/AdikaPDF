@@ -81,7 +81,7 @@ export function SigAppearanceDesigner({
     const t = window.setTimeout(async () => {
       try {
         const name = signerName || 'Maria Ionescu';
-        const values = appearanceValues({ name, issuer: 'certSIGN Qualified CA', when: new Date(), reason: 'I approve this document', location: 'Cluj-Napoca', contact: 'maria@example.com' });
+        const values = appearanceValues({ name, issuer: 'Example Qualified CA', when: new Date(), reason: 'I approve this document', location: 'Cluj-Napoca', contact: 'maria@example.com' });
         const assets = await appearanceAssets(draft, name, null);
         const bytes = await appearancePreviewPdf(Math.max(10, w), Math.max(10, h), draft, values, assets);
         const { openPdf } = await import('@/lib/pdf/pdfService');

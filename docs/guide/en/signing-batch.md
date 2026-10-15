@@ -62,7 +62,7 @@ When it is done:
 | --- | --- |
 | password-protected | Encrypted PDFs are not signed in a batch. Open the file, remove the password, and sign it on its own. |
 | certified with "no changes allowed" | Another signature would break the existing certification. |
-| has no page N | You chose a page number the file does not have. |
+| there is no page N in this file | You chose a page number the file does not have. |
 | no empty field "…" (a note) | The file had no empty field with that name; it was signed at the fixed position instead. |
 | not signed: signing stopped after the error above | The digital ID failed (wrong PIN, token removed, provider error). Adika stops at the first such error so a locked token is not tried again and again. Fix the cause and sign the remaining files. |
 

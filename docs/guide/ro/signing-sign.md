@@ -91,7 +91,7 @@ Toate ferestrele de semnare se încheie cu aceleași opțiuni:
 
 - **Semnătură vizibilă**: **Colțul din dreapta jos** (și celelalte colțuri) ale paginii alese la **Pagina**, **Pe semnătura olografă selectată** / **În câmpul de semnătură selectat** când pe pagină este selectat unul dintre ele, sau **Invizibilă (fără ecuson vizibil)**. Vedeți [Semnături vizibile](signing-appearance.md).
 - **Aspect**: cum arată semnătura vizibilă; **Proiectare aspect…** deschide editorul de aspect.
-- **Motiv** (implicit „I approve this document”, pe care îl puteți înlocui cu „Aprob acest document”) și **Locație**.
+- **Motiv** (implicit „Aprob acest document”) și **Locație**.
 - **Adăugare marcă temporală de încredere (RFC 3161, necesită internet)** și **URL autoritate de marcare temporală**: serverul de marcare temporală al furnizorului dumneavoastră sau cel implicit.
 - **Adăugare date de validare pe termen lung (LTV…)** și **Adăugare marcă temporală de arhivare…**.
 - **Format UE: PAdES baseline (eIDAS)**: rândul de sub opțiune arată nivelul (B-B, B-T, B-LT, B-LTA). Vedeți [Semnăturile pe înțelesul tuturor](signing-concepts.md#nivelurile-pades).

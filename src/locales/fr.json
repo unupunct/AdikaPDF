@@ -3040,5 +3040,13 @@
  "In the selected signature field": "Dans le champ de signature sélectionné",
  "Incorrect PIN. Careful: tokens lock after a few wrong attempts.": "Code PIN incorrect. Attention : les jetons se bloquent après quelques essais erronés.",
  "The token PIN is locked. Unlock it with your vendor's tool (PUK).": "Le code PIN du jeton est bloqué. Débloquez-le avec l’outil du fabricant (PUK).",
- "New tab": "Nouvel onglet"
+ "New tab": "Nouvel onglet",
+ "I approve this document": "J’approuve ce document",
+ "there is no page {0} in this file": "le fichier n’a pas de page {0}",
+ "no empty field “{0}”": "pas de champ vide « {0} »",
+ "already signed: added as an approval signature": "déjà signé : ajoutée comme signature d’approbation",
+ "added after the existing signatures": "ajoutée après les signatures existantes",
+ "validation data incomplete: {0}": "données de validation incomplètes : {0}",
+ "archive timestamp not added: {0}": "horodatage d’archivage non ajouté : {0}",
+ "validation data not added: {0}": "données de validation non ajoutées : {0}"
 }

@@ -3040,5 +3040,13 @@
  "In the selected signature field": "A kijelölt aláírásmezőben",
  "Incorrect PIN. Careful: tokens lock after a few wrong attempts.": "Hibás PIN. Vigyázat: a tokenek néhány hibás próbálkozás után zárolódnak.",
  "The token PIN is locked. Unlock it with your vendor's tool (PUK).": "A token PIN-kódja zárolva van. Oldja fel a gyártó eszközével (PUK).",
- "New tab": "Új lap"
+ "New tab": "Új lap",
+ "I approve this document": "Jóváhagyom ezt a dokumentumot",
+ "there is no page {0} in this file": "a fájlban nincs {0}. oldal",
+ "no empty field “{0}”": "nincs „{0}” nevű üres mező",
+ "already signed: added as an approval signature": "már aláírt: jóváhagyó aláírásként hozzáadva",
+ "added after the existing signatures": "a meglévő aláírások után hozzáadva",
+ "validation data incomplete: {0}": "hiányos érvényesítési adatok: {0}",
+ "archive timestamp not added: {0}": "az archiváló időbélyeg nem került hozzáadásra: {0}",
+ "validation data not added: {0}": "az érvényesítési adatok nem kerültek hozzáadásra: {0}"
 }

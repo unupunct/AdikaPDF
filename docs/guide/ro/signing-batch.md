@@ -62,11 +62,10 @@ La final:
 | --- | --- |
 | protejat cu parolă: deschideți-l, eliminați parola și semnați-l separat | PDF-urile criptate nu se semnează în lot. |
 | certificat cu „nicio modificare permisă”: o altă semnătură l-ar invalida | Documentul a fost certificat fără drept de modificare. |
-| has no page N | Ați ales un număr de pagină pe care fișierul nu îl are. |
-| no empty field „…” (o notă) | Fișierul nu avea un câmp gol cu acel nume; a fost semnat în poziția fixă. |
+| fișierul nu are pagina N | Ați ales un număr de pagină pe care fișierul nu îl are. |
+| nu există câmpul gol „…” (o notă) | Fișierul nu avea un câmp gol cu acel nume; a fost semnat în poziția fixă. |
 | nesemnat: semnarea s-a oprit după eroarea de mai sus | ID-ul digital a dat o eroare (PIN greșit, token scos, eroare la furnizor). Adika se oprește la prima astfel de eroare, ca să nu încerce iar și iar un token care se poate bloca. Remediați cauza și semnați fișierele rămase. |
 
-Mesajele „has no page N” și „no empty field” apar în engleză și în interfața în limba română.
 
 ## Pentru IT: linia de comandă
 
