@@ -58,7 +58,7 @@ Each line has:
 - **Qty**, **Unit** (international unit codes: H87 piece, HUR hour, KGM kilogram…),
 - **Price**: the unit price **without VAT**,
 - **Disc. %**: a discount on this line,
-- **VAT**: the category and the rate (see below),
+- **VAT**: the category and the rate (see [VAT, currency and payment](efactura-vat-payment.md)),
 - **Amount**: the line total without VAT, calculated.
 
 **Add line** adds an empty line. **Add from catalogue…** adds an item you sold before (tick **Add the items to the catalogue** at the bottom right to keep the items of this invoice). The bin removes a line.
