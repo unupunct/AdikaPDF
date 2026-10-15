@@ -30,6 +30,17 @@ function HelpDialog({ guide }: { guide: Guide }) {
   const hits = useMemo(() => searchGuide(guide, query), [guide, query]);
   const article = useRef<HTMLElement>(null);
   const firstNonce = useRef(nonce);
+  // Closing returns the focus to where it was (a field of the dialog the help was opened from).
+  const returnTo = useRef<HTMLElement | null>(typeof document === 'undefined' ? null : (document.activeElement as HTMLElement | null));
+  useEffect(
+    () => () => {
+      const el = returnTo.current;
+      setTimeout(() => {
+        if (el && el.isConnected && el !== document.body) el.focus();
+      }, 20);
+    },
+    [],
+  );
 
   // Scroll to the heading (or the top) after every navigation; keyboard users land on the new text.
   useEffect(() => {

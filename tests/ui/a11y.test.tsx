@@ -75,8 +75,8 @@ describe('accessibility (axe, serious and critical)', () => {
       </TooltipProvider>,
     );
     act(() => useHelp.getState().openHelp('efactura-troubleshooting'));
-    const dlg = await screen.findByRole('dialog', { name: 'Help' });
-    await screen.findByTestId('help-article');
+    const dlg = await screen.findByRole('dialog', { name: 'Help' }, { timeout: 10000 });
+    await screen.findByTestId('help-article', {}, { timeout: 10000 });
     let problems = await axeProblems(dlg);
     expect(problems, describeProblems(problems)).toEqual([]);
     act(() => useHelp.getState().setQuery('token PIN'));

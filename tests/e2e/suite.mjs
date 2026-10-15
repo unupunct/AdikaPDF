@@ -43,6 +43,7 @@ import { registerExtrasTests } from './extras.part.mjs';
 import { registerBatchSignTests } from './batchsign.part.mjs';
 import { registerSigDesignTests } from './sigdesign.part.mjs';
 import { registerA11yTests } from './a11y.part.mjs';
+import { registerHelpTests } from './help.part.mjs';
 
 const only = process.argv.slice(2).filter((a) => !a.startsWith('--'));
 const shots = process.argv.includes('--shots');
@@ -877,6 +878,8 @@ registerExtrasTests(test, { S, page, dir, open, idle, savedFile, assert, join, w
 registerBatchSignTests(test, { S, page, dir, assert, join, writeFileSync, pfxPath: process.env.ADIKA_WINSTORE_TEST_PFX });
 registerSigDesignTests(test, { S, page, open, idle, savedFile, assert, F, setTool });
 registerA11yTests(test, { S, page, open, assert, F });
+// Round 15, not yet run against a build.
+registerHelpTests(test, { S, page, open, assert, F });
 
 test('dark mode toggle and welcome after close', async () => {
   await page.click('[data-testid="theme-toggle"]');

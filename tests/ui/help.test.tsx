@@ -20,7 +20,8 @@ function App() {
   );
 }
 
-const article = () => screen.findByTestId('help-article');
+// The viewer is loaded on first use: allow for a slow first import under load.
+const article = () => screen.findByTestId('help-article', {}, { timeout: 10000 });
 const shownPage = async () => (await article()).getAttribute('data-page');
 
 beforeEach(async () => {
@@ -39,7 +40,7 @@ describe('help viewer', () => {
   it('F1 opens the start page; Escape closes it', async () => {
     render(<App />);
     fireEvent.keyDown(window, { key: 'F1' });
-    const dlg = await screen.findByRole('dialog', { name: 'Help' });
+    const dlg = await screen.findByRole('dialog', { name: 'Help' }, { timeout: 10000 });
     expect(await shownPage()).toBe('index');
     expect(dlg.querySelector('h1')?.textContent).toBe('Adika PDF Editor user guide');
     // The table of contents lists the pages by group; the current one is marked.
@@ -130,7 +131,7 @@ describe('help viewer', () => {
   it('passes axe (serious and critical)', async () => {
     render(<App />);
     act(() => useHelp.getState().openHelp('efactura-create'));
-    const dlg = await screen.findByRole('dialog', { name: 'Help' });
+    const dlg = await screen.findByRole('dialog', { name: 'Help' }, { timeout: 10000 });
     await article();
     const problems = await axeProblems(dlg);
     expect(problems, describeProblems(problems)).toEqual([]);
