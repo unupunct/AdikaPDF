@@ -3025,5 +3025,20 @@
  "This online feature is turned off by your organisation.": "Diese Onlinefunktion wurde von Ihrer Organisation deaktiviert.",
  "Online features are turned off by your organisation (DisableOnlineFeatures).": "Onlinefunktionen wurden von Ihrer Organisation deaktiviert (DisableOnlineFeatures).",
  "Your organisation does not allow signing with certificates from this issuer: {0}": "Ihre Organisation erlaubt keine Signatur mit Zertifikaten dieses Ausstellers: {0}",
- "Annotation colour entries were removed (PDF/A-1 allows them only with an RGB output intent); the comments look the same.": "Farbangaben der Anmerkungen wurden entfernt (PDF/A-1 erlaubt sie nur mit einer RGB-Ausgabebedingung); die Kommentare sehen gleich aus."
+ "Annotation colour entries were removed (PDF/A-1 allows them only with an RGB output intent); the comments look the same.": "Farbangaben der Anmerkungen wurden entfernt (PDF/A-1 erlaubt sie nur mit einer RGB-Ausgabebedingung); die Kommentare sehen gleich aus.",
+ "Help": "Hilfe",
+ "Help (F1)": "Hilfe (F1)",
+ "Help for this dialog": "Hilfe zu diesem Dialog",
+ "Help page": "Hilfeseite",
+ "Help pages": "Hilfeseiten",
+ "Search the help…": "Hilfe durchsuchen…",
+ "Search the help": "Hilfe durchsuchen",
+ "No results.": "Keine Treffer.",
+ "The guide is available in English and Romanian.": "Die Anleitung gibt es auf Englisch und Rumänisch.",
+ "Start": "Einstieg",
+ "On the selected ink signature": "Auf der ausgewählten handschriftlichen Unterschrift",
+ "In the selected signature field": "Im ausgewählten Signaturfeld",
+ "Incorrect PIN. Careful: tokens lock after a few wrong attempts.": "Falsche PIN. Vorsicht: Token sperren sich nach einigen Fehlversuchen.",
+ "The token PIN is locked. Unlock it with your vendor's tool (PUK).": "Die Token-PIN ist gesperrt. Entsperren Sie sie mit dem Programm des Herstellers (PUK).",
+ "New tab": "Neuer Tab"
 }

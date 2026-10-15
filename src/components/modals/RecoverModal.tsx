@@ -44,6 +44,7 @@ export function RecoverModal() {
     <Dialog
       open={open}
       onOpenChange={(o) => !o && !busy && close()}
+      help="getting-started#after-a-crash"
       title="Recover unsaved documents"
       description="Adika PDF Editor closed before these documents were saved. Their last automatic backups can be opened again."
       width={520}

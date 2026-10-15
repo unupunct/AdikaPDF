@@ -155,6 +155,7 @@ export function AnafModal() {
       description="Uploads and downloads through ANAF's SPV, only when you press a button. Your certificate is used by the browser during sign-in; Adika never sees it."
       width={860}
       testId="anaf-modal"
+      help="efactura-anaf-send"
       footer={
         <>
           <span className="mr-auto text-xs text-muted" data-testid="anaf-connection">

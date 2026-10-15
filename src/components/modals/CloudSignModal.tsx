@@ -150,6 +150,7 @@ export function CloudSignModal() {
       description="Sign with a key kept by your trust service provider (Cloud Signature Consortium API). You sign in through your browser; the key never leaves the provider's secure device."
       width={680}
       testId="cloudsign-modal"
+      help="signing-sign#sign-with-a-cloud-signature-provider"
       footer={
         <>
           <Button onClick={close}>Cancel</Button>

@@ -114,6 +114,7 @@ export const BUILT_IN_SHORTCUTS: BuiltInShortcut[] = [
   { combo: 'Ctrl+Shift+E', label: 'Stop reading' },
   { combo: 'Alt+ArrowLeft', label: 'Previous view' },
   { combo: 'Alt+ArrowRight', label: 'Next view' },
+  { combo: 'F1', label: 'Help' },
   { combo: 'F5', label: 'Presentation' },
   { combo: 'F7', label: 'Spelling' },
   { combo: 'F11', label: 'Full screen' },

@@ -1,0 +1,85 @@
+# Getting started
+
+This page shows how to open documents, find your way around the window, save your work and get it back after a crash.
+
+![The Adika window with no document open](../img/en/start-screen.png)
+
+## Open a document
+
+- Click **Open** on the **Home** tab, or press **Ctrl+O**, and choose a file.
+- Or drag a file from File Explorer anywhere into the Adika window.
+- **Recent** (on the Home tab) lists the files you opened lately.
+
+Adika opens PDF files, pictures (JPG, PNG, HEIC, TIFF…), Office documents (Word, Excel, PowerPoint, when Microsoft Office is installed) and electronic invoices (e-Factura XML files and the ZIP files you download from ANAF's SPV). Pictures, Office documents and invoices are turned into a PDF as they open; the original file is not changed.
+
+If a PDF is protected with a password, Adika asks for it.
+
+## The ribbon at a glance
+
+The commands are grouped in tabs at the top of the window:
+
+| Tab | What you find there |
+| --- | --- |
+| **Home** | Open, Save, Print, E-mail, Undo / Redo, selecting text, zoom, Find, Fill & Sign |
+| **View** | Page layout, rotating the view, reading mode, read aloud, the side panels (pages, bookmarks, attachments, comments) |
+| **Edit** | Editing text, adding text, pictures, links, headers and footers, drawing shapes |
+| **Comment** | Notes, highlighting, stamps, drawings, the list of comments |
+| **Sign** | Your handwritten signature (Fill & Sign), digital signatures with a certificate, token, Windows certificate or cloud signature, **Sign many files**, **Verify** |
+| **Organize** | Pages: insert, delete, move, rotate, split, combine files |
+| **Forms** | Form fields, filling in, detecting fields |
+| **Security** | Passwords, permissions, redaction (blacking out), removing hidden information, accessibility |
+| **Convert** | PDF to Word, Excel, pictures; PDF/A; OCR; compressing; **E-invoice**, **New e-invoice**, **ANAF e-Factura** |
+
+Do not know where a command is? Click **Search tools…** at the top of the window (or press **Ctrl+K**) and type what you want to do, for example "e-invoice" or "sign".
+
+![The Convert tab with the E-invoice group](../img/en/ribbon-convert.png)
+
+Most buttons show a short explanation when you hold the mouse over them. Press **Alt** to move to the ribbon with the keyboard, then the arrow keys and Enter.
+
+## Save your work
+
+- **Save** (Ctrl+S) writes the changes into the file you opened.
+- **Save as…** (Ctrl+Shift+S) writes a copy under a new name and leaves the original as it was.
+- A dot (●) next to the file name means there are unsaved changes.
+
+Documents that came from an invoice, a picture or an Office file have no PDF on disk yet: the first Save asks where to put the new PDF.
+
+> **Signed documents.** When you save a PDF that carries digital signatures, Adika adds your changes at the end of the file (an "incremental update") so the signatures stay valid. Some changes cannot be added that way; Adika then warns you before saving. See [Signing problems](signing-troubleshooting.md#saving-will-invalidate-the-signatures).
+
+## Undo and redo
+
+- **Undo** (Ctrl+Z) takes back the last change; press it again to go further back.
+- **Redo** (Ctrl+Y) brings a change back.
+
+Undo works for edits, comments, page changes, find & replace and redaction until you close the document.
+
+## Several documents: tabs
+
+Every document opens in its own tab under the ribbon.
+
+- Click a tab to switch to it, or press **Ctrl+Tab** (and **Ctrl+Shift+Tab** to go back).
+- **Ctrl+W** closes the current document. Adika asks first if it has unsaved changes.
+- The **+** next to the tabs opens another file.
+- Drag a tab out of the window to open that document in a window of its own.
+
+## After a crash
+
+Adika keeps an automatic backup of every document with unsaved changes, a few seconds after each change. If Adika or Windows stops unexpectedly, the next time you start Adika the window **Recover unsaved documents** lists those documents with the time of their last backup.
+
+1. Tick the documents you want back.
+2. Click **Recover**. They open as they were at the last backup.
+3. Save them (Save as… is safest).
+
+**Discard** deletes the backups. When you close Adika normally, its backups are removed.
+
+## Language and appearance
+
+- The **language button** at the top right (it shows the current language, for example **EN**) switches the interface between English, Română, Deutsch, Français, Magyar, Italiano and Español. This guide is available in English and Romanian; with the other languages it is shown in English.
+- The **moon / sun** button switches between light and dark mode.
+- The **i** button (About) shows the version, keyboard shortcuts, updates and saving options.
+
+## Next steps
+
+- [Read a received e-Factura](efactura-read.md)
+- [Create an invoice](efactura-create.md)
+- [Sign a document](signing-sign.md)

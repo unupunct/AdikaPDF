@@ -68,6 +68,7 @@ export function SignatureModal() {
       description="Create an electronic signature. It is stored only on this computer."
       width={640}
       testId="signature-modal"
+      help="signing-concepts#simple-electronic-signature-fill--sign"
       footer={
         <>
           <Button onClick={close}>Cancel</Button>

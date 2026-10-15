@@ -137,6 +137,7 @@ export function SigAppearanceDesigner({
       description="How visible digital signatures look. Stored only on this computer."
       width={900}
       testId="sig-designer"
+      help="signing-appearance"
       footer={
         <>
           <Button onClick={onClose}>Close</Button>

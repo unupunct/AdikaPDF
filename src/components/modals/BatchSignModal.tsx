@@ -314,6 +314,7 @@ export function BatchSignModal() {
       description="One digital signature on many PDFs: the PIN or authorization is asked once for the whole batch."
       width={720}
       testId="batchsign-modal"
+      help="signing-batch"
       footer={
         <>
           {finished && results ? (

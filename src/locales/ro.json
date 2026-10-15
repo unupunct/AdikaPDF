@@ -1178,5 +1178,20 @@
  "Read aloud is not available: Windows has no speech voices installed.": "Citirea cu voce tare nu este disponibilă: Windows nu are voci de vorbire instalate.",
  "GitHub did not return a release.": "GitHub nu a returnat nicio versiune.",
  "A document needs at least one page.": "Un document trebuie să aibă cel puțin o pagină.",
- "Reset the view rotation (View → Rotate view) to edit.": "Resetați rotirea vizualizării (Vizualizare → Rotire vizualizare) pentru a edita."
+ "Reset the view rotation (View → Rotate view) to edit.": "Resetați rotirea vizualizării (Vizualizare → Rotire vizualizare) pentru a edita.",
+ "Help": "Ajutor",
+ "Help (F1)": "Ajutor (F1)",
+ "Help for this dialog": "Ajutor pentru această fereastră",
+ "Help page": "Pagina de ajutor",
+ "Help pages": "Paginile de ajutor",
+ "Search the help…": "Căutare în ajutor…",
+ "Search the help": "Căutare în ajutor",
+ "No results.": "Niciun rezultat.",
+ "The guide is available in English and Romanian.": "Ghidul este disponibil în engleză și română.",
+ "Start": "Început",
+ "On the selected ink signature": "Pe semnătura olografă selectată",
+ "In the selected signature field": "În câmpul de semnătură selectat",
+ "Incorrect PIN. Careful: tokens lock after a few wrong attempts.": "PIN incorect. Atenție: tokenurile se blochează după câteva încercări greșite.",
+ "The token PIN is locked. Unlock it with your vendor's tool (PUK).": "PIN-ul tokenului este blocat. Deblocați-l cu aplicația furnizorului (PUK).",
+ "New tab": "Filă nouă"
 }
