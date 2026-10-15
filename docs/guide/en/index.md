@@ -61,7 +61,7 @@ The help works without internet. Use the search box at the top left to search ev
 
 ## Updates
 
-Click the **i** button (About) at the top right. Under **Updates**, press **Check for updates**. If a new version is available, **Update…** downloads and installs it after asking you; open documents are protected (Adika asks you to save them first or keeps a recovery copy). Tick **Check automatically once a week** if you want Adika to ask GitHub once a week; nothing else is sent.
+Click the **i** button (About) at the top right. Under **Updates**, press **Check for updates**. If a new version is available, **Update…** downloads and installs it after asking you; if documents have unsaved changes, Adika asks first and keeps a recovery copy of them. Tick **Check automatically once a week** if you want Adika to ask GitHub once a week; nothing else is sent.
 
 A portable copy (the ZIP version) offers **Download portable ZIP** instead: unpack the new ZIP over the old folder; your settings in the `Data` folder stay.
 
