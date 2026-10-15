@@ -3024,5 +3024,6 @@
  "Converting a web page is turned off by your organisation.": "A weblapok átalakítását a szervezete kikapcsolta.",
  "This online feature is turned off by your organisation.": "Ezt az online funkciót a szervezete kikapcsolta.",
  "Online features are turned off by your organisation (DisableOnlineFeatures).": "Az online funkciókat a szervezete kikapcsolta (DisableOnlineFeatures).",
- "Your organisation does not allow signing with certificates from this issuer: {0}": "A szervezete nem engedélyezi az aláírást ennek a kiadónak a tanúsítványaival: {0}"
+ "Your organisation does not allow signing with certificates from this issuer: {0}": "A szervezete nem engedélyezi az aláírást ennek a kiadónak a tanúsítványaival: {0}",
+ "Annotation colour entries were removed (PDF/A-1 allows them only with an RGB output intent); the comments look the same.": "A megjegyzések színbejegyzései el lettek távolítva (a PDF/A-1 csak RGB kimeneti szándékkal engedi őket); a megjegyzések ugyanúgy néznek ki."
 }

@@ -3024,5 +3024,6 @@
  "Converting a web page is turned off by your organisation.": "Su organización ha desactivado la conversión de páginas web.",
  "This online feature is turned off by your organisation.": "Su organización ha desactivado esta función en línea.",
  "Online features are turned off by your organisation (DisableOnlineFeatures).": "Su organización ha desactivado las funciones en línea (DisableOnlineFeatures).",
- "Your organisation does not allow signing with certificates from this issuer: {0}": "Su organización no permite firmar con certificados de este emisor: {0}"
+ "Your organisation does not allow signing with certificates from this issuer: {0}": "Su organización no permite firmar con certificados de este emisor: {0}",
+ "Annotation colour entries were removed (PDF/A-1 allows them only with an RGB output intent); the comments look the same.": "Se quitaron las entradas de color de las anotaciones (PDF/A-1 solo las permite con una intención de salida RGB); los comentarios se ven igual."
 }

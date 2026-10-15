@@ -91,6 +91,24 @@ describe('PDF/A: DeviceCMYK is converted', () => {
     expect(all).not.toMatch(/ rg/);
     expect(await problems(r.bytes)).toEqual([]);
   });
+
+  it('"Keep CMYK" in PDF/A-1: annotations lose /C and /IC (allowed only with an RGB intent), PDF/A-2 keeps them', async () => {
+    const make = async () => {
+      const doc = await PDFDocument.create();
+      const page = doc.addPage([200, 200]);
+      const ap = doc.context.register(doc.context.formXObject([], { BBox: [0, 0, 40, 40], Resources: doc.context.obj({}) }));
+      const square = doc.context.register(doc.context.obj({ Type: 'Annot', Subtype: 'Square', Rect: [10, 10, 50, 50], F: 4, C: [1, 0, 0], IC: [0, 0, 1], AP: { N: ap } }));
+      page.node.set(PDFName.of('Annots'), doc.context.obj([square]));
+      return doc.save();
+    };
+    const annot = async (bytes: Uint8Array) => (await PDFDocument.load(bytes)).getPage(0).node.Annots()!.lookup(0, PDFDict);
+    const a1 = await annot((await convertToPdfADetailed(await make(), { title: 'Print', author: '', keepCmyk: true, level: '1b' })).bytes);
+    expect(a1.has(PDFName.of('C'))).toBe(false);
+    expect(a1.has(PDFName.of('IC'))).toBe(false);
+    expect(a1.has(PDFName.of('AP'))).toBe(true);
+    const a2 = await annot((await convertToPdfADetailed(await make(), { title: 'Print', author: '', keepCmyk: true, level: '2b' })).bytes);
+    expect(a2.has(PDFName.of('C'))).toBe(true);
+  });
 });
 
 describe('PDF/A: fonts the file only names are embedded', () => {
