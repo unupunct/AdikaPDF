@@ -16,6 +16,7 @@ import { checkRedirectUri, checkServiceUrl, CscAuthError, type CscClient, type C
 import { errorMessage } from '@/actions/document';
 import { isDesktop } from '@/lib/platform';
 import { cn } from '@/lib/cn';
+import { onlineAllowed, usePolicy } from '@/lib/policy';
 
 const emptyProvider = (): CscProvider => ({ id: `csc-${Date.now().toString(36)}`, name: '', baseUrl: 'https://', clientId: '', clientSecret: '', oauthUrl: '', redirectUri: '' });
 
@@ -40,6 +41,7 @@ export function CloudSignModal() {
   const [meta, setMeta] = useSignMeta();
   const [placement, setPlacement] = usePlacement();
   const provider = providers.find((p) => p.id === providerId) ?? null;
+  const cloudAllowed = usePolicy((s) => onlineAllowed('cloudSign', s.policies));
 
   const clearSecrets = () => {
     setPin('');
@@ -151,13 +153,14 @@ export function CloudSignModal() {
       footer={
         <>
           <Button onClick={close}>Cancel</Button>
-          <Button variant="accent" disabled={!ready || !!editing} onClick={() => void sign()} data-testid="cloudsign-sign-now">
+          <Button variant="accent" disabled={!ready || !!editing || !cloudAllowed} onClick={() => void sign()} data-testid="cloudsign-sign-now">
             <Cloud size={14} /> Sign and save
           </Button>
         </>
       }
     >
       {!isDesktop ? <Callout kind="warn">Cloud signatures need the Adika desktop app (the browser sign-in returns to it).</Callout> : null}
+      {!cloudAllowed ? <Callout kind="warn">Remote (cloud) signing is turned off by your organisation.</Callout> : null}
       {editing ? (
         <ProviderForm
           value={editing}

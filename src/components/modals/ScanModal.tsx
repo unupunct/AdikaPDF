@@ -5,7 +5,7 @@ import { usePDFStore } from '@/store/usePDFStore';
 import { Button, Callout, Checkbox, Dialog, Field, Select } from '@/components/ui/primitives';
 import { errorMessage } from '@/actions/document';
 import { isDesktop, wiaDevices, type ScannerInfo } from '@/lib/platform';
-import { OCR_LANGUAGES } from '@/lib/pdf/ocr';
+import { ocrLangLabel } from '@/lib/ocrLangs';
 import { loadOcrLangs } from './DocumentModals';
 import type { PageCleanup, PaperSize, ScanPageItem, ScanSettings, ScanSource } from '@/actions/scan';
 import type { ScanMode } from '@/lib/scan/scanPdf';
@@ -127,7 +127,7 @@ export function ScanModal() {
     return n;
   })();
   const langLabel = loadOcrLangs()
-    .map((c) => OCR_LANGUAGES.find((l) => l.code === c)?.label ?? c)
+    .map((c) => ocrLangLabel(c))
     .join(', ');
 
   return (
@@ -248,7 +248,7 @@ export function ScanModal() {
           <Checkbox checked={prefs.splitAtBlank} onChange={(v) => update({ splitAtBlank: v })} label="A blank page starts a new document" />
           <Checkbox checked={prefs.ocr} onChange={(v) => update({ ocr: v })} label={`Make the text searchable (OCR: ${langLabel})`} />
           <details className="mt-2 text-xs">
-            <summary className="cursor-default text-brand-600">Separator sheets…</summary>
+            <summary className="cursor-default text-brand-700 dark:text-brand-300">Separator sheets…</summary>
             <p className="my-1 text-[11px] text-muted">Print a separator sheet and put it before each document in the feeder: the batch is split there, and the document takes the name printed on the sheet.</p>
             <textarea
               className="mb-1 h-16 w-full rounded-md border border-app bg-panel-2 p-1 text-xs"

@@ -17,6 +17,7 @@ fn header<'a>(request: &'a Request<'_>, name: &str) -> Option<&'a str> {
 /// (GET/POST), `x-content-type`. Body: raw bytes for POST.
 #[tauri::command]
 pub async fn http_request(request: Request<'_>) -> Result<Response, String> {
+    crate::deploy::check_online()?;
     let url = percent_encoding::percent_decode_str(header(&request, "x-url").ok_or("missing x-url")?)
         .decode_utf8()
         .map_err(|e| e.to_string())?
@@ -64,6 +65,9 @@ pub async fn http_request(request: Request<'_>) -> Result<Response, String> {
 pub struct ApiResponse {
     status: u16,
     body: String,
+    /// The body as base64 when it was asked for as binary (ZIP downloads).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    base64: Option<String>,
 }
 
 /// Checks a web-service URL: https only (remote signing services hold tokens).
@@ -77,9 +81,21 @@ pub fn check_api_url(url: &str) -> Result<(), String> {
 /// JSON / form request to a web service (remote signing): https only, with an
 /// optional `Authorization` header. Unlike `http_request`, error statuses are
 /// returned with their body (the service's error message). Headers and
-/// bodies are never logged: they carry access tokens and PINs.
+/// bodies are never logged: they carry access tokens and PINs. `accept`
+/// replaces the default JSON Accept header; `binary` also returns the body as
+/// base64 (ANAF's e-Factura ZIP downloads).
 #[tauri::command]
-pub async fn api_request(url: String, method: String, authorization: Option<String>, content_type: Option<String>, body: Option<String>) -> Result<ApiResponse, String> {
+#[allow(clippy::too_many_arguments)]
+pub async fn api_request(
+    url: String,
+    method: String,
+    authorization: Option<String>,
+    content_type: Option<String>,
+    body: Option<String>,
+    accept: Option<String>,
+    binary: Option<bool>,
+) -> Result<ApiResponse, String> {
+    crate::deploy::check_online()?;
     check_api_url(&url)?;
     let method = method.to_ascii_uppercase();
     if method != "GET" && method != "POST" {
@@ -92,7 +108,7 @@ pub async fn api_request(url: String, method: String, authorization: Option<Stri
             .redirects(0)
             .user_agent("AdikaPDF/1.0")
             .build();
-        let mut req = agent.request(&method, &url).set("Accept", "application/json");
+        let mut req = agent.request(&method, &url).set("Accept", accept.as_deref().unwrap_or("application/json"));
         if let Some(a) = &authorization {
             req = req.set("Authorization", a);
         }
@@ -106,11 +122,22 @@ pub async fn api_request(url: String, method: String, authorization: Option<Stri
         };
         let status = resp.status();
         let mut buf = Vec::new();
-        resp.into_reader().take(8 * 1024 * 1024).read_to_end(&mut buf).map_err(|e| format!("Download failed: {e}"))?;
-        Ok(ApiResponse { status, body: String::from_utf8_lossy(&buf).into_owned() })
+        resp.into_reader().take(32 * 1024 * 1024).read_to_end(&mut buf).map_err(|e| format!("Download failed: {e}"))?;
+        Ok(api_response(status, buf, binary.unwrap_or(false)))
     })
     .await
     .map_err(|e| e.to_string())?
+}
+
+/// The reply as text; binary replies also carry the bytes in base64 (the text then stays empty for ZIPs).
+fn api_response(status: u16, buf: Vec<u8>, binary: bool) -> ApiResponse {
+    if !binary {
+        return ApiResponse { status, body: String::from_utf8_lossy(&buf).into_owned(), base64: None };
+    }
+    use base64::Engine;
+    let base64 = Some(base64::engine::general_purpose::STANDARD.encode(&buf));
+    let body = if buf.starts_with(b"PK") { String::new() } else { String::from_utf8_lossy(&buf).into_owned() };
+    ApiResponse { status, body, base64 }
 }
 
 fn host_of(url: &str) -> &str {
@@ -164,5 +191,17 @@ mod tests {
         assert!(check_api_url("http://127.0.0.1:8080/").is_err());
         assert!(check_api_url("file:///c:/x").is_err());
         assert_eq!(host_of("https://a.example:8443/csc/v2?x=1"), "a.example:8443");
+    }
+
+    #[test]
+    fn binary_replies_carry_base64() {
+        let zip = api_response(200, b"PK\x03\x04abc".to_vec(), true);
+        assert_eq!(zip.base64.as_deref(), Some("UEsDBGFiYw=="));
+        assert!(zip.body.is_empty());
+        let err = api_response(200, br#"{"eroare":"x"}"#.to_vec(), true);
+        assert_eq!(err.body, r#"{"eroare":"x"}"#);
+        assert!(err.base64.is_some());
+        let text = api_response(400, b"nope".to_vec(), false);
+        assert_eq!((text.status, text.body.as_str(), text.base64.is_none()), (400, "nope", true));
     }
 }

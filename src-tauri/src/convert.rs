@@ -439,6 +439,7 @@ pub async fn html_to_pdf(html: Option<String>, url: Option<String>) -> Result<Re
                 (format!("file:///{}", file.to_string_lossy().replace('\\', "/")), true)
             }
             (None, Some(url)) => {
+                crate::deploy::check_online()?;
                 let lower = url.to_ascii_lowercase();
                 if !(lower.starts_with("http://") || lower.starts_with("https://")) {
                     return Err("Only http:// and https:// addresses can be converted.".into());

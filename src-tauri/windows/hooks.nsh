@@ -98,7 +98,11 @@
 
 ; Asks running editor windows to close (WM_CLOSE: Adika offers to save unsaved
 ; documents) and waits; if one stays open, the user closes it and clicks Retry.
-; Silent and passive runs skip this: Tauri's own check then stops the program.
+; Silent runs (/S) never ask: when a window is still open after the wait (it has
+; unsaved work, or belongs to another session), the setup stops with exit code 2
+; and changes nothing, unless /FORCECLOSE was given: then Tauri's own check that
+; follows ends the program (unsaved work is offered again from the recovery backup).
+; Passive runs (/P, the in-app updater) skip this: the app has already exited.
 !macro AdikaCloseEditors
   !define AdikaCE ${__LINE__}
   adika_check_${AdikaCE}:
@@ -109,7 +113,6 @@
   !endif
   Pop $R0
   ${If} $R0 = 0
-  ${AndIfNot} ${Silent}
   ${AndIf} $PassiveMode <> 1
     nsExec::Exec 'taskkill /FI "IMAGENAME eq ${MAINBINARYNAME}.exe"'
     Pop $0
@@ -128,11 +131,71 @@
         Goto adika_wait_${AdikaCE}
       ${EndIf}
     ${If} $R0 = 0
-      MessageBox MB_RETRYCANCEL|MB_ICONEXCLAMATION "${PRODUCTNAME} is running. Save your work and close it, then click Retry." /SD IDCANCEL IDRETRY adika_check_${AdikaCE}
-      Abort
+      ${If} ${Silent}
+        ClearErrors
+        ${GetOptions} $CMDLINE "/FORCECLOSE" $R1
+        ${If} ${Errors}
+          System::Call 'kernel32::AttachConsole(i -1)i.r0'
+          ${If} $0 <> 0
+            System::Call 'kernel32::GetStdHandle(i -11)i.r0'
+            FileWrite $0 "${PRODUCTNAME} is still running (unsaved work or another session). Close it, or run the setup again with /FORCECLOSE.$\r$\n"
+          ${EndIf}
+          Abort
+        ${EndIf}
+      ${Else}
+        MessageBox MB_RETRYCANCEL|MB_ICONEXCLAMATION "${PRODUCTNAME} is running. Save your work and close it, then click Retry." IDRETRY adika_check_${AdikaCE}
+        Abort
+      ${EndIf}
     ${EndIf}
   ${EndIf}
   !undef AdikaCE
+!macroend
+
+; ---------------------------------------------------------------- unattended options
+; /NOPRINTER, /NOSHELL, /NOUPDATES, /LANG=xx (README "Deploying in a company").
+; Each choice is kept in the install key (HKLM, or HKCU for a per-user install),
+; so a later update, which runs without the switches, keeps it; /NOPRINTER=0
+; (likewise the others) turns it back on. Adika reads DisableUpdateCheck and
+; DefaultLanguage from that key as defaults; Group Policy values override them.
+
+; $R9 = 1 when /SWITCH was given (0 for /SWITCH=0), else what an earlier install stored.
+!macro AdikaSwitch SWITCH VALUENAME
+  ClearErrors
+  ${GetOptions} $CMDLINE "/${SWITCH}" $R9
+  ${If} ${Errors}
+    ClearErrors
+    ReadRegDWORD $R9 SHCTX "${MANUPRODUCTKEY}" "${VALUENAME}"
+    ${If} ${Errors}
+    ${OrIf} $R9 == ""
+      StrCpy $R9 0
+    ${EndIf}
+  ${ElseIf} $R9 == "=0"
+    StrCpy $R9 0
+  ${Else}
+    StrCpy $R9 1
+  ${EndIf}
+  ${If} $R9 = 1
+    WriteRegDWORD SHCTX "${MANUPRODUCTKEY}" "${VALUENAME}" 1
+  ${Else}
+    DeleteRegValue SHCTX "${MANUPRODUCTKEY}" "${VALUENAME}"
+  ${EndIf}
+!macroend
+
+; /LANG=ro|en|de|fr|hu|it|es: the interface language until the user picks one.
+!macro AdikaDefaultLanguage
+  ClearErrors
+  ${GetOptions} $CMDLINE "/LANG=" $R9
+  ${IfNot} ${Errors}
+    ${If} $R9 == "en"
+    ${OrIf} $R9 == "ro"
+    ${OrIf} $R9 == "de"
+    ${OrIf} $R9 == "fr"
+    ${OrIf} $R9 == "hu"
+    ${OrIf} $R9 == "it"
+    ${OrIf} $R9 == "es"
+      WriteRegStr SHCTX "${MANUPRODUCTKEY}" "DefaultLanguage" $R9
+    ${EndIf}
+  ${EndIf}
 !macroend
 
 ; The thumbnail DLL may be loaded by Explorer or by any program showing a file
@@ -170,19 +233,39 @@
   ${EndIf}
   CreateDirectory "$INSTDIR\logs"
 
-  ; Virtual printer "Adika PDF Editor" (needs administrator rights: per-machine install).
-  ; printer.ps1 is installed next to the exe as a bundle resource.
-  nsExec::ExecToLog 'powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$INSTDIR\printer.ps1" -Action install -EnableSpooler'
-  Pop $0
-  ; Start the print helper at every log-on (all users when possible).
-  ClearErrors
-  WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Run" "Adika PDF Printer" '"$INSTDIR\adika-pdf-editor.exe" --print-watcher'
-  IfErrors 0 +2
-  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "Adika PDF Printer" '"$INSTDIR\adika-pdf-editor.exe" --print-watcher'
-  !insertmacro AdikaShellMenu
-  ; PDF thumbnails in Explorer (drawn by the Windows PDF renderer).
-  nsExec::Exec 'regsvr32.exe /s "$INSTDIR\adika_thumbs.dll"'
-  Pop $0
+  !insertmacro AdikaSwitch "NOUPDATES" "DisableUpdateCheck"
+  !insertmacro AdikaDefaultLanguage
+
+  !insertmacro AdikaSwitch "NOPRINTER" "NoPrinter"
+  ${If} $R9 = 0
+    ; Virtual printer "Adika PDF Editor" (needs administrator rights: per-machine install).
+    ; printer.ps1 is installed next to the exe as a bundle resource.
+    nsExec::ExecToLog 'powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$INSTDIR\printer.ps1" -Action install -EnableSpooler'
+    Pop $0
+    ; Start the print helper at every log-on (all users when possible).
+    ClearErrors
+    WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Run" "Adika PDF Printer" '"$INSTDIR\adika-pdf-editor.exe" --print-watcher'
+    IfErrors 0 +2
+    WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "Adika PDF Printer" '"$INSTDIR\adika-pdf-editor.exe" --print-watcher'
+  ${Else}
+    ; Turned off now: what an earlier install set up goes (the spooler is put back as it was).
+    nsExec::ExecToLog 'powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$INSTDIR\printer.ps1" -Action uninstall -RestoreSystem'
+    Pop $0
+    DeleteRegValue HKLM "Software\Microsoft\Windows\CurrentVersion\Run" "Adika PDF Printer"
+    DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "Adika PDF Printer"
+  ${EndIf}
+
+  !insertmacro AdikaSwitch "NOSHELL" "NoShell"
+  ${If} $R9 = 0
+    !insertmacro AdikaShellMenu
+    ; PDF thumbnails in Explorer (drawn by the Windows PDF renderer).
+    nsExec::Exec 'regsvr32.exe /s "$INSTDIR\adika_thumbs.dll"'
+    Pop $0
+  ${Else}
+    !insertmacro AdikaShellMenuRemove
+    nsExec::Exec 'regsvr32.exe /s /u "$INSTDIR\adika_thumbs.dll"'
+    Pop $0
+  ${EndIf}
 !macroend
 
 !macro NSIS_HOOK_PREUNINSTALL
@@ -205,6 +288,17 @@
 !macroend
 
 !macro NSIS_HOOK_POSTUNINSTALL
+  ; The unattended options of the install (an update keeps them).
+  ${If} $UpdateMode <> 1
+    DeleteRegValue SHCTX "${MANUPRODUCTKEY}" "NoPrinter"
+    DeleteRegValue SHCTX "${MANUPRODUCTKEY}" "NoShell"
+    DeleteRegValue SHCTX "${MANUPRODUCTKEY}" "DisableUpdateCheck"
+    DeleteRegValue SHCTX "${MANUPRODUCTKEY}" "DefaultLanguage"
+    ; The install folder Tauri remembers (the folder is gone now); then the key and its parent when empty.
+    DeleteRegValue SHCTX "${MANUPRODUCTKEY}" ""
+    DeleteRegKey /ifempty SHCTX "${MANUPRODUCTKEY}"
+    DeleteRegKey /ifempty SHCTX "Software\${MANUFACTURER}"
+  ${EndIf}
   RMDir /r "$INSTDIR\logs"
   ; A thumbnail DLL still in use is deleted at the next restart: the folder goes then too.
   RMDir "$INSTDIR"

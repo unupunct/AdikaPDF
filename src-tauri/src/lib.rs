@@ -9,6 +9,7 @@ mod logging;
 mod print_watcher;
 mod net;
 mod oauth;
+mod credentials;
 mod pkcs11;
 mod recovery;
 mod appdata;
@@ -19,6 +20,7 @@ mod spellcheck;
 mod shellops;
 mod pathguard;
 mod fonts;
+mod deploy;
 
 use percent_encoding::percent_decode_str;
 use std::path::PathBuf;
@@ -98,6 +100,17 @@ fn e2e_mode() -> bool {
     std::env::var("ADIKA_E2E").map(|v| v == "1").unwrap_or(false)
 }
 
+/// The WebView profile (settings, recent files): the end-to-end tests' own,
+/// <exe>\Data\WebView2 for a portable copy, otherwise WebView2's default.
+pub(crate) fn webview_data_dir() -> Option<PathBuf> {
+    if e2e_mode() {
+        if let Some(dir) = std::env::var_os("ADIKA_WEBVIEW_DATA") {
+            return Some(PathBuf::from(dir));
+        }
+    }
+    deploy::portable_dir().map(|p| p.join("WebView2"))
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     logging::init();
@@ -110,6 +123,16 @@ pub fn run() {
     let batch = automation::is_batch();
     if batch {
         automation::attach_console();
+    }
+    // A portable copy has no installer that set up WebView2: say so instead of failing silently.
+    if deploy::is_portable() && !deploy::webview2_installed() {
+        logging::write("error", "Portable start: the WebView2 runtime is not installed");
+        if batch {
+            eprintln!("Adika PDF Editor needs the Microsoft Edge WebView2 Runtime (https://go.microsoft.com/fwlink/p/?LinkId=2124703).");
+        } else {
+            deploy::show_webview2_missing();
+        }
+        std::process::exit(3);
     }
     let mut builder = tauri::Builder::default().manage(shellops::LaunchQueue::default());
     if !batch {
@@ -135,6 +158,11 @@ pub fn run() {
             }
         }));
     }
+    // Contacts the release server only when the interface asks (opt-in check or "Check for updates").
+    // A portable copy never runs the installer; policies can turn the check off.
+    if !deploy::is_portable() && !deploy::online_disabled() && !deploy::flag(deploy::policy(deploy::sources(), "DisableUpdateCheck")) {
+        builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
+    }
     builder
         .setup(move |app| {
             // The main window is created here (not from the config) so that a
@@ -142,18 +170,14 @@ pub fn run() {
             // tests get their own WebView profile (never the user's settings).
             let cfg = app.config().app.windows.iter().find(|w| w.label == "main").cloned().ok_or("no main window in the configuration")?;
             let mut b = tauri::WebviewWindowBuilder::from_config(app, &cfg)?.visible(!batch);
-            if e2e_mode() {
-                if let Some(dir) = std::env::var_os("ADIKA_WEBVIEW_DATA") {
-                    b = b.data_directory(PathBuf::from(dir));
-                }
+            if let Some(dir) = webview_data_dir() {
+                b = b.data_directory(dir);
             }
             b.build()?;
             Ok(())
         })
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
-        // Contacts the release server only when the interface asks (opt-in check or "Check for updates").
-        .plugin(tauri_plugin_updater::Builder::new().build())
         .invoke_handler(tauri::generate_handler![
             read_file,
             write_file,
@@ -167,12 +191,17 @@ pub fn run() {
             logging::logs_path,
             logging::open_logs_folder,
             e2e_mode,
+            deploy::deployment_info,
             recovery::recovery_write,
             recovery::recovery_read,
             recovery::recovery_list,
             recovery::recovery_remove,
             appdata::appdata_write,
             appdata::appdata_read,
+            appdata::ocr_lang_list,
+            appdata::ocr_lang_write,
+            appdata::ocr_lang_read,
+            appdata::ocr_lang_delete,
             certstore::winstore_list,
             certstore::winstore_sign,
             certstore::winstore_decrypt,
@@ -207,6 +236,9 @@ pub fn run() {
             oauth::oauth_loopback_start,
             oauth::oauth_loopback_wait,
             oauth::oauth_loopback_cancel,
+            credentials::secret_store,
+            credentials::secret_read,
+            credentials::secret_delete,
             pkcs11::pkcs11_detect_modules,
             pkcs11::pkcs11_list_tokens,
             pkcs11::pkcs11_sign,

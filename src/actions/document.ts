@@ -2,6 +2,8 @@
  * Document-level operations wired to the ribbon, keyboard shortcuts and
  * drag-and-drop: open, save, save as, merge, export bytes.
  */
+import { hasEstimated, pageSizesReady } from '@/lib/pdf/pageSizeRegistry';
+import { containsToken, LAZY_MIN_PAGES as LARGE_DOC_PAGES } from '@/lib/pdf/pageSizes';
 import { currentDoc, primarySourceId, usePDFStore } from '@/store/usePDFStore';
 import { askChoice, askConfirm, askPassword } from '@/store/useDialogs';
 import { buildPdf, ExportError, type ExportOptions, type RasterResult } from '@/lib/pdf/exportPdf';
@@ -47,6 +49,13 @@ export async function withBusy<T>(message: string, fn: (progress: (msg: string, 
       if (abort) controller.signal.throwIfAborted();
       usePDFStore.getState().setBusy({ message: msg, progress: fraction, abort });
     };
+    // Whole-document operations work with the real page sizes of a large document still being read.
+    const open = Object.keys(store.sources);
+    if (open.some((id) => hasEstimated(id))) {
+      store.setBusy({ message: 'Reading page sizes…', progress: null, abort });
+      await pageSizesReady(open);
+      usePDFStore.getState().setBusy({ message, progress: null, abort });
+    }
     const result = await fn(progress, controller.signal);
     if (controller.signal.aborted) throw controller.signal.reason;
     return result;
@@ -151,7 +160,7 @@ async function openIntoCurrentTab(bytes: Uint8Array, name: string, path: string 
       void refreshSignatureStatus();
       const primary = usePDFStore.getState().pages.find((p) => p.kind === 'source')?.sourceId;
       if (primary) void import('./xfaForms').then((m) => m.noteXfaSource(primary, xfaOriginal));
-      if (!xfaOriginal) void import('./portfolio').then((m) => m.noteOpenedPdf(bytes));
+      if (!xfaOriginal) void import('./portfolio').then((m) => m.noteOpenedPdf(bytes, primary ?? undefined));
       return true;
     } catch (e) {
       if (e instanceof PasswordRequiredError) {
@@ -275,7 +284,25 @@ export function suggestedName(suffix = ''): string {
   return `${base}${suffix}.pdf`;
 }
 
+let saving = false;
+
+/** True from the moment a save starts (before its checks and prompts) until it ends. */
+export function isSaving(): boolean {
+  return saving;
+}
+
 export async function saveDocument(saveAs = false): Promise<boolean> {
+  // A second Ctrl+S while a save is still starting does nothing.
+  if (saving) return false;
+  saving = true;
+  try {
+    return await saveDocumentNow(saveAs);
+  } finally {
+    saving = false;
+  }
+}
+
+async function saveDocumentNow(saveAs: boolean): Promise<boolean> {
   const s = usePDFStore.getState();
   if (s.pages.length === 0) return false;
   if (s.readOnlyReason) {
@@ -344,10 +371,10 @@ function isSigned(): boolean {
 async function chooseSaveMode(): Promise<'incremental' | 'full' | 'copy' | null> {
   const s = usePDFStore.getState();
   const signed = isSigned();
-  const { useSaveSettings } = await import('@/lib/saveSettings');
+  const { preferIncremental } = await import('@/lib/saveSettings');
   const { incrementalBlocker } = await import('@/lib/pdf/exportPdf');
   const blocker = incrementalBlocker(currentDoc(), s.docMeta, !!s.protection && !s.protection.keep);
-  if (!blocker && (signed || useSaveSettings.getState().preferIncremental)) return 'incremental';
+  if (!blocker && (signed || preferIncremental())) return 'incremental';
   if (!signed) return 'full';
   log('info', `Save: full rewrite of a signed document (${blocker})`);
   const choice = await askChoice({
@@ -385,7 +412,10 @@ export async function refreshSignatureStatus(): Promise<void> {
   if (!src) return usePDFStore.getState().setSignatureStatus([]);
   try {
     // Signatures cover the file's own (encrypted) bytes.
-    const status = await verifyPdfSignatures(primarySourceFile()!);
+    const file = primarySourceFile()!;
+    // A large file without a signature dictionary (/ByteRange is never inside an object stream) is not parsed again.
+    if ((src.pageCount > LARGE_DOC_PAGES || file.length > 20 * 1024 * 1024) && !containsToken(file, '/ByteRange')) return usePDFStore.getState().setSignatureStatus([]);
+    const status = await verifyPdfSignatures(file);
     usePDFStore.getState().setSignatureStatus(status);
   } catch {
     usePDFStore.getState().setSignatureStatus([]);

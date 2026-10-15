@@ -79,7 +79,7 @@ export function WatchPanel({ sequences }: { sequences: ActionSequence[] }) {
         <ul className="mt-3 max-h-32 overflow-auto rounded-md border border-app text-[11px]" data-testid="watch-events">
           {events.map((e, i) => (
             <li key={i} className="flex items-center gap-2 border-b border-app px-2 py-1 last:border-0">
-              {e.status === 'done' ? <CheckCircle2 size={12} className="text-accent-600" /> : e.status === 'skipped' ? <MinusCircle size={12} className="text-amber-600" /> : <XCircle size={12} className="text-rose-600" />}
+              {e.status === 'done' ? <CheckCircle2 size={12} className="text-accent-600" /> : e.status === 'skipped' ? <MinusCircle size={12} className="text-amber-700" /> : <XCircle size={12} className="text-rose-600" />}
               <span className="text-muted">{new Date(e.at).toLocaleTimeString()}</span>
               <span className="min-w-0 flex-1 truncate" data-no-translate>
                 {`${e.file} → ${e.message}`}
@@ -89,7 +89,7 @@ export function WatchPanel({ sequences }: { sequences: ActionSequence[] }) {
         </ul>
       ) : null}
       <details className="mt-3 text-xs">
-        <summary className="cursor-default text-brand-600">Command line…</summary>
+        <summary className="cursor-default text-brand-700 dark:text-brand-300">Command line…</summary>
         <pre className="mt-1 max-h-56 overflow-auto whitespace-pre-wrap rounded-md bg-[var(--hover)] p-2 text-[11px]" data-no-translate data-testid="cli-help">
           {CLI_HELP}
         </pre>

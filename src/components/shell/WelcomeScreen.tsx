@@ -56,22 +56,22 @@ export function WelcomeScreen() {
           <div className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted">Tools</div>
           <QuickToolGrid compact onPick={(id) => void startQuickTool(id)} />
           <div className="mt-2 flex flex-wrap justify-center gap-x-4 gap-y-1 text-[11.5px]">
-            <button type="button" className="text-brand-600 hover:underline" onClick={() => openImport('html')}>
+            <button type="button" className="text-brand-700 hover:underline dark:text-brand-300" onClick={() => openImport('html')}>
               Web page / HTML
             </button>
-            <button type="button" className="text-brand-600 hover:underline" onClick={() => openImport('documents')}>
+            <button type="button" className="text-brand-700 hover:underline dark:text-brand-300" onClick={() => openImport('documents')}>
               EPUB, e-mail, XPS
             </button>
-            <button type="button" className="text-brand-600 hover:underline" onClick={() => openImport('cad')}>
+            <button type="button" className="text-brand-700 hover:underline dark:text-brand-300" onClick={() => openImport('cad')}>
               CAD drawing (DXF)
             </button>
-            <button type="button" className="text-brand-600 hover:underline" onClick={() => usePDFStore.getState().openModal('scan')} data-testid="welcome-scan">
+            <button type="button" className="text-brand-700 hover:underline dark:text-brand-300" onClick={() => usePDFStore.getState().openModal('scan')} data-testid="welcome-scan">
               Scanner
             </button>
-            <button type="button" className="text-brand-600 hover:underline" onClick={() => openImport('scan')}>
+            <button type="button" className="text-brand-700 hover:underline dark:text-brand-300" onClick={() => openImport('scan')}>
               Camera
             </button>
-            <button type="button" className="text-brand-600 hover:underline" onClick={() => void import('@/actions/einvoiceCreate').then((m) => m.openNewEInvoice())} data-testid="welcome-einvoice">
+            <button type="button" className="text-brand-700 hover:underline dark:text-brand-300" onClick={() => void import('@/actions/einvoiceCreate').then((m) => m.openNewEInvoice())} data-testid="welcome-einvoice">
               New e-invoice
             </button>
           </div>

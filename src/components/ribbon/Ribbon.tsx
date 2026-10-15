@@ -10,6 +10,7 @@ import {
   Spline,
   Receipt,
   ReceiptText,
+  Landmark,
   Package,
   ListOrdered,
   BadgeCheck,
@@ -77,6 +78,7 @@ import {
   KeyRound,
   Mails,
   Accessibility,
+  ClipboardCheck,
   Printer,
   MousePointerClick,
   QrCode,
@@ -319,7 +321,7 @@ function StyleQuick() {
       <label className="flex h-[19px] items-center gap-1.5 px-1 text-[11.5px]">
         <span className="w-10 text-muted">Fill</span>
         <input type="color" aria-label="Fill colour" value={style.fill ?? '#ffffff'} onChange={(e) => setStyle({ fill: e.target.value })} className="h-4 w-7 rounded border border-app" />
-        <button type="button" className={cn('rounded px-1 text-[10px]', style.fill === null ? 'bg-brand-600 text-white' : 'hover-app')} onClick={() => setStyle({ fill: null })}>
+        <button type="button" className={cn('rounded px-1 text-[10px]', style.fill === null ? 'bg-brand-700 text-white' : 'hover-app')} onClick={() => setStyle({ fill: null })}>
           none
         </button>
       </label>
@@ -559,6 +561,25 @@ function SecurityTab() {
       </Group>
       <Group label="Accessibility">
         <Big icon={<Accessibility size={I} />} label="Accessibility" disabled={!hasDoc} onClick={() => s.openModal('accessibility')} tip="Check and fix what screen readers need: tags, reading order, title, language, picture descriptions (PDF/UA)" testId="btn-accessibility" />
+        <Big
+          icon={<ClipboardCheck size={I} />}
+          label="PDF/UA check"
+          disabled={!hasDoc}
+          onClick={() => {
+            usePDFStore.getState().setView({ sidebarTab: 'accessibility' });
+            void import('@/actions/pdfua').then((m) => m.runPdfUaCheck());
+          }}
+          tip="Full PDF/UA-1 check by Matterhorn checkpoint, with fixes and a report"
+          testId="btn-pdfua"
+        />
+        <Big
+          icon={<ListOrdered size={I} />}
+          label="Reading order"
+          disabled={!hasDoc}
+          onClick={() => void import('@/actions/pdfua').then((m) => m.setReadingOrderMode(true))}
+          tip="Numbered boxes for the tagged content of each page: drag to reorder, set types, tag untagged areas"
+          testId="btn-reading-order"
+        />
       </Group>
       <Group label="Signatures">
         <Big icon={<ShieldCheck size={I} />} label="Verify" disabled={!hasDoc} onClick={() => s.openModal('verify')} />
@@ -621,6 +642,7 @@ function ConvertTab() {
       <Group label="E-invoice">
         <Big icon={<Receipt size={I} />} label="E-invoice" onClick={() => s.openModal('einvoice')} tip="e-Factura, UBL and Factur-X / ZUGFeRD: open invoice XML as a readable PDF, show the invoice inside a PDF, embed an invoice XML" testId="btn-einvoice" />
         <Big icon={<ReceiptText size={I} />} label="New e-invoice" onClick={() => void import('@/actions/einvoiceCreate').then((m) => m.openNewEInvoice())} tip="Issue an e-Factura (ANAF), Peppol or Factur-X invoice: saved sellers, customers and products, live totals and checks" testId="btn-einvoice-new" />
+        <Big icon={<Landmark size={I} />} label="ANAF e-Factura" onClick={() => void import('@/actions/anaf').then((m) => m.openAnafDialog())} tip="Send e-Factura invoices to ANAF's SPV, follow their status, list and download received invoices (needs an application registered with ANAF)" testId="btn-anaf" />
       </Group>
       <Group label="Many files">
         <Big icon={<FileStack size={I} />} label="Batch" onClick={() => s.openModal('batch')} tip="OCR, compress, watermark, page numbers, PDF/A, protect, sanitize or flatten many PDFs at once, one operation or a saved sequence of steps" testId="btn-batch" />

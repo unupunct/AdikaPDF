@@ -40,7 +40,7 @@ function ScaleButton() {
     <Popover
       trigger={
         <button type="button" data-testid="btn-measure-scale" title="Drawing scale for new measurements" className="flex h-[19px] items-center gap-1 rounded px-1.5 text-[11.5px] hover-app">
-          <span className="text-brand-600 dark:text-brand-400">1:</span>
+          <span className="text-brand-700 dark:text-brand-400">1:</span>
           <span className="max-w-[110px] truncate">{scaleText(scale)}</span>
           <ChevronDown size={10} />
         </button>

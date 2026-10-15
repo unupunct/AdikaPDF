@@ -41,11 +41,11 @@ Components:${info.componentStack ?? ''}`).then((reportPath) =>
           </p>
         ) : null}
         {this.state.reportPath ? (
-          <button type="button" className="text-sm text-brand-600 underline" onClick={() => void openLogsFolder()}>
+          <button type="button" className="text-sm text-brand-700 underline dark:text-brand-300" onClick={() => void openLogsFolder()}>
             Open logs folder
           </button>
         ) : null}
-        <button type="button" className="rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white" onClick={() => location.reload()}>
+        <button type="button" className="rounded-md bg-brand-700 px-4 py-2 text-sm font-medium text-white" onClick={() => location.reload()}>
           Reload Adika
         </button>
       </div>

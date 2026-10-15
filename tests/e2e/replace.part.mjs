@@ -1,6 +1,6 @@
 // Find & replace, Find & redact, and the update notice — included by suite.mjs.
 import { existsSync, readFileSync } from 'node:fs';
-import { PDFDocument as PD, PDFName, StandardFonts } from 'pdf-lib';
+import { PDFDocument as PD, PDFHexString, PDFName, StandardFonts } from 'pdf-lib';
 import fontkit from '@pdf-lib/fontkit';
 import * as pdfjs from 'pdfjs-dist/legacy/build/pdf.mjs';
 
@@ -69,6 +69,48 @@ export function registerReplaceTests(test, ctx) {
     for (const gone of ['Popescu', 'firma', 'RO49', '9384', '722']) assert(!text.includes(gone), `"${gone}" removed (${text})`);
     assert(/Contract 17\/2026 total 1111\.50 EUR/.test(flat(text)), 'the rest of the page is still real text (not a picture)');
     assert(text.includes('Client:') && text.includes('IBAN'), 'labels kept');
+  });
+
+  // Round 14, not yet run against a release build.
+  test('find & redact everywhere: comment, field value, bookmark and author lose the name too', async () => {
+    const d = await PD.create();
+    const font = await d.embedFont(StandardFonts.Helvetica);
+    const p = d.addPage([595, 842]);
+    p.drawText('Client: Ion Popescu', { x: 60, y: 760, size: 12, font });
+    d.setAuthor('Ion Popescu');
+    const ctx = d.context;
+    p.node.set(PDFName.of('Annots'), ctx.obj([ctx.register(ctx.obj({ Type: 'Annot', Subtype: 'Text', Rect: [60, 700, 80, 720], Contents: PDFHexString.fromText('Ask Popescu') }))]));
+    const f = d.getForm().createTextField('client');
+    f.setText('Ion Popescu');
+    f.addToPage(p, { x: 60, y: 600, width: 200, height: 20, font });
+    const outlines = ctx.nextRef();
+    const item = ctx.register(ctx.obj({ Title: PDFHexString.fromText('Popescu file'), Parent: outlines, Dest: [p.ref, PDFName.of('Fit')] }));
+    ctx.assign(outlines, ctx.obj({ Type: 'Outlines', First: item, Last: item, Count: 1 }));
+    d.catalog.set(PDFName.of('Outlines'), outlines);
+    const path = join(dir, 'everywhere.pdf');
+    writeFileSync(path, await d.save());
+    await open(path);
+    await page.click('[data-testid="tab-security"]');
+    await page.click('[data-testid="btn-find-redact"]');
+    await page.waitForSelector('[data-testid="find-redact-modal"]');
+    await page.fill('[data-testid="find-redact-terms"]', 'Popescu');
+    await page.click('[data-testid="find-redact-search"]');
+    await page.waitForSelector('[data-testid="find-redact-elsewhere"]', { timeout: 15000 });
+    const all = (await page.$$eval('[data-testid="find-redact-results"] tr', (r) => r.map((x) => x.textContent))).join(' | ');
+    for (const want of ['Comment on page 1', 'Field value', 'Bookmark', 'Metadata: Author']) assert(all.includes(want), `listed ${want} (${all})`);
+    await page.click('[data-testid="find-redact-mark"]');
+    await page.waitForFunction(() => window.__adika.store.getState().objects.some((o) => o.type === 'redact'), null, { timeout: 15000 });
+    await page.click('[data-testid="btn-apply-redactions"]');
+    await idle();
+    const saved = readFileSync(await savedFile(/everywhere\.pdf$/));
+    const out = await PD.load(saved, { updateMetadata: false });
+    assert(!out.getAuthor(), 'author cleared');
+    // The field's widget stays (only its value is cleared); the comment goes.
+    const annots = out.getPage(0).node.lookup(PDFName.of('Annots'));
+    const subtypes = annots ? annots.asArray().map((r) => String(out.context.lookup(r).get(PDFName.of('Subtype')))) : [];
+    assert(!subtypes.includes('/Text'), `comment removed (${subtypes})`);
+    assert(!(out.getForm().getTextField('client').getText() ?? '').includes('Popescu'), 'field value cleared');
+    assert(!Buffer.from(saved).toString('latin1').includes('Popescu'), 'no plain copy of the name left in the file');
   });
 
   // Round 13, not yet run against a release build.

@@ -3,6 +3,9 @@ import forge from 'node-forge';
 import { PDFDocument, PDFName, StandardFonts } from 'pdf-lib';
 import { addDocumentTimestamp, addValidationData, qcStatementsOf, signPdf, verifyPdfSignatures, type SigningIdentity } from '@/lib/crypto/digitalSignature';
 import { downloadTrustedLists, LOTL_URL, parseLotl, parseTrustedList, subjectKey, trustIndex } from '@/lib/crypto/euTrustedList';
+import { sha256Hex } from '@/lib/crypto/xmlDsig';
+import { issue as issueCa, type TestCa } from './helpers/sigPki';
+import { signXml } from './helpers/xmlSign';
 
 const a = forge.asn1;
 const CRL_URL = 'http://crl.adika.test/root.crl';
@@ -210,18 +213,24 @@ ${cert.replace(/(.{64})/g, '$1\n')}
     </tsl:TrustServiceProvider>
   </tsl:TrustServiceProviderList>
 </tsl:TrustServiceStatusList>`;
-  const lotl = `<?xml version="1.0"?>
+  let lotlSigner: TestCa;
+  let roSigner: TestCa;
+  beforeAll(async () => {
+    [lotlSigner, roSigner] = await Promise.all([issueCa({ cn: 'EC LOTL', bits: 1024 }), issueCa({ cn: 'RO TL', bits: 1024 })]);
+  });
+  const ids = (c?: TestCa) => (c ? `<ServiceDigitalIdentities><ServiceDigitalIdentity><DigitalId><X509Certificate>${b64(c.cert)}</X509Certificate></DigitalId></ServiceDigitalIdentity></ServiceDigitalIdentities>` : '');
+  const lotl = () => `<?xml version="1.0"?>
 <TrustServiceStatusList xmlns="http://uri.etsi.org/02231/v2#" xmlns:ns3="http://uri.etsi.org/02231/v2/additionaltypes#">
  <SchemeInformation><PointersToOtherTSL>
-  <OtherTSLPointer><TSLLocation>https://ec.europa.eu/tools/lotl/eu-lotl.xml</TSLLocation><AdditionalInformation><OtherInformation><ns3:MimeType>application/vnd.etsi.tsl+xml</ns3:MimeType></OtherInformation><OtherInformation><SchemeTerritory>EU</SchemeTerritory></OtherInformation></AdditionalInformation></OtherTSLPointer>
-  <OtherTSLPointer><TSLLocation>https://tl.adika.test/ro.xml</TSLLocation><AdditionalInformation><OtherInformation><SchemeTerritory>RO</SchemeTerritory></OtherInformation><OtherInformation><ns3:MimeType>application/vnd.etsi.tsl+xml</ns3:MimeType></OtherInformation></AdditionalInformation></OtherTSLPointer>
+  <OtherTSLPointer>${ids(lotlSigner)}<TSLLocation>https://ec.europa.eu/tools/lotl/eu-lotl.xml</TSLLocation><AdditionalInformation><OtherInformation><ns3:MimeType>application/vnd.etsi.tsl+xml</ns3:MimeType></OtherInformation><OtherInformation><SchemeTerritory>EU</SchemeTerritory></OtherInformation></AdditionalInformation></OtherTSLPointer>
+  <OtherTSLPointer>${ids(roSigner)}<TSLLocation>https://tl.adika.test/ro.xml</TSLLocation><AdditionalInformation><OtherInformation><SchemeTerritory>RO</SchemeTerritory></OtherInformation><OtherInformation><ns3:MimeType>application/vnd.etsi.tsl+xml</ns3:MimeType></OtherInformation></AdditionalInformation></OtherTSLPointer>
   <OtherTSLPointer><TSLLocation>https://tl.adika.test/ro.pdf</TSLLocation><AdditionalInformation><OtherInformation><SchemeTerritory>RO</SchemeTerritory></OtherInformation><OtherInformation><ns3:MimeType>application/pdf</ns3:MimeType></OtherInformation></AdditionalInformation></OtherTSLPointer>
   <OtherTSLPointer><TSLLocation>https://tl.adika.test/xx.xml</TSLLocation><AdditionalInformation><OtherInformation><SchemeTerritory>XX</SchemeTerritory></OtherInformation><OtherInformation><ns3:MimeType>application/vnd.etsi.tsl+xml</ns3:MimeType></OtherInformation></AdditionalInformation></OtherTSLPointer>
  </PointersToOtherTSL></SchemeInformation>
 </TrustServiceStatusList>`;
 
   it('reads the list of lists and the granted qualified services', () => {
-    expect(parseLotl(lotl)).toEqual([
+    expect(parseLotl(lotl())).toEqual([
       { territory: 'RO', url: 'https://tl.adika.test/ro.xml' },
       { territory: 'XX', url: 'https://tl.adika.test/xx.xml' },
     ]);
@@ -239,17 +248,19 @@ ${cert.replace(/(.{64})/g, '$1\n')}
     const seen: string[] = [];
     const get = async (url: string) => {
       seen.push(url);
-      if (url === LOTL_URL) return new TextEncoder().encode(lotl);
-      if (url.endsWith('ro.xml')) return new TextEncoder().encode(nationalTl());
+      if (url === LOTL_URL) return new TextEncoder().encode(signXml(lotl(), lotlSigner));
+      if (url.endsWith('ro.xml')) return new TextEncoder().encode(signXml(nationalTl(), roSigner));
       throw new Error('HTTP 404');
     };
     const progress: string[] = [];
-    const cache = await downloadTrustedLists(get, (d, t) => progress.push(`${d}/${t}`));
+    const pins = [await sha256Hex(new Uint8Array(Buffer.from(b64(lotlSigner.cert), 'base64')))];
+    const cache = await downloadTrustedLists(get, (d, t) => progress.push(`${d}/${t}`), { pins });
     expect(progress).toEqual(['0/2', '1/2', '2/2']);
     expect(cache.lists).toEqual([
       { territory: 'RO', url: 'https://tl.adika.test/ro.xml', services: 2 },
       { territory: 'XX', url: 'https://tl.adika.test/xx.xml', error: 'HTTP 404' },
     ]);
+    expect(cache.rejected).toEqual([]);
     const euTrust = trustIndex(JSON.parse(JSON.stringify(cache)));
     expect(euTrust.size).toBe(2);
 

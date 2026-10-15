@@ -4,7 +4,8 @@ import { ArrowDown, ArrowUp, CheckCircle2, FilePlus2, Loader2, MinusCircle, Plus
 import { usePDFStore } from '@/store/usePDFStore';
 import { Button, Callout, Dialog, Field, Input, Select, Tabs } from '@/components/ui/primitives';
 import { BATCH_OPS, sequenceProblem, sequenceSuffix, type ActionSequence, type BatchKind, type BatchOp, type CompressLevel } from '@/lib/batch';
-import { OCR_LANGUAGES } from '@/lib/pdf/ocr';
+import { ocrLangLabel } from '@/lib/ocrLangs';
+import { useInstalledOcrLangs } from './OcrLanguages';
 import type { BatchResult } from '@/actions/batch';
 import { WatchPanel } from './WatchPanel';
 
@@ -29,7 +30,8 @@ function defaultOp(kind: BatchKind): BatchOp {
 
 /** The settings of one operation (language, strength, text, password). */
 function OpParams({ op, onChange, repeat, onRepeat, testPrefix = 'batch' }: { op: BatchOp; onChange: (op: BatchOp) => void; repeat: string; onRepeat: (v: string) => void; testPrefix?: string }) {
-  const langOptions = [{ value: 'ron+eng', label: 'Română + English' }, ...OCR_LANGUAGES.map((l) => ({ value: l.code, label: l.label }))];
+  const installed = useInstalledOcrLangs();
+  const langOptions = [{ value: 'ron+eng', label: 'Română + English' }, ...installed.map((code) => ({ value: code, label: ocrLangLabel(code) }))];
   switch (op.kind) {
     case 'ocr':
       return (
@@ -218,7 +220,7 @@ export function BatchModal() {
               return (
                 <li key={f} className="flex items-center gap-2 border-b border-app px-2 py-1 last:border-0" title={f}>
                   {r ? (
-                    r.status === 'done' ? <CheckCircle2 size={13} className="text-accent-600" /> : r.status === 'skipped' ? <MinusCircle size={13} className="text-amber-600" /> : <XCircle size={13} className="text-rose-600" />
+                    r.status === 'done' ? <CheckCircle2 size={13} className="text-accent-600" /> : r.status === 'skipped' ? <MinusCircle size={13} className="text-amber-700" /> : <XCircle size={13} className="text-rose-600" />
                   ) : null}
                   <span className="min-w-0 flex-1 truncate" data-no-translate>
                     {name(f)}
@@ -250,7 +252,7 @@ export function BatchModal() {
           <OpParams op={single} onChange={setSingle} repeat={pw2} onRepeat={setPw2} />
           <p className="text-[11px] text-muted">
             To sign many files with a digital ID, use{' '}
-            <button type="button" className="text-brand-600 underline" onClick={() => usePDFStore.getState().openModal('batchsign')} disabled={running} data-testid="batch-open-sign">
+            <button type="button" className="text-brand-700 underline dark:text-brand-300" onClick={() => usePDFStore.getState().openModal('batchsign')} disabled={running} data-testid="batch-open-sign">
               Sign many files
             </button>
             .

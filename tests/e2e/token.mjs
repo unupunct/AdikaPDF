@@ -33,10 +33,15 @@ await S((d) => window.__adika.platform.e2eSetSaveDir(d), out);
 function assert(c, m) {
   if (!c) throw new Error(`Assertion failed: ${m}`);
 }
-const idle = () => page.waitForFunction(() => !window.__adika.store.getState().busy, null, { timeout: 120000 });
+const idle = () => page.waitForFunction(() => !window.__adika.store.getState().busy && !window.__adika.document.isSaving?.(), null, { timeout: 120000 });
 
 async function openContract() {
-  await S(() => window.__adika.store.setState({ dirty: false }));
+  // An already-open file only switches to its tab: close the tabs so the unsigned contract is read again.
+  await S(() => {
+    const t = window.__adika.tabs;
+    window.__adika.store.setState({ dirty: false });
+    for (const tab of [...t.useTabs.getState().tabs]) t.removeTab(tab.id);
+  });
   await S((p) => window.__adika.document.openPdfPath(p), pdfPath);
   await idle();
 }
@@ -144,10 +149,48 @@ await step('the reopened signed file shows the signature as intact', async () =>
   await page.keyboard.press('Escape');
 });
 
+await step('sign many files with the token: the PIN is entered once for three PDFs, each signature valid', async () => {
+  const folder = join(out, 'token-batch');
+  mkdirSync(folder, { recursive: true });
+  for (const n of [1, 2, 3]) {
+    const d = await PDFDocument.create();
+    const f = await d.embedFont(StandardFonts.Helvetica);
+    d.addPage([595, 842]).drawText(`Batch contract ${n}`, { x: 60, y: 760, size: 18, font: f });
+    writeFileSync(join(folder, `batch-${n}.pdf`), await d.save());
+  }
+  await page.keyboard.press('Escape').catch(() => {});
+  await page.click('[data-testid="tab-sign"]');
+  await page.click('[data-testid="btn-batch-sign"]');
+  await page.waitForSelector('[data-testid="batchsign-modal"]');
+  await S((f) => window.__adika.platform.e2eQueuePicks([f]), folder);
+  await page.click('[data-testid="batchsign-add-folder"]');
+  await page.waitForFunction(() => document.querySelectorAll('[data-testid="batchsign-files"] li').length === 3, null, { timeout: 10000 });
+  await page.click('[data-testid="batchsign-modal"] [role="tab"]:has-text("Token / smart card")');
+  await S((m) => window.__adika.platform.e2eQueuePicks([m]), MODULE);
+  await page.click('[data-testid="batchsign-modal"] button:has-text("Browse…")');
+  await page.waitForSelector('[data-testid="batchsign-modal"] label:has-text("RSA signing key")', { timeout: 20000 });
+  await page.click('[data-testid="batchsign-modal"] label:has-text("RSA signing key") input[name="batchsign-token"]');
+  await page.fill('[data-testid="batchsign-pin"]', '123456');
+  await page.click('[data-testid="batchsign-run"]');
+  await page.waitForSelector('[data-testid="batchsign-summary"]', { timeout: 120000 });
+  const summary = await page.textContent('[data-testid="batchsign-summary"]');
+  assert(/3 of 3 file\(s\) signed/.test(summary), `summary (${summary})`);
+  for (const n of [1, 2, 3]) {
+    const p = join(folder, `batch-${n}-signed.pdf`);
+    const v = await verify(p);
+    assert(v.plain.length === 1 && v.plain[0].integrity === 'valid', `batch-${n} valid (${v.plain[0]?.message})`);
+    assert(/RSA-2048/.test(v.plain[0].algorithm ?? '') && /Ana Tokenescu/.test(v.plain[0].signerName), `batch-${n} signer`);
+    signed[`batch ${n}`] = p;
+  }
+  await page.keyboard.press('Escape');
+});
+
 writeFileSync(join(dir, 'signed-files.json'), JSON.stringify(signed, null, 1));
 // Independent check with pyHanko (trusting the test CA).
 const { spawnSync } = await import('node:child_process');
-const py = spawnSync('C:/Program Files/Python313/python.exe', [join(ROOT, 'tests', 'token', 'validate.py'), join(WORK, 'certs', 'ca.der'), ...Object.values(signed)], {
+// Python 3: $ADIKA_PYTHON, else the Windows launcher's default interpreter.
+const python = process.env.ADIKA_PYTHON ?? spawnSync('py', ['-3', '-c', 'import sys; print(sys.executable)'], { encoding: 'utf8' }).stdout.trim();
+const py = spawnSync(python, [join(ROOT, 'tests', 'token', 'validate.py'), join(WORK, 'certs', 'ca.der'), ...Object.values(signed)], {
   env: { ...process.env, PYTHONPATH: join(ROOT, 'node_modules', '.cache', 'py') },
   encoding: 'utf8',
 });

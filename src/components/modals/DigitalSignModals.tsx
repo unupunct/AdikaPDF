@@ -12,6 +12,7 @@ import {
   addArchiveTimestamp,
   addLongTermValidation,
   euTrustedLists,
+  euTrustedListsProblem,
   padesLevelOf,
   signWithIdentity,
   signWithStoreCert,
@@ -27,6 +28,7 @@ import { isDesktop, pickFiles, pickPaths, pkcs11DetectModules, pkcs11ListTokens,
 import { saveFileQuiet } from '@/actions/saveGuard';
 import type { SignatureValidation } from '@/types';
 import { cn } from '@/lib/cn';
+import { defaultTsaUrl, onlineAllowed, usePolicy } from '@/lib/policy';
 
 export function useSignMeta(): [SignMeta, (m: SignMeta) => void] {
   return useState<SignMeta>({ reason: 'I approve this document', location: '', contactInfo: '', tsaUrl: null, pades: true });
@@ -45,6 +47,7 @@ export function usePlacement(): [PlacementState, (p: PlacementState) => void] {
 export function MetaFields({ meta, onChange }: { meta: SignMeta; onChange: (m: SignMeta) => void }) {
   const [useTsa, setUseTsa] = useState(meta.tsaUrl !== null);
   const signed = usePDFStore((s) => s.signatureStatus.length > 0);
+  const online = usePolicy((s) => onlineAllowed('timestamp', s.policies));
   return (
     <>
       <div className="grid grid-cols-2 gap-3">
@@ -56,19 +59,20 @@ export function MetaFields({ meta, onChange }: { meta: SignMeta; onChange: (m: S
         </Field>
       </div>
       <Checkbox
-        checked={useTsa}
+        checked={useTsa && online}
+        disabled={!online}
         label="Add a trusted timestamp (RFC 3161, needs internet)"
         onChange={(v) => {
           setUseTsa(v);
-          onChange({ ...meta, tsaUrl: v ? meta.tsaUrl || 'http://timestamp.digicert.com' : null });
+          onChange({ ...meta, tsaUrl: v ? meta.tsaUrl || defaultTsaUrl() : null });
         }}
       />
-      {useTsa ? (
+      {useTsa && online ? (
         <Field label="Timestamp authority URL">
           <Input value={meta.tsaUrl ?? ''} onChange={(e) => onChange({ ...meta, tsaUrl: e.target.value })} />
         </Field>
       ) : null}
-      <Checkbox checked={!!meta.ltv} label="Add long-term validation data (LTV: the signature can be verified offline for years; needs internet)" onChange={(ltv) => onChange({ ...meta, ltv })} />
+      <Checkbox checked={!!meta.ltv && online} disabled={!online} label="Add long-term validation data (LTV: the signature can be verified offline for years; needs internet)" onChange={(ltv) => onChange({ ...meta, ltv })} />
       {meta.ltv && useTsa ? (
         <Checkbox
           checked={!!meta.archive}
@@ -566,14 +570,21 @@ export function VerifyModal() {
   const open = usePDFStore((s) => s.modal === 'verify');
   const status = usePDFStore((s) => s.signatureStatus);
   const close = () => usePDFStore.getState().openModal(null);
-  const [checkRevocation, setCheckRevocation] = useState(isDesktop);
+  const online = usePolicy((s) => onlineAllowed('revocation', s.policies));
+  const [checkRevocationSetting, setCheckRevocation] = useState(isDesktop);
+  const checkRevocation = checkRevocationSetting && online;
   const [ran, setRan] = useState(false);
   const [tl, setTl] = useState<TrustedListCache | null>(null);
+  const [tlProblem, setTlProblem] = useState<string | null>(null);
+  const loadTl = (res: TrustedListCache | null) => {
+    setTl(res);
+    setTlProblem(res ? null : euTrustedListsProblem());
+  };
 
   useEffect(() => {
     if (open) {
       setRan(false);
-      void euTrustedLists().then(setTl);
+      void euTrustedLists().then(loadTl);
       void verifyCurrentSignatures(false).then(() => setRan(true));
     }
   }, [open]);
@@ -589,7 +600,7 @@ export function VerifyModal() {
       testId="verify-modal"
       footer={
         <>
-          <Checkbox checked={checkRevocation} onChange={setCheckRevocation} label="Check revocation online (OCSP / CRL)" disabled={!isDesktop} />
+          <Checkbox checked={checkRevocation} onChange={setCheckRevocation} label="Check revocation online (OCSP / CRL)" disabled={!isDesktop || !online} />
           <div className="flex-1" />
           {status.length ? (
             <Button onClick={() => void import('@/actions/reports').then((m) => m.saveValidationReport())} data-testid="verify-report" title="Save what was checked as a PDF report">
@@ -598,8 +609,8 @@ export function VerifyModal() {
           ) : null}
           {signatures.length ? (
             <Button
-              onClick={() => void addArchiveTimestamp('http://timestamp.digicert.com').then(() => setRan(true))}
-              disabled={!isDesktop}
+              onClick={() => void addArchiveTimestamp(defaultTsaUrl()).then(() => setRan(true))}
+              disabled={!isDesktop || !online}
               data-testid="verify-add-archive"
               title="Adds validation data and a document timestamp over the whole file (PAdES B-LTA); repeat it every few years to keep the signatures verifiable"
             >
@@ -607,7 +618,7 @@ export function VerifyModal() {
             </Button>
           ) : null}
           {signatures.length && signatures.some((s) => !s.ltv) ? (
-            <Button onClick={() => void addLongTermValidation().then(() => setRan(true))} disabled={!isDesktop} data-testid="verify-add-ltv" title="Store the certificate chains and OCSP / CRL answers in the file (the signatures stay valid)">
+            <Button onClick={() => void addLongTermValidation().then(() => setRan(true))} disabled={!isDesktop || !online} data-testid="verify-add-ltv" title="Store the certificate chains and OCSP / CRL answers in the file (the signatures stay valid)">
               Add long-term validation
             </Button>
           ) : null}
@@ -624,16 +635,19 @@ export function VerifyModal() {
         <ShieldCheck size={14} className="shrink-0 text-brand-600" />
         <span className="min-w-0 flex-1">
           {tl
-            ? `EU Trusted Lists: ${tl.services.length} qualified services, downloaded ${new Date(tl.fetched).toLocaleDateString()}.`
-            : 'EU Trusted Lists not downloaded: qualified EU signatures are recognised only through the Windows roots.'}
+            ? `EU Trusted Lists: ${tl.services.length} qualified services, signatures verified ${new Date(tl.verified ?? tl.fetched).toLocaleDateString()} (downloaded ${new Date(tl.fetched).toLocaleDateString()}).`
+            : tlProblem
+              ? 'The saved EU Trusted Lists failed their signature check and are not used: download them again.'
+              : 'EU Trusted Lists not downloaded: qualified EU signatures are recognised only through the Windows roots.'}
+          {tl?.rejected?.length ? <span className="block text-[11px] text-muted" data-testid="eu-tl-rejected">{`Not used (signature not valid): ${tl.rejected.join(', ')}`}</span> : null}
         </span>
         <Button
           size="sm"
-          disabled={!isDesktop}
+          disabled={!isDesktop || !online}
           data-testid="eu-tl-update"
           onClick={() =>
             void updateEuTrustedLists().then(async (res) => {
-              if (res) setTl(res);
+              if (res) loadTl(res);
               await verifyCurrentSignatures(false);
               setRan(true);
             })
@@ -668,7 +682,7 @@ function SignatureCard({ sig }: { sig: SignatureValidation }) {
       )}
     >
       <div className="mb-2 flex items-center gap-2">
-        {tone === 'good' ? <BadgeCheck className="text-accent-600" size={20} /> : tone === 'warn' ? <ShieldAlert className="text-amber-600" size={20} /> : <BadgeX className="text-rose-600" size={20} />}
+        {tone === 'good' ? <BadgeCheck className="text-accent-600" size={20} /> : tone === 'warn' ? <ShieldAlert className="text-amber-700" size={20} /> : <BadgeX className="text-rose-600" size={20} />}
         <div>
           <div className="text-[13px] font-semibold">
             {sig.documentTimestamp ? <span className="mr-1 font-normal text-muted">Document timestamp ·</span> : null}
@@ -714,7 +728,11 @@ function SignatureCard({ sig }: { sig: SignatureValidation }) {
                     : 'Issuer is a qualified trust service'
               : 'Declared by the certificate, not confirmed (download the EU Trusted Lists)'}
             {sig.euTrusted ? <span className="block text-[11px] text-muted">{sig.euTrusted}</span> : null}
-            {sig.euTrusted ? <span className="block text-[11px] text-muted">The list’s own signature is not verified (downloaded over HTTPS).</span> : null}
+            {sig.euTrusted ? (
+              <span className="block text-[11px] text-muted">
+                {sig.euTrustedVerified ? `The trusted lists’ signatures were verified on ${new Date(sig.euTrustedVerified).toLocaleDateString()}.` : 'The trusted lists’ signatures were not verified.'}
+              </span>
+            ) : null}
           </Row>
         ) : null}
         <Row label={sig.documentTimestamp ? 'Timestamp authority' : 'Signer identity'}>

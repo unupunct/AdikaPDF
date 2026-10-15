@@ -242,15 +242,16 @@ export async function recoverBackups(dirs: string[]): Promise<number> {
 }
 
 /** Opens a source of a backup; asks for its password when it was opened with one. */
-async function openSource(bytes: Uint8Array, src: BackupSource, password: string | undefined): Promise<string | null> {
+async function openSource(bytes: Uint8Array, src: BackupSource, password: string | undefined): Promise<{ id: string; pages: PageRef[] } | null> {
   const store = usePDFStore.getState();
   const { PasswordRequiredError } = await import('@/lib/pdf/pdfService');
   let pw = password;
   let incorrect = false;
   for (;;) {
     try {
-      const { source } = await store.addSource(bytes, src.name, pw, src.original);
-      return source.id;
+      // Large documents open with estimated page sizes, corrected in the background.
+      const { source, pages } = await store.addSource(bytes, src.name, pw, src.original, true);
+      return { id: source.id, pages };
     } catch (e) {
       if (!(e instanceof PasswordRequiredError)) throw e;
       const { askPassword } = await import('@/store/useDialogs');
@@ -266,17 +267,20 @@ async function restore(dir: string, crashed: boolean, passwords: Record<string, 
   const st = JSON.parse(new TextDecoder().decode(await read(`${dir}/state.json`))) as BackupState;
   const createdTab = !activeTabIsEmpty() ? newTab() : null;
   const map = new Map<string, string>();
+  const fresh = new Map<string, PageRef[]>();
   const xfa: Array<[string, Uint8Array]> = [];
   try {
     for (const src of st.sources) {
-      const id = await openSource(await read(`${dir}/${src.file}`), src, passwords[src.id]);
-      if (!id) {
+      const opened = await openSource(await read(`${dir}/${src.file}`), src, passwords[src.id]);
+      if (!opened) {
         // No password: the backup stays for the next start.
         if (createdTab) (await import('@/store/tabs')).removeTab(createdTab);
         else await usePDFStore.getState().closeDocument();
         return false;
       }
+      const id = opened.id;
       map.set(src.id, id);
+      fresh.set(id, opened.pages);
       if (src.xfa) xfa.push([id, await read(`${dir}/${src.xfa}`)]);
     }
   } catch (e) {
@@ -284,7 +288,13 @@ async function restore(dir: string, crashed: boolean, passwords: Record<string, 
     if (createdTab) (await import('@/store/tabs')).removeTab(createdTab);
     throw e;
   }
-  const pages = st.pages.map((p) => (p.sourceId && map.has(p.sourceId) ? { ...p, sourceId: map.get(p.sourceId)! } : p));
+  // Page sizes come from the file as read now (the backup may hold estimates of a large document).
+  const pages = st.pages.map((p) => {
+    const id = p.sourceId ? map.get(p.sourceId) : undefined;
+    if (!id) return p;
+    const now = fresh.get(id)?.[p.sourceIndex];
+    return now ? { ...p, sourceId: id, width: now.width, height: now.height, baseRotation: now.baseRotation } : { ...p, sourceId: id };
+  });
   const fieldValues = Object.fromEntries(
     Object.entries(st.fieldValues).map(([k, v]) => {
       const [sid, ...rest] = k.split('::');

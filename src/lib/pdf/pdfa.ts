@@ -6,9 +6,12 @@
 // outright (encryption, JavaScript, XFA; embedded files for 1b/2b; optional
 // content for 1b). PDF/A-3b keeps embedded files and gives each one the
 // associated-file markers (/AFRelationship, catalog /AF, MIME /Subtype,
-// /Params /ModDate). It does NOT embed missing fonts or flatten transparency;
-// `pdfaWarnings` reports those so the UI can tell the user honestly to
-// validate the result with veraPDF.
+// /Params /ModDate). With font sources it embeds fonts the file only names
+// (pdfaFonts.ts); DeviceCMYK colours are converted to RGB for the sRGB output
+// intent (or, with `keepCmyk`, RGB to CMYK under a CMYK output intent); for
+// PDF/A-1 pages with transparency are flattened when a rasteriser is given.
+// `pdfaWarnings` reports what is left so the UI can tell the user honestly
+// to validate the result with veraPDF.
 
 import {
   AFRelationship,
@@ -26,6 +29,11 @@ import {
   type PDFObject,
 } from 'pdf-lib';
 import { scanContentOps } from './compress';
+import { embedMissingFonts, type PdfAFontSources } from './pdfaFonts';
+import { dropUnreachableObjects } from './prune';
+import { convertDocumentColors, type ConvertHooks } from '@/lib/print/convertColors';
+import { genericCmykProfile } from '@/lib/print/color';
+import { pageHasTransparency } from '@/lib/print/pdfx';
 
 export const PDFA_PRODUCER = 'Adika PDF Editor';
 
@@ -193,7 +201,7 @@ export function buildSrgbIccProfile(): Uint8Array {
 
 export function escapeXml(s: string): string {
   return s
-    .replace(/[^\t\n\r -퟿-�\u{10000}-\u{10FFFF}]/gu, '')
+    .replace(/[^\t\n\r\u0020-\uD7FF\uE000-\uFFFD\u{10000}-\u{10FFFF}]/gu, '')
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
@@ -283,6 +291,14 @@ export interface PdfAMeta {
   extraXmp?: string;
   /** A TrueType font (embedded) to redraw form fields that have no appearance of their own. */
   fieldFont?: Uint8Array;
+  /** Where programs for fonts the file does not embed come from (none: they are only reported). */
+  fonts?: PdfAFontSources;
+  /** Decoders for CMYK photos (JPEG) when colours are converted. */
+  colorHooks?: ConvertHooks;
+  /** "Keep CMYK (print)": a CMYK output intent, RGB colours converted to CMYK, instead of sRGB. */
+  keepCmyk?: boolean;
+  /** Renders a page to RGB pixels (3 channels), to flatten pages with transparency for PDF/A-1. */
+  rasterRgb?: (pageIndex: number, dpi: number) => Promise<{ data: Uint8Array; width: number; height: number }>;
 }
 
 export interface PdfAConversionResult {
@@ -458,6 +474,39 @@ async function fixAnnotations(doc: PDFDocument, needAppearances: boolean, fieldF
       }
     }
   }
+  // Squares and circles without an appearance get one drawn from /Rect, /C, /IC and the border width.
+  let drawn = 0;
+  for (const a of pageAnnots(doc)) {
+    const sub = nameOf(a.get(PDFName.of('Subtype')));
+    if ((sub !== 'Square' && sub !== 'Circle') || hasNormalAppearance(doc, a) || !needsAppearance(doc, a)) continue;
+    const r = arrayOf(doc, a.get(PDFName.of('Rect')))?.asArray().map((v) => numberOf(doc, v) ?? 0);
+    if (!r || r.length !== 4) continue;
+    const [x0, y0, x1, y1] = [Math.min(r[0], r[2]), Math.min(r[1], r[3]), Math.max(r[0], r[2]), Math.max(r[1], r[3])];
+    const colour = (key: string, stroking: boolean) => {
+      const c = arrayOf(doc, a.get(PDFName.of(key)))?.asArray().map((v) => numberOf(doc, v) ?? 0) ?? [];
+      const op = c.length === 1 ? 'g' : c.length === 3 ? 'rg' : c.length === 4 ? 'k' : '';
+      return op ? `${c.join(' ')} ${stroking ? op.toUpperCase() : op}` : '';
+    };
+    const stroke = colour('C', true);
+    const fill = colour('IC', false);
+    const bw = numberOf(doc, dictOf(doc, a.get(PDFName.of('BS')))?.get(PDFName.of('W'))) ?? 1;
+    const w = x1 - x0;
+    const h = y1 - y0;
+    const i = bw / 2;
+    let path: string;
+    if (sub === 'Square') path = `${i} ${i} ${w - bw} ${h - bw} re`;
+    else {
+      const k = 0.5523;
+      const [cx, cy, rx, ry] = [w / 2, h / 2, w / 2 - i, h / 2 - i];
+      path = `${cx + rx} ${cy} m ${cx + rx} ${cy + k * ry} ${cx + k * rx} ${cy + ry} ${cx} ${cy + ry} c ${cx - k * rx} ${cy + ry} ${cx - rx} ${cy + k * ry} ${cx - rx} ${cy} c ${cx - rx} ${cy - k * ry} ${cx - k * rx} ${cy - ry} ${cx} ${cy - ry} c ${cx + k * rx} ${cy - ry} ${cx + rx} ${cy - k * ry} ${cx + rx} ${cy} c h`;
+    }
+    const op = stroke && bw > 0 ? (fill ? 'B' : 'S') : fill ? 'f' : 'n';
+    const content = `q ${fill} ${stroke} ${bw} w ${path} ${op} Q`;
+    const ap = doc.context.stream(content, { Type: 'XObject', Subtype: 'Form', BBox: [0, 0, w, h] });
+    a.set(PDFName.of('AP'), doc.context.obj({ N: doc.context.register(ap) }));
+    drawn++;
+  }
+  if (drawn) notes.push(`${drawn} comment(s) without an appearance were given one.`);
   let fixedFlags = 0;
   for (const a of pageAnnots(doc)) {
     if (nameOf(a.get(PDFName.of('Subtype'))) === 'Popup') continue;
@@ -498,30 +547,34 @@ function decodedContent(doc: PDFDocument, o: PDFObject | undefined): Uint8Array[
   return arr ? arr.asArray().flatMap((x) => decodedContent(doc, x)) : [];
 }
 
-function usesCmykOps(parts: Uint8Array[], res: PDFDict | undefined, doc: PDFDocument): boolean {
+type DeviceSpace = 'cmyk' | 'rgb';
+const DEVICE = { cmyk: { space: 'DeviceCMYK', ops: ['k', 'K'], dflt: 'DefaultCMYK' }, rgb: { space: 'DeviceRGB', ops: ['rg', 'RG'], dflt: 'DefaultRGB' } };
+
+function usesDeviceOps(parts: Uint8Array[], res: PDFDict | undefined, doc: PDFDocument, space: DeviceSpace): boolean {
+  const d = DEVICE[space];
   const named = dictOf(doc, res?.get(PDFName.of('ColorSpace')));
-  // A DefaultCMYK colour space turns DeviceCMYK into a calibrated one.
-  if (named?.has(PDFName.of('DefaultCMYK'))) return false;
+  // A DefaultCMYK / DefaultRGB colour space turns the device space into a calibrated one.
+  if (named?.has(PDFName.of(d.dflt))) return false;
   for (const p of parts) {
     for (const { op, name } of scanContentOps(p)) {
-      if (op === 'k' || op === 'K') return true;
-      if ((op === 'cs' || op === 'CS') && name && (name === 'DeviceCMYK' || nameOf(named?.get(PDFName.of(name))) === 'DeviceCMYK')) return true;
+      if (d.ops.includes(op)) return true;
+      if ((op === 'cs' || op === 'CS') && name && (name === d.space || nameOf(named?.get(PDFName.of(name))) === d.space)) return true;
     }
   }
   return false;
 }
 
-/** Pages, form XObjects and images that paint with DeviceCMYK. */
-function deviceCmykUses(doc: PDFDocument): number {
+/** Pages, form XObjects and images that paint with DeviceCMYK (or DeviceRGB). */
+function deviceUses(doc: PDFDocument, space: DeviceSpace = 'cmyk'): number {
   let n = 0;
   for (const page of doc.getPages()) {
-    if (usesCmykOps(decodedContent(doc, page.node.get(PDFName.of('Contents'))), page.node.Resources(), doc)) n++;
+    if (usesDeviceOps(decodedContent(doc, page.node.get(PDFName.of('Contents'))), page.node.Resources(), doc, space)) n++;
   }
   for (const [, obj] of doc.context.enumerateIndirectObjects()) {
     if (!(obj instanceof PDFRawStream)) continue;
     const sub = nameOf(obj.dict.get(PDFName.of('Subtype')));
-    if (sub === 'Image' && nameOf(obj.dict.lookup(PDFName.of('ColorSpace'))) === 'DeviceCMYK') n++;
-    else if (sub === 'Form' && usesCmykOps(decodedContent(doc, obj), dictOf(doc, obj.dict.get(PDFName.of('Resources'))), doc)) n++;
+    if (sub === 'Image' && nameOf(obj.dict.lookup(PDFName.of('ColorSpace'))) === DEVICE[space].space) n++;
+    else if (sub === 'Form' && usesDeviceOps(decodedContent(doc, obj), dictOf(doc, obj.dict.get(PDFName.of('Resources'))), doc, space)) n++;
   }
   return n;
 }
@@ -663,6 +716,8 @@ export async function convertToPdfADetailed(bytes: Uint8Array, meta: PdfAMeta): 
   const ctx = doc.context;
   const catalog = doc.catalog;
   const keepFiles = level === '3b';
+  // PDF/A-1 forbids transparency: those pages are found before groups are taken off below.
+  const transparent = level === '1b' ? doc.getPages().flatMap((p, i) => (pageHasTransparency(doc, p) ? [i] : [])) : [];
 
   // --- Strip forbidden features -------------------------------------------
   const names = dictOf(doc, catalog.get(PDFName.of('Names')));
@@ -743,6 +798,42 @@ export async function convertToPdfADetailed(bytes: Uint8Array, meta: PdfAMeta): 
   if (removedAttachAnnots) notes.push(`${removedAttachAnnots} file-attachment annotation(s) were removed.`);
   if (removedGroups) notes.push(`${removedGroups} transparency group(s) were removed (PDF/A-1 forbids them).`);
 
+  // --- Transparency (PDF/A-1): flattened to an image ---------------------
+  if (transparent.length && meta.rasterRgb) {
+    for (const i of transparent) {
+      const page = doc.getPage(i);
+      const r = await meta.rasterRgb(i, 200);
+      const box = page.getMediaBox();
+      const img = ctx.register(ctx.flateStream(r.data, { Type: 'XObject', Subtype: 'Image', Width: r.width, Height: r.height, ColorSpace: 'DeviceRGB', BitsPerComponent: 8 }));
+      page.node.set(PDFName.of('Resources'), ctx.obj({ XObject: { Page: img } }));
+      page.node.set(PDFName.of('Contents'), ctx.register(ctx.flateStream(new TextEncoder().encode(`q ${box.width} 0 0 ${box.height} ${box.x} ${box.y} cm /Page Do Q`))));
+      page.node.delete(PDFName.of('Group'));
+    }
+    notes.push(`${transparent.length} page(s) with transparency were flattened to images (PDF/A-1 forbids transparency; their text is no longer selectable). Choose PDF/A-2b to keep them as they are.`);
+  }
+
+  // --- Fonts ----------------------------------------------------------------
+  if (meta.fonts) {
+    const r = await embedMissingFonts(doc, meta.fonts);
+    if (r.embedded.length) {
+      const list = r.embedded.slice(0, 8).map((e) => `${e.font} (${e.with})`).join(', ');
+      notes.push(`${r.embedded.length} font(s) were embedded: ${list}${r.embedded.length > 8 ? ', …' : ''}.`);
+    }
+    notes.push(...r.notes);
+  }
+
+  // --- Colours: device colours must match the output intent -----------------
+  const target = meta.keepCmyk ? 'cmyk' : 'rgb';
+  if (deviceUses(doc, meta.keepCmyk ? 'rgb' : 'cmyk')) {
+    const r = await convertDocumentColors(doc, target, meta.colorHooks, { deviceOnly: true });
+    notes.push(
+      meta.keepCmyk
+        ? 'RGB colours were converted to CMYK for the CMYK output intent.'
+        : `DeviceCMYK colours were converted to RGB for the sRGB output intent${r.images ? ` (${r.images} image(s))` : ''}.`,
+    );
+    for (const k of r.kept) notes.push(`Not converted: ${k}.`);
+  }
+
   // --- Info dictionary ----------------------------------------------------
   const now = new Date(Math.floor(Date.now() / 1000) * 1000);
   let created: Date | undefined;
@@ -817,15 +908,17 @@ export async function convertToPdfADetailed(bytes: Uint8Array, meta: PdfAMeta): 
   // --- Output intent ------------------------------------------------------
   // The ICC v2 sRGB profile is valid for all three parts (PDF/A-1 requires v2
   // or lower; later parts accept it too).
-  const icc = buildSrgbIccProfile();
-  const iccStream = ctx.flateStream(icc, { N: 3 });
+  // With "Keep CMYK" the generic CMYK press profile of the print tools (also ICC v2).
+  const icc = meta.keepCmyk ? genericCmykProfile() : buildSrgbIccProfile();
+  const iccStream = ctx.flateStream(icc, { N: meta.keepCmyk ? 4 : 3 });
   const iccRef = ctx.register(iccStream);
+  const condition = meta.keepCmyk ? 'Adika generic CMYK' : 'sRGB IEC61966-2.1';
   const intent = ctx.obj({
     Type: 'OutputIntent',
     S: 'GTS_PDFA1',
-    OutputConditionIdentifier: PDFString.of('sRGB IEC61966-2.1'),
-    Info: PDFString.of('sRGB IEC61966-2.1'),
-    RegistryName: PDFString.of('http://www.color.org'),
+    OutputConditionIdentifier: PDFString.of(meta.keepCmyk ? 'Custom' : condition),
+    Info: PDFString.of(condition),
+    RegistryName: PDFString.of(meta.keepCmyk ? '' : 'http://www.color.org'),
     DestOutputProfile: iccRef,
   });
   catalog.set(PDFName.of('OutputIntents'), ctx.obj([ctx.register(intent)]));
@@ -835,6 +928,8 @@ export async function convertToPdfADetailed(bytes: Uint8Array, meta: PdfAMeta): 
 
   // Classic xref table (no object or xref streams, which PDF 1.4 lacks):
   // keeps the trailer /ID in the file trailer.
+  // Replaced streams (converted colours, flattened pages) are not written.
+  dropUnreachableObjects(doc);
   const out = await doc.save({ useObjectStreams: false, updateFieldAppearances: false });
   if (level === '1b') patchHeaderVersion(out, '1.4');
   return { bytes: out, notes };
@@ -1014,10 +1109,13 @@ export async function pdfaWarnings(bytes: Uint8Array, level?: PdfALevel): Promis
   if (noPrint) warnings.push(`${noPrint} annotation(s) are hidden or not set to print; PDF/A requires them to be printable.`);
   const acro = dictOf(doc, doc.catalog.get(PDFName.of('AcroForm')));
   if (acro && String(acro.lookup(PDFName.of('NeedAppearances'))) === 'true') warnings.push('The form asks viewers to draw its fields (NeedAppearances); PDF/A forbids that.');
-  const cmyk = deviceCmykUses(doc);
-  if (cmyk && outputIntentComponents(doc) !== 4) {
+  const components = outputIntentComponents(doc);
+  const cmyk = deviceUses(doc, 'cmyk');
+  if (cmyk && components !== 4) {
     warnings.push(`${cmyk} page(s), image(s) or drawing(s) use DeviceCMYK colours, but the output intent is RGB (sRGB). PDF/A requires device colours to match the output intent: convert the colours to RGB first (or use a CMYK output intent).`);
   }
+  const rgb = components === 4 ? deviceUses(doc, 'rgb') : 0;
+  if (rgb) warnings.push(`${rgb} page(s), image(s) or drawing(s) use DeviceRGB colours, but the output intent is CMYK. PDF/A requires device colours to match the output intent.`);
 
   warnings.push(`The result carries ${label} markers but has not been validated. Validate it with veraPDF before archiving.`);
   return warnings;

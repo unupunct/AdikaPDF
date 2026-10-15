@@ -6,8 +6,10 @@ import { identityFromCertificateDer, signerFromIdentity, addValidationData, type
 import { oneByOne, resultsCsv, runBatchSign, tokenBatchSigner, type BatchSignOptions, type BatchSignResult, type BatchSigner } from '@/lib/batchSign';
 import type { CscClient, CscCredential, CscSecrets } from '@/lib/crypto/csc';
 import { base64ToBytes, fileStamp, httpGet, httpPost, isDesktop, listDir, pkcs11CloseSession, pkcs11OpenSession, pkcs11SessionSign, readFile, winstoreSign, writeFile, type StoreCertificate, type TokenCertificate } from '@/lib/platform';
-import { cnOf, issuerChain, nativeFetch, renderSignatureBadge, trustedRoots } from './sign';
+import { cnOf, issuerChain, nativeFetch, trustedRoots } from './sign';
+import { appearanceBuilder, appearanceValues, chosenProfile } from './sigAppearance';
 import { saveFileQuiet } from './saveGuard';
+import { assertOnline, assertSigningIssuer } from '@/lib/policy';
 
 export type BatchIdentity =
   | { kind: 'pfx'; identity: SigningIdentity }
@@ -39,14 +41,17 @@ function certSigner(derBase64: string, unsupported: string) {
 export async function openBatchSigner(id: BatchIdentity, onAuthorize?: (message: string) => void): Promise<{ signer: BatchSigner; name: string; issuer: string; note?: string }> {
   switch (id.kind) {
     case 'pfx':
+      assertSigningIssuer(id.identity.certificate);
       return { signer: oneByOne(signerFromIdentity(id.identity)), name: id.identity.name, issuer: id.identity.selfSigned ? 'Self-signed' : cnOf(id.identity.issuer) };
     case 'store': {
       const info = certSigner(id.cert.derBase64, 'The certificate uses an unsupported key type.');
+      assertSigningIssuer(info.certificate);
       const signer = oneByOne({ certificate: info.certificate, chain: await issuerChain(info.certificate), keyAlgorithm: info.keyAlgorithm, sign: (data) => winstoreSign(id.cert.thumbprint, data) });
       return { signer, name: info.name, issuer: cnOf(info.issuer) };
     }
     case 'token': {
       const info = certSigner(id.certificate.derBase64, 'The token certificate uses an unsupported key type.');
+      assertSigningIssuer(info.certificate);
       const api = { open: pkcs11OpenSession, sign: pkcs11SessionSign, close: pkcs11CloseSession };
       const signer = await tokenBatchSigner(api, { module: id.module, slotId: id.slotId, certIdHex: id.certificate.idHex, pin: id.pin }, { certificate: info.certificate, chain: [], keyAlgorithm: info.keyAlgorithm });
       return {
@@ -57,9 +62,11 @@ export async function openBatchSigner(id: BatchIdentity, onAuthorize?: (message:
       };
     }
     case 'cloud': {
+      assertOnline('cloudSign');
       const s = id.client.batchSigner(id.credential, id.secrets, id.moreSecrets, (mode, n) => {
         if (mode === 'oauth2code') onAuthorize?.(`Confirm ${n} signature(s) in the browser window that opened.`);
       });
+      assertSigningIssuer(s.certificate);
       const chain = s.chain.length ? s.chain : await issuerChain(s.certificate);
       const subject = s.certificate.subject.getField('CN')?.value as string | undefined;
       const issuer = s.certificate.issuer.getField('CN')?.value as string | undefined;
@@ -76,6 +83,9 @@ export async function signFiles(
   inkSrc: string | null,
   hooks: { onProgress: (done: number, total: number, current: string) => void; onResult: (r: BatchSignResult, index: number) => void; cancelled: () => boolean },
 ): Promise<BatchSignResult[]> {
+  if (opts.tsaUrl) assertOnline('timestamp');
+  if (opts.ltv) assertOnline('revocation');
+  const draw = opts.appearance.visible || opts.appearance.fieldName ? await appearanceBuilder(chosenProfile(opts.appearance.profile), display.name, inkSrc) : null;
   return runBatchSign(
     paths,
     signer,
@@ -86,7 +96,9 @@ export async function signFiles(
       write: writeFile,
       exists: async (p) => (await fileStamp(p)) !== null,
       fetchImpl: isDesktop ? nativeFetch : undefined,
-      badge: (size, when) => renderSignatureBadge({ ...size, signerName: display.name, when, reason: opts.reason, issuer: display.issuer, inkSrc }),
+      appearance: draw
+        ? (when) => draw(appearanceValues({ name: display.name, issuer: display.issuer, when, reason: opts.reason, location: opts.location, contact: opts.contactInfo, certificate: signer.certificate }))
+        : undefined,
       ltv: async (bytes) => addValidationData(bytes, { trustedRoots: await trustedRoots(), httpGet: isDesktop ? httpGet : undefined, httpPost: isDesktop ? httpPost : undefined }),
     },
     hooks,

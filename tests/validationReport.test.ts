@@ -55,7 +55,8 @@ describe('signature validation report', () => {
     expect(get('Warning')).toEqual(['Warning', 'The signature uses SHA-1, which is no longer considered secure.', 'warn']);
     expect(get('Later changes')).toEqual(['Later changes', 'comments, other changes', 'bad']);
     expect(rows.some((r) => r[1] === 'Page content or another stream was changed.' && r[2] === 'bad')).toBe(true);
-    expect(get('EU Trusted List')?.[1]).toMatch(/own signature is not verified/);
+    expect(get('EU Trusted List')?.[1]).toMatch(/signatures not verified/);
+    expect(reportRows({ ...sig, euTrusted: 'RO: Test', euTrustedVerified: '2026-10-09T08:00:00Z' }).find((r) => r[0] === 'EU Trusted List')).toEqual(['EU Trusted List', 'RO: Test (the lists’ signatures verified 2026-10-09)', 'ok']);
     expect(get('Result')?.[2]).toBe('warn');
     expect(reportRows({ ...sig, timestampVerified: true }).find((r) => r[0] === 'Signing time')?.[2]).toBe('ok');
   });

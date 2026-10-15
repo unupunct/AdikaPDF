@@ -11,6 +11,8 @@ import type { OptionalContentConfig } from 'pdfjs-dist/types/src/display/optiona
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import type { PageRef } from '@/types';
 import { totalRotation } from '@/lib/geometry';
+import { forgetSource, isEstimated, reportSizes } from './pageSizeRegistry';
+import { sizeOfPage } from './pageSizes';
 
 pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
 
@@ -19,6 +21,7 @@ const assetBase = new URL(`${import.meta.env.BASE_URL}pdfjs/`, document.baseURI)
 const docs = new Map<string, Promise<PDFDocumentProxy>>();
 const pages = new Map<string, Promise<PDFPageProxy>>();
 const texts = new Map<string, Promise<TextItem[]>>();
+const textStyles = new Map<string, Promise<TextContent['styles']>>();
 const textContents = new Map<string, Promise<TextContent>>();
 const annotations = new Map<string, Promise<PageAnnotation[]>>();
 const layerConfigs = new Map<string, Promise<OptionalContentConfig>>();
@@ -84,9 +87,11 @@ export async function releaseSource(sourceId: string): Promise<void> {
   docs.delete(sourceId);
   for (const key of [...pages.keys()]) if (key.startsWith(`${sourceId}:`)) pages.delete(key);
   for (const key of [...texts.keys()]) if (key.startsWith(`${sourceId}:`)) texts.delete(key);
+  for (const key of [...textStyles.keys()]) if (key.startsWith(`${sourceId}:`)) textStyles.delete(key);
   for (const key of [...textContents.keys()]) if (key.startsWith(`${sourceId}:`)) textContents.delete(key);
   for (const key of [...annotations.keys()]) if (key.startsWith(`${sourceId}:`)) annotations.delete(key);
   layerConfigs.delete(sourceId);
+  forgetSource(sourceId);
   for (const key of [...hiddenSets.keys()]) if (key.startsWith(`${sourceId}:`)) hiddenSets.delete(key);
   if (d) await (await d).loadingTask.destroy().catch(() => undefined);
 }
@@ -97,20 +102,42 @@ export function getPdfPage(sourceId: string, index: number): Promise<PDFPageProx
   if (!p) {
     p = getSourceDoc(sourceId).then((d) => d.getPage(index + 1));
     pages.set(key, p);
+    // A page of a large document shown before the background reading got to it.
+    if (isEstimated(sourceId, index)) void p.then((pg) => reportSizes(sourceId, [sizeOfPage(index, pg)]), () => undefined);
   }
   return p;
+}
+
+/**
+ * A page far from the view: pdf.js frees its parsed resources (operator
+ * lists, fonts, images) and the text layer copy is dropped; both are rebuilt
+ * when the page comes back. Search text (`getTextItems`) stays cached.
+ */
+export function releasePage(sourceId: string, index: number): void {
+  const key = `${sourceId}:${index}`;
+  const p = pages.get(key);
+  textContents.delete(key);
+  if (!p) return;
+  pages.delete(key);
+  void p.then((pg) => pg.cleanup(), () => undefined);
 }
 
 export function getTextItems(sourceId: string, index: number): Promise<TextItem[]> {
   const key = `${sourceId}:${index}`;
   let t = texts.get(key);
   if (!t) {
-    t = getPdfPage(sourceId, index)
-      .then((p) => p.getTextContent())
-      .then((c) => c.items.filter((i): i is TextItem => 'str' in i));
+    const content = getPdfPage(sourceId, index).then((p) => p.getTextContent());
+    t = content.then((c) => c.items.filter((i): i is TextItem => 'str' in i));
     texts.set(key, t);
+    textStyles.set(key, content.then((c) => c.styles));
   }
   return t;
+}
+
+/** Font styles of the page's text items (read together with `getTextItems`). */
+export async function getTextStyles(sourceId: string, index: number): Promise<TextContent['styles']> {
+  await getTextItems(sourceId, index);
+  return textStyles.get(`${sourceId}:${index}`) ?? getPdfPage(sourceId, index).then((p) => p.getTextContent()).then((c) => c.styles);
 }
 
 /** Full text content (for the selectable text layer). */

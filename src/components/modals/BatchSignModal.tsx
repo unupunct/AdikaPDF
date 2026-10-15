@@ -4,6 +4,7 @@
  * signature options and a fixed appearance; results per file, as CSV too.
  */
 import { useEffect, useRef, useState } from 'react';
+import { AppearanceChooser } from './SigAppearanceDesigner';
 import { CheckCircle2, Cloud, FilePlus2, FileSignature, FolderOpen, KeyRound, Loader2, LogIn, MinusCircle, RefreshCw, Save, Send, Usb, X, XCircle } from 'lucide-react';
 import { usePDFStore } from '@/store/usePDFStore';
 import { useCscProviders } from '@/store/cscProviders';
@@ -15,6 +16,7 @@ import { errorMessage } from '@/actions/document';
 import { askConfirm } from '@/store/useDialogs';
 import { base64ToBytes, isDesktop, pickFiles, pickFolder, pickPaths, pkcs11DetectModules, pkcs11ListTokens, winstoreList, type Pkcs11Module, type StoreCertificate, type TokenCertificate, type TokenInfo } from '@/lib/platform';
 import { cn } from '@/lib/cn';
+import { defaultTsaUrl, onlineAllowed, usePolicy } from '@/lib/policy';
 
 type Source = 'pfx' | 'store' | 'token' | 'cloud';
 type PageChoice = 'first' | 'last' | 'number';
@@ -64,8 +66,9 @@ export function BatchSignModal() {
   const [location, setLocation] = useState('');
   const [contact, setContact] = useState('');
   const [useTsa, setUseTsa] = useState(false);
-  const [tsaUrl, setTsaUrl] = useState('http://timestamp.digicert.com');
+  const [tsaUrl, setTsaUrl] = useState(defaultTsaUrl);
   const [ltv, setLtv] = useState(false);
+  const online = usePolicy((s) => onlineAllowed('timestamp', s.policies));
   const [archive, setArchive] = useState(false);
   const [pades, setPades] = useState(true);
   const [certify, setCertify] = useState<0 | 1 | 2 | 3>(0);
@@ -77,6 +80,7 @@ export function BatchSignModal() {
   const [offset, setOffset] = useState({ x: 28, y: 28 });
   const [size, setSize] = useState({ width: 210, height: 62 });
   const [ink, setInk] = useState('');
+  const [profile, setProfile] = useState<string | undefined>(undefined);
   const [useField, setUseField] = useState(false);
   const [fieldName, setFieldName] = useState('Signature1');
   // output
@@ -244,6 +248,7 @@ export function BatchSignModal() {
         width: Math.max(20, size.width),
         height: Math.max(10, size.height),
         fieldName: useField && fieldName.trim() ? fieldName.trim() : undefined,
+        profile,
       },
       output: outMode === 'replace' ? { mode: 'replace' } : outMode === 'folder' ? { mode: 'folder', folder: outFolder!, suffix } : { mode: 'suffix', suffix: suffix.trim() },
     };
@@ -345,7 +350,7 @@ export function BatchSignModal() {
               return (
                 <li key={f} className="flex items-center gap-2 border-b border-app px-2 py-1 last:border-0" title={f}>
                   {r ? (
-                    r.status === 'done' ? <CheckCircle2 size={13} className="text-accent-600" /> : r.status === 'skipped' ? <MinusCircle size={13} className="text-amber-600" /> : <XCircle size={13} className="text-rose-600" />
+                    r.status === 'done' ? <CheckCircle2 size={13} className="text-accent-600" /> : r.status === 'skipped' ? <MinusCircle size={13} className="text-amber-700" /> : <XCircle size={13} className="text-rose-600" />
                   ) : running && progress?.done === i ? (
                     <Loader2 size={13} className="animate-spin" />
                   ) : null}
@@ -671,13 +676,13 @@ export function BatchSignModal() {
             <Input value={contact} onChange={(e) => setContact(e.target.value)} />
           </Field>
         </div>
-        <Checkbox checked={useTsa} label="Add a trusted timestamp (RFC 3161, needs internet)" onChange={setUseTsa} />
+        <Checkbox checked={useTsa} disabled={!online && !useTsa} label="Add a trusted timestamp (RFC 3161, needs internet)" onChange={setUseTsa} />
         {useTsa ? (
           <Field label="Timestamp authority URL">
             <Input value={tsaUrl} onChange={(e) => setTsaUrl(e.target.value)} />
           </Field>
         ) : null}
-        <Checkbox checked={ltv} label="Add long-term validation data (LTV: the signature can be verified offline for years; needs internet)" onChange={setLtv} />
+        <Checkbox checked={ltv} disabled={!online && !ltv} label="Add long-term validation data (LTV: the signature can be verified offline for years; needs internet)" onChange={setLtv} />
         {ltv && useTsa ? <Checkbox checked={archive} label="Add an archive timestamp over the signature and validation data (PAdES B-LTA)" onChange={setArchive} /> : null}
         <Checkbox checked={pades} label="EU format: PAdES baseline (eIDAS)" onChange={setPades} />
         <p className="mb-2 text-[11px] text-muted" data-testid="batchsign-level">
@@ -772,6 +777,7 @@ export function BatchSignModal() {
             </Field>
           </div>
         ) : null}
+        {visible || useField ? <AppearanceChooser value={profile} onChange={setProfile} size={{ width: Math.max(20, size.width), height: Math.max(10, size.height) }} /> : null}
 
         {/* ------------------------------------------------ output */}
         <div className="mb-1 text-xs font-semibold">Save</div>

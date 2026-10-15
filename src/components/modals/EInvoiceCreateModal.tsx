@@ -1,6 +1,6 @@
 /** Convert → New e-invoice: seller, buyer, lines, payment, live totals and checks; issues e-Factura, Peppol or Factur-X files. */
 import { useEffect, useMemo, useState } from 'react';
-import { ImagePlus, Plus, Save, Trash2 } from 'lucide-react';
+import { ImagePlus, Landmark, Plus, Save, Search, ShieldCheck, Trash2 } from 'lucide-react';
 import { usePDFStore } from '@/store/usePDFStore';
 import { Button, Callout, Checkbox, Dialog, Input, Select, Textarea } from '@/components/ui/primitives';
 import { translate } from '@/lib/i18n';
@@ -9,6 +9,9 @@ import { calculate, emptyDraft, emptyLine, EXEMPT_CATEGORIES, roundingFor, VAT_C
 import { BUCHAREST_SECTORS, defaultEndpoint, RO_COUNTIES, validateInvoice } from '@/lib/einvoice/rules';
 import { draftForSeller, emptyBook, lineFromProduct, newSeller, searchCustomers, type InvoiceBook, type SellerProfile } from '@/lib/einvoice/book';
 import type { EInvoiceOutput } from '@/actions/einvoiceCreate';
+import type { AnafValidation } from '@/lib/einvoice/anaf';
+import { writeCii, writeUbl } from '@/lib/einvoice/write';
+import { ValidationResult } from './AnafModal';
 
 const PROFILES: Array<{ value: EInvoiceProfile; label: string }> = [
   { value: 'ro', label: 'Romania: e-Factura (CIUS-RO)' },
@@ -105,6 +108,51 @@ function Section({ title, children, right }: { title: string; children: React.Re
   );
 }
 
+/** Fills a Romanian party from ANAF's VAT register (one request, on demand). */
+function AnafLookup({ party, onChange, who }: { party: DraftParty; onChange: (p: DraftParty) => void; who: 'seller' | 'buyer' }) {
+  const [busy, setBusy] = useState(false);
+  const [notes, setNotes] = useState<string[]>([]);
+  const cui = (party.vatId || party.companyId).replace(/\s+/g, '');
+  const go = async () => {
+    setBusy(true);
+    setNotes([]);
+    try {
+      const [{ lookupCompany }, { anafCui, partyFromCompany }] = await Promise.all([import('@/actions/anaf'), import('@/lib/einvoice/anaf')]);
+      const id = anafCui(party.vatId) ?? anafCui(party.companyId);
+      if (!id) {
+        usePDFStore.getState().toast('Enter a valid CUI first.', 'error');
+        return;
+      }
+      const c = await lookupCompany(id);
+      if (!c) {
+        setNotes([translate('ANAF has no company with this CUI.')]);
+        return;
+      }
+      onChange(partyFromCompany(c, party));
+      const info = [...c.warnings.map((w) => translate(w)), translate(c.vatPayer ? 'Registered for VAT.' : 'Not registered for VAT: the VAT number was left empty.'), translate(c.eFactura ? 'In the RO e-Factura register.' : 'Not in the RO e-Factura register.')];
+      if (c.cashVat) info.push(translate('Applies VAT on cash accounting (TVA la încasare).'));
+      setNotes(info);
+      if (c.warnings.length) usePDFStore.getState().toast(c.warnings[0], 'error');
+    } catch (e) {
+      usePDFStore.getState().toast(e instanceof Error ? e.message : String(e), 'error');
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="col-span-4 -mt-1 flex flex-wrap items-center gap-2">
+      <Button size="sm" variant="ghost" disabled={busy || !cui} onClick={() => void go()} data-testid={`einv-${who}-anaf`} title="Fill in the name, address and VAT status from ANAF's public register (sends the CUI to ANAF)">
+        <Search size={13} /> {busy ? 'Asking ANAF…' : 'Look up the CUI at ANAF'}
+      </Button>
+      {notes.length ? (
+        <span className="text-[11px] text-muted" data-no-translate data-testid={`einv-${who}-anaf-notes`}>
+          {notes.join(' · ')}
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
 function PartyFields({ party, onChange, profile, who }: { party: DraftParty; onChange: (p: DraftParty) => void; profile: EInvoiceProfile; who: 'seller' | 'buyer' }) {
   const set = (k: keyof DraftParty) => (e: React.ChangeEvent<HTMLInputElement>) => onChange({ ...party, [k]: e.target.value });
   const ro = party.country.toUpperCase() === 'RO';
@@ -121,6 +169,7 @@ function PartyFields({ party, onChange, profile, who }: { party: DraftParty; onC
       <Row label={ro ? (who === 'buyer' ? 'CUI / CNP / Reg. no.' : 'CUI / Reg. no.') : 'Registration no.'}>
         <Input value={party.companyId} onChange={set('companyId')} data-testid={tid('reg')} />
       </Row>
+      {ro ? <AnafLookup party={party} onChange={onChange} who={who} /> : null}
       <Row label="Street and number" wide>
         <Input value={party.street} onChange={set('street')} data-testid={tid('street')} />
       </Row>
@@ -196,9 +245,13 @@ export function EInvoiceCreateModal() {
   const [saveProducts, setSaveProducts] = useState(true);
   const [notesText, setNotesText] = useState('');
   const [busy, setBusy] = useState(false);
+  const [sendToAnaf, setSendToAnaf] = useState(false);
+  const [anafCheck, setAnafCheck] = useState<{ xml: string; result: AnafValidation } | null>(null);
+  const [anafBusy, setAnafBusy] = useState(false);
 
   useEffect(() => {
     if (!open) return;
+    setAnafCheck(null);
     void (async () => {
       const m = await import('@/actions/einvoiceCreate');
       const b = await m.loadInvoiceBook();
@@ -266,11 +319,32 @@ export function EInvoiceCreateModal() {
     setBusy(true);
     try {
       const m = await import('@/actions/einvoiceCreate');
-      if (await m.issueEInvoice(effective, outputs, sellerId, saveProducts)) close();
+      if (await m.issueEInvoice(effective, outputs, sellerId, saveProducts)) {
+        close();
+        if (sendToAnaf && draft.profile === 'ro') {
+          const { openAnafDialog } = await import('@/actions/anaf');
+          openAnafDialog({ xml: m.draftXml(effective).xml, number: effective.number });
+        }
+      }
     } finally {
       setBusy(false);
     }
   };
+
+  const checkWithAnaf = async () => {
+    setAnafBusy(true);
+    try {
+      const [{ draftXml }, { checkXmlWithAnaf }] = await Promise.all([import('@/actions/einvoiceCreate'), import('@/actions/anaf')]);
+      const { xml } = draftXml(effective);
+      setAnafCheck({ xml, result: await checkXmlWithAnaf(xml) });
+    } catch (e) {
+      usePDFStore.getState().toast(e instanceof Error ? e.message : String(e), 'error');
+    } finally {
+      setAnafBusy(false);
+    }
+  };
+  const currentXml = useMemo(() => (anafCheck ? (draft.profile === 'facturx' ? writeCii(calc) : writeUbl(calc)) : ''), [anafCheck, calc, draft.profile]);
+  const anafStale = !!anafCheck && anafCheck.xml !== currentXml;
 
   const toggleOutput = (o: EInvoiceOutput, on: boolean) => setOutputs((all) => (on ? [...all.filter((x) => x !== o), o] : all.filter((x) => x !== o)));
   const xmlLabel = draft.profile === 'ro' ? 'e-Factura XML (for ANAF SPV)' : draft.profile === 'peppol' ? 'Peppol UBL XML' : 'Factur-X XML (CII)';
@@ -282,7 +356,7 @@ export function EInvoiceCreateModal() {
       open={open}
       onOpenChange={(o) => !o && close()}
       title="New e-invoice"
-      description="Made on this computer. Upload the e-Factura XML to ANAF's SPV yourself."
+      description="Made on this computer. ANAF is contacted only when you look up a CUI, check with ANAF or send the invoice."
       width={1040}
       testId="einvoice-new-modal"
       footer={
@@ -291,6 +365,7 @@ export function EInvoiceCreateModal() {
             <Checkbox checked={outputs.includes('xml')} onChange={(v) => toggleOutput('xml', v)} label={xmlLabel} ariaLabel="XML file" />
             <Checkbox checked={outputs.includes('pdf')} onChange={(v) => toggleOutput('pdf', v)} label={draft.profile === 'facturx' ? 'Factur-X PDF' : 'PDF with XML attached (PDF/A-3)'} ariaLabel="PDF with XML" />
             {draft.profile !== 'facturx' ? <Checkbox checked={outputs.includes('facturx')} onChange={(v) => toggleOutput('facturx', v)} label="Factur-X PDF" ariaLabel="Factur-X PDF" /> : null}
+            {draft.profile === 'ro' ? <Checkbox checked={sendToAnaf} onChange={setSendToAnaf} label="Then send to ANAF…" ariaLabel="Send to ANAF" /> : null}
           </div>
           <Button onClick={close}>Cancel</Button>
           <Button variant="primary" disabled={busy || errors.length > 0 || !outputs.length} onClick={() => void create()} data-testid="einv-create">
@@ -626,12 +701,21 @@ export function EInvoiceCreateModal() {
               </tbody>
             </table>
           </Section>
-          <Section title="Checks">
+          <Section
+            title="Checks"
+            right={
+              draft.profile !== 'peppol' ? (
+                <Button size="sm" variant="ghost" disabled={anafBusy || errors.length > 0} onClick={() => void checkWithAnaf()} title="Send the XML to ANAF's public validation service" data-testid="einv-anaf-check">
+                  {anafBusy ? <Landmark size={13} /> : <ShieldCheck size={13} />} {anafBusy ? 'Asking ANAF…' : 'Check with ANAF'}
+                </Button>
+              ) : null
+            }
+          >
             {issues.length ? (
               <ul className="flex flex-col gap-1 text-[11.5px]" data-testid="einv-issues">
                 {issues.map((i, k) => (
-                  <li key={k} className={i.severity === 'error' ? 'text-rose-600 dark:text-rose-400' : 'text-amber-600 dark:text-amber-400'}>
-                    <span className="mr-1 font-mono text-[10px] opacity-70" data-no-translate>
+                  <li key={k} className={i.severity === 'error' ? 'text-rose-700 dark:text-rose-400' : 'text-amber-700 dark:text-amber-400'}>
+                    <span className="mr-1 font-mono text-[10px]" data-no-translate>
                       {i.rule}
                     </span>
                     <span data-no-translate>{translate(i.message)}</span>
@@ -643,6 +727,12 @@ export function EInvoiceCreateModal() {
                 <span data-testid="einv-valid">No problems found.</span>
               </Callout>
             )}
+            {anafCheck ? (
+              <div className="mt-2">
+                {anafStale ? <p className="mb-1 text-[11px] text-amber-700 dark:text-amber-400">The invoice changed after ANAF checked it.</p> : null}
+                <ValidationResult v={anafCheck.result} />
+              </div>
+            ) : null}
           </Section>
           <Checkbox checked={saveProducts} onChange={setSaveProducts} label="Add the items to the catalogue" />
         </aside>

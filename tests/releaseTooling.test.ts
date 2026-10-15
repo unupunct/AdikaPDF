@@ -4,6 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
+import JSZip from 'jszip';
 import pkg from '../package.json';
 
 // Plain .mjs scripts (no type declarations): loaded by URL.
@@ -17,7 +18,9 @@ interface ReleaseAssets {
     platforms: Record<string, { signature: string; url: string }>;
   };
   installerName: (v: string) => string;
-  main: (argv: string[]) => void;
+  portableName: (v: string) => string;
+  portableEntries: (o: { exe: string; license: string }) => Array<{ name: string; file?: string; text?: string }>;
+  main: (argv: string[]) => Promise<void>;
 }
 
 interface SignScript {
@@ -40,7 +43,7 @@ describe('release assets', () => {
   });
 
   it('copies the NSIS setup and its .sig under the uploaded names', async () => {
-    const { main, installerName } = await load<ReleaseAssets>('release-assets.mjs');
+    const { main, installerName, portableName } = await load<ReleaseAssets>('release-assets.mjs');
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'adika-rel-'));
     const bundle = path.join(tmp, 'nsis');
     const out = path.join(tmp, 'out');
@@ -50,19 +53,40 @@ describe('release assets', () => {
     try {
       // No .sig: an unsigned build is refused.
       fs.writeFileSync(setup, 'MZ installer');
-      expect(() => main(['--bundle-dir', bundle, '--out', out])).toThrow(/\.sig is missing/);
+      const exe = path.join(tmp, 'adika-pdf-editor.exe');
+      await expect(main(['--bundle-dir', bundle, '--out', out, '--exe', exe])).rejects.toThrow(/\.sig is missing/);
       fs.writeFileSync(`${setup}.sig`, 'U0lH');
-      main(['--bundle-dir', bundle, '--out', out, '--notes', 'What is new']);
+      // The portable ZIP needs the release exe.
+      await expect(main(['--bundle-dir', bundle, '--out', out, '--exe', exe])).rejects.toThrow(/adika-pdf-editor\.exe/);
+      fs.writeFileSync(exe, 'MZ app');
+      await main(['--bundle-dir', bundle, '--out', out, '--notes', 'What is new', '--exe', exe]);
       const name = installerName(pkg.version);
       expect(fs.readFileSync(path.join(out, name), 'utf8')).toBe('MZ installer');
       expect(fs.readFileSync(path.join(out, `${name}.sig`), 'utf8')).toBe('U0lH');
       const latest = JSON.parse(fs.readFileSync(path.join(out, 'latest.json'), 'utf8'));
       expect(latest).toMatchObject({ version: pkg.version, notes: 'What is new' });
       expect(latest.platforms['windows-x86_64'].url.endsWith(`/v${pkg.version}/${name}`)).toBe(true);
+      const zip = await JSZip.loadAsync(fs.readFileSync(path.join(out, portableName(pkg.version))));
+      const names = Object.keys(zip.files).filter((n) => !zip.files[n].dir).sort();
+      expect(names).toEqual(['Adika PDF Editor/LICENSE.txt', 'Adika PDF Editor/README-portable.txt', 'Adika PDF Editor/adika-pdf-editor.exe', 'Adika PDF Editor/portable.ini']);
+      expect(await zip.file('Adika PDF Editor/adika-pdf-editor.exe')!.async('string')).toBe('MZ app');
+      expect(await zip.file('Adika PDF Editor/portable.ini')!.async('string')).toMatch(/^\[Adika\]\r\nPortable=1/m);
     } finally {
       log.mockRestore();
       fs.rmSync(tmp, { recursive: true, force: true });
     }
+  });
+});
+
+describe('portable ZIP', () => {
+  it('holds the exe, the portable marker, a readme and the licence; nothing the installer alone needs', async () => {
+    const { portableEntries, portableName } = await load<ReleaseAssets>('release-assets.mjs');
+    expect(portableName('1.14.0')).toBe('AdikaPDF_1.14.0_x64-portable.zip');
+    const entries = portableEntries({ exe: 'x.exe', license: 'LICENSE' });
+    expect(entries.map((e) => e.name.split('/').pop())).toEqual(['adika-pdf-editor.exe', 'portable.ini', 'README-portable.txt', 'LICENSE.txt']);
+    expect(entries.some((e) => /printer\.ps1|adika_thumbs\.dll|uninstall\.exe/.test(e.name))).toBe(false);
+    // The marker the native side looks for (deploy.rs PORTABLE_MARKER).
+    expect(fs.readFileSync(path.resolve('src-tauri/src/deploy.rs'), 'utf8')).toContain('PORTABLE_MARKER: &str = "portable.ini"');
   });
 });
 

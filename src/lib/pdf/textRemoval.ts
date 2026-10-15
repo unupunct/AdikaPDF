@@ -912,6 +912,36 @@ export function analyzePageText(doc: PDFDocument, page: PDFPage): PageText {
   return { glyphs: it.glyphs, text, map, partial };
 }
 
+/** Text drawn by one show instruction: its box, Unicode text and rendering mode (accessibility checks). */
+export interface ShownText {
+  instr: number;
+  box: Box;
+  text: string;
+  mode: number;
+}
+
+/** Per show instruction of the page content: what it draws (fonts the engine cannot measure are left out). */
+export function shownText(doc: PDFDocument, page: PDFPage): Map<number, ShownText> {
+  const out = new Map<number, ShownText>();
+  let it: Interpretation;
+  try {
+    it = interpret(doc, page);
+  } catch {
+    return out;
+  }
+  for (const g of it.glyphs) {
+    const instr = it.shows[g.run.show]?.instr;
+    if (instr === undefined) continue;
+    const cur = out.get(instr);
+    if (!cur) out.set(instr, { instr, box: { ...g.box }, text: g.text, mode: g.mode ?? 0 });
+    else {
+      cur.box = { x0: Math.min(cur.box.x0, g.box.x0), y0: Math.min(cur.box.y0, g.box.y0), x1: Math.max(cur.box.x1, g.box.x1), y1: Math.max(cur.box.y1, g.box.y1) };
+      cur.text += g.text;
+    }
+  }
+  return out;
+}
+
 export interface RemovalResult {
   ok: boolean;
   /** Why the page could not be cleaned safely (caller falls back). */

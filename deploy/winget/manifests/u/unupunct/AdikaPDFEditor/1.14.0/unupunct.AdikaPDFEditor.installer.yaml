@@ -1,0 +1,37 @@
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.installer.1.6.0.schema.json
+PackageIdentifier: unupunct.AdikaPDFEditor
+PackageVersion: 1.14.0
+InstallerLocale: en-US
+MinimumOSVersion: 10.0.17763.0
+InstallerType: nullsoft
+InstallModes:
+- interactive
+- silent
+- silentWithProgress
+InstallerSwitches:
+  Silent: /S
+  SilentWithProgress: /P
+UpgradeBehavior: install
+FileExtensions:
+- pdf
+ProductCode: 'Adika PDF Editor'
+ReleaseDate: 2026-10-09
+AppsAndFeaturesEntries:
+- DisplayName: 'Adika PDF Editor'
+  Publisher: unupunct
+  ProductCode: 'Adika PDF Editor'
+Installers:
+- Architecture: x64
+  Scope: user
+  InstallerUrl: https://github.com/unupunct/AdikaPDF/releases/download/v1.14.0/AdikaPDF_1.14.0_x64-setup.exe
+  InstallerSha256: 0000000000000000000000000000000000000000000000000000000000000000
+  InstallerSwitches:
+    Custom: /CURRENTUSER
+- Architecture: x64
+  Scope: machine
+  InstallerUrl: https://github.com/unupunct/AdikaPDF/releases/download/v1.14.0/AdikaPDF_1.14.0_x64-setup.exe
+  InstallerSha256: 0000000000000000000000000000000000000000000000000000000000000000
+  InstallerSwitches:
+    Custom: /ALLUSERS
+ManifestType: installer
+ManifestVersion: 1.6.0

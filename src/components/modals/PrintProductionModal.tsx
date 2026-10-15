@@ -117,7 +117,7 @@ export function PrintProductionModal() {
               <div className="mb-3 rounded-lg border border-app" data-testid="preflight-issues">
                 {issues.map((i, k) => (
                   <div key={k} className="flex items-start gap-2 border-b border-app px-3 py-1.5 text-xs last:border-b-0" data-testid="preflight-issue">
-                    {i.fixable ? <AlertTriangle size={14} className="mt-0.5 shrink-0 text-amber-600" /> : <XCircle size={14} className="mt-0.5 shrink-0 text-rose-600" />}
+                    {i.fixable ? <AlertTriangle size={14} className="mt-0.5 shrink-0 text-amber-700" /> : <XCircle size={14} className="mt-0.5 shrink-0 text-rose-600" />}
                     <span className="w-40 shrink-0 font-medium">{i.rule}</span>
                     <span className="min-w-0 flex-1 text-muted">
                       {i.detail}

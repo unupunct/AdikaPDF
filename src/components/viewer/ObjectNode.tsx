@@ -13,6 +13,7 @@ import { MEASURE_LABEL_SIZE, measureLabelAnchor, measureLabelOffset } from '@/li
 import { cloudPathData } from '@/lib/cloud';
 import { calloutKnee } from '@/lib/pdf/annotations';
 import { layoutText } from '@/lib/textLayout';
+import { layoutRich, richRuns, variantOf, type RichLine } from '@/lib/richText';
 import { canvasFont, cssFontFamily } from '@/lib/fonts';
 import { barcodeRects, type Symbology } from '@/lib/barcode/draw';
 
@@ -312,8 +313,10 @@ function Content({ obj }: { obj: EditorObject }) {
 }
 
 function TextContent({ obj }: { obj: TextObject }) {
+  const runs = richRuns(obj);
+  const rich = runs ? layoutRich(obj, runs) : null;
   const layout = layoutText(obj);
-  const height = Math.max(obj.height, layout.contentHeight);
+  const height = Math.max(obj.height, rich ? rich.contentHeight : layout.contentHeight);
   const variant = { family: obj.fontFamily, bold: obj.bold, italic: obj.italic };
   const knee = obj.callout ? calloutKnee(obj.width, height, obj.callout) : null;
   return (
@@ -334,7 +337,8 @@ function TextContent({ obj }: { obj: TextObject }) {
         ctx.setAttr('fillStyle', obj.color);
         ctx.setAttr('textBaseline', 'alphabetic');
         ctx.setAttr('fontKerning', 'none');
-        for (const line of layout.lines) if (line.text) ctx.fillText(line.text, line.x, line.baseline);
+        if (rich) drawRichLines(ctx, rich.lines);
+        else for (const line of layout.lines) if (line.text) ctx.fillText(line.text, line.x, line.baseline);
         if (!obj.text) {
           ctx.setAttr('fillStyle', 'rgba(100,116,139,0.8)');
           ctx.fillText('Type here…', layout.lines[0]?.x ?? 2, layout.lines[0]?.baseline ?? obj.fontSize);
@@ -354,6 +358,21 @@ function TextContent({ obj }: { obj: TextObject }) {
     />
     </>
   );
+}
+
+/** Styled runs on the canvas, as the appearance stream draws them. */
+function drawRichLines(ctx: Konva.Context, lines: RichLine[]): void {
+  for (const line of lines) {
+    for (const seg of line.segments) {
+      const x = line.x + seg.x;
+      ctx.setAttr('font', canvasFont(variantOf(seg.style), seg.style.size));
+      ctx.setAttr('fillStyle', seg.style.color);
+      if (seg.text.trim()) ctx.fillText(seg.text, x, line.baseline);
+      const t = Math.max(0.5, seg.style.size * 0.06);
+      if (seg.style.underline) ctx.fillRect(x, line.baseline + seg.style.size * 0.12 - t / 2, seg.width, t);
+      if (seg.style.strike) ctx.fillRect(x, line.baseline - seg.style.size * 0.28 - t / 2, seg.width, t);
+    }
+  }
 }
 
 function StampContent({ obj }: { obj: StampObject }) {

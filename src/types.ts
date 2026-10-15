@@ -154,6 +154,25 @@ export interface TextObject extends BaseObject {
    * italic is written in Adika's font.
    */
   original?: { fontFamily: FontFamily; bold: boolean; italic: boolean; fontSize: number; color: string };
+  /**
+   * Comment text boxes (FreeText): styled parts of `text`, saved as rich text
+   * (/RC). Each run gives only what differs from the box style; ignored when
+   * the runs no longer spell `text`.
+   */
+  runs?: TextRun[];
+}
+
+/** A part of a text box with its own style (unset = the box's). */
+export interface TextRun {
+  text: string;
+  bold?: boolean;
+  italic?: boolean;
+  underline?: boolean;
+  strike?: boolean;
+  color?: string;
+  /** Points. */
+  size?: number;
+  family?: FontFamily;
 }
 
 /** Comment metadata shared by annotation-type objects. */
@@ -492,4 +511,6 @@ export interface SignatureValidation {
   qualified?: 'qc' | 'qscd' | null;
   /** The signer (or timestamp) certificate chains to an EU Trusted List service. */
   euTrusted?: string | null;
+  /** When the EU Trusted Lists' own signatures were verified (ISO), with euTrusted. */
+  euTrustedVerified?: string | null;
 }

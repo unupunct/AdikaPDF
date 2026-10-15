@@ -63,9 +63,10 @@ export function registerEidasTests(test, ctx) {
     const saved = await S(async () => {
       const b = await window.__adika.platform.appDataRead('eu-trusted-lists.json');
       const j = JSON.parse(new TextDecoder().decode(b));
-      return { lists: j.lists.length, services: j.services.length, ro: j.services.filter((s) => s.territory === 'RO' && s.kind === 'ca').length };
+      return { lists: j.lists.length, signed: j.lists.filter((l) => /<[\w:]*Signature[\s>]/.test(l.xml ?? '')).length, lotl: /EUlistofthelists/.test(j.lotl) };
     });
-    assert(saved.lists >= 25 && saved.services === n && saved.ro > 0, `cache (${JSON.stringify(saved)})`);
+    assert(saved.lists >= 25 && saved.signed >= 25 && saved.lotl, `cache (${JSON.stringify(saved)})`);
+    assert(/signatures verified/.test(tl), `lists' signatures verified (${tl})`);
     // The self-signed signature is not made qualified by the lists.
     const status = await S(() => window.__adika.store.getState().signatureStatus[0]);
     assert(!status.euTrusted && status.chainStatus !== 'trusted', `self-signed stays untrusted (${status.chainStatus})`);

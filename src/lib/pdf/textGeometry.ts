@@ -25,11 +25,11 @@ export interface TextRun {
 
 export async function pageTextRuns(page: PageRef): Promise<TextRun[]> {
   if (page.kind !== 'source' || !page.sourceId) return [];
-  const { getPdfPage, getTextItems } = await import('./pdfService');
+  const { getPdfPage, getTextItems, getTextStyles } = await import('./pdfService');
   const [pdfPage, items, styles] = await Promise.all([
     getPdfPage(page.sourceId, page.sourceIndex),
     getTextItems(page.sourceId, page.sourceIndex),
-    getPdfPage(page.sourceId, page.sourceIndex).then((p) => p.getTextContent().then((c) => c.styles)),
+    getTextStyles(page.sourceId, page.sourceIndex),
   ]);
   const vp = pdfPage.getViewport({ scale: 1, rotation: totalRotation(page) });
   return items

@@ -30,7 +30,7 @@ export function CustomizeModal() {
   const [query, setQuery] = useState('');
   const [capture, setCapture] = useState<Cmd | null>(null);
   const [warning, setWarning] = useState<string | null>(null);
-  const hidden = useRef<HTMLDivElement>(null);
+  const hidden = useRef<HTMLDivElement | null>(null);
 
   useLayoutEffect(() => {
     if (!open) return;
@@ -202,7 +202,8 @@ export function CustomizeModal() {
           )}
         </div>
       </div>
-      <div ref={hidden} aria-hidden="true" style={{ position: 'fixed', left: -20000, top: 0, width: 6000, pointerEvents: 'none' }}>
+      {/* inert: the off-screen ribbon copy is read for its commands, never focused. */}
+      <div ref={(el) => { hidden.current = el; el?.setAttribute('inert', ''); }} aria-hidden="true" style={{ position: 'fixed', left: -20000, top: 0, width: 6000, pointerEvents: 'none' }}>
         {open
           ? RIBBON_TABS.map((t) => (
               <div key={t.id} data-tab={t.id} className="flex">

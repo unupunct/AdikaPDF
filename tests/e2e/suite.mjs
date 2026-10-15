@@ -28,6 +28,7 @@ import { registerViewToolTests } from './viewtools.part.mjs';
 import { registerEidasTests, makeStoreTestPfx } from './eidas.part.mjs';
 import { registerMergeTests } from './merge.part.mjs';
 import { registerAccessTests } from './access.part.mjs';
+import { registerPdfUaTests } from './pdfua.part.mjs';
 import { registerVisualTests } from './visual.part.mjs';
 import { registerScanTests } from './scan.part.mjs';
 import { registerPrintProdTests } from './printprod.part.mjs';
@@ -35,10 +36,13 @@ import { registerAutomationTests } from './automation.part.mjs';
 import { registerForms2Tests } from './forms2.part.mjs';
 import { registerForms3Tests } from './forms3.part.mjs';
 import { registerEInvoiceTests } from './einvoice.part.mjs';
+import { registerAnafTests } from './anaf.part.mjs';
 import { registerEditing3Tests } from './editing3.part.mjs';
 import { registerUx4Tests } from './ux4.part.mjs';
 import { registerExtrasTests } from './extras.part.mjs';
 import { registerBatchSignTests } from './batchsign.part.mjs';
+import { registerSigDesignTests } from './sigdesign.part.mjs';
+import { registerA11yTests } from './a11y.part.mjs';
 
 const only = process.argv.slice(2).filter((a) => !a.startsWith('--'));
 const shots = process.argv.includes('--shots');
@@ -181,7 +185,8 @@ const state = () => S(() => {
 });
 
 async function idle(timeout = 120000) {
-  await page.waitForFunction(() => !window.__adika.store.getState().busy, null, { timeout });
+  // A save is under way from the key press on, before it shows as busy (checks and code loading come first).
+  await page.waitForFunction(() => !window.__adika.store.getState().busy && !window.__adika.document.isSaving?.(), null, { timeout });
 }
 
 async function open(path) {
@@ -856,6 +861,8 @@ registerPageTests(test, { S, page, dir, open, idle, savedFile, assert, pdfText, 
 registerEidasTests(test, { S, page, open, idle, savedFile, assert, F });
 registerMergeTests(test, { S, page, dir, open, idle, savedFile, assert, pdfText, join, writeFileSync });
 registerAccessTests(test, { S, page, dir, open, idle, savedFile, assert, join, writeFileSync });
+// Round 14, not yet run against a build.
+registerPdfUaTests(test, { S, page, dir, open, idle, savedFile, assert, join, writeFileSync });
 registerVisualTests(test, { S, page, dir, open, idle, savedFile, assert, pdfText, join, writeFileSync, F });
 registerScanTests(test, { S, page, dir, open, idle, savedFile, assert, join, writeFileSync, FONT_DATA });
 registerPrintProdTests(test, { S, page, dir, open, idle, savedFile, assert, join, writeFileSync, FONT_DATA });
@@ -863,10 +870,13 @@ registerAutomationTests(test, { S, page, dir, open, idle, savedFile, assert, pdf
 registerForms2Tests(test, { S, page, dir, open, idle, savedFile, assert, join, writeFileSync, drag, setTool, FONT_DATA, pfxPath: process.env.ADIKA_WINSTORE_TEST_PFX });
 registerForms3Tests(test, { S, page, dir, open, idle, savedFile, assert, join, writeFileSync });
 registerEInvoiceTests(test, { S, page, dir, open, idle, savedFile, assert, join, writeFileSync, pdfText });
+registerAnafTests(test, { S, page, idle, assert, join });
 registerEditing3Tests(test, { S, page, dir, open, idle, savedFile, assert, join, writeFileSync, pageBox });
 registerUx4Tests(test, { S, page, dir, open, idle, savedFile, assert, join, writeFileSync, pageBox });
 registerExtrasTests(test, { S, page, dir, open, idle, savedFile, assert, join, writeFileSync, pdfText });
 registerBatchSignTests(test, { S, page, dir, assert, join, writeFileSync, pfxPath: process.env.ADIKA_WINSTORE_TEST_PFX });
+registerSigDesignTests(test, { S, page, open, idle, savedFile, assert, F, setTool });
+registerA11yTests(test, { S, page, open, assert, F });
 
 test('dark mode toggle and welcome after close', async () => {
   await page.click('[data-testid="theme-toggle"]');

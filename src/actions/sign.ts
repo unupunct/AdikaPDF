@@ -18,15 +18,19 @@ import {
   type SigningIdentity,
 } from '@/lib/crypto/digitalSignature';
 import { appDataRead, appDataWrite, base64ToBytes, httpGet, httpPost, isDesktop, pkcs11Sign, systemCertificates, winstoreSign, type StoreCertificate, type TokenCertificate } from '@/lib/platform';
-import { downloadTrustedLists, trustIndex, type TrustedListCache } from '@/lib/crypto/euTrustedList';
+import { buildTrustedLists, downloadTrustedLists, trustIndex, type TrustedListCache, type TrustedListSources } from '@/lib/crypto/euTrustedList';
+import { assertOnline, assertSigningIssuer } from '@/lib/policy';
 import type { SignatureValidation } from '@/types';
 import { PDFDocument } from 'pdf-lib';
+import { appearanceBuilder, appearanceValues, chosenProfile } from './sigAppearance';
 import { displaySize, displayToPdfMatrix, normalizeRotation, transformRectBounds } from '@/lib/geometry';
 
 export interface SignPlacement {
   pageIndex: number;
   /** Display-space rect on the page (points), or null for an invisible signature. */
   rect: { x: number; y: number; width: number; height: number } | null;
+  /** Appearance profile id ('standard' = Adika's badge; unset = the default profile). */
+  appearance?: string;
 }
 
 export interface SignMeta {
@@ -63,89 +67,6 @@ async function toPdfRect(bytes: Uint8Array, pageIndex: number, rect: SignPlaceme
   return [b.x, b.y, b.x + b.width, b.y + b.height];
 }
 
-/** Renders the visible signature badge (the appearance of the signature widget). */
-export async function renderSignatureBadge(opts: {
-  width: number;
-  height: number;
-  signerName: string;
-  when: Date;
-  reason: string;
-  issuer: string;
-  inkSrc: string | null;
-}): Promise<Uint8Array> {
-  const scale = 4;
-  const canvas = document.createElement('canvas');
-  canvas.width = Math.round(opts.width * scale);
-  canvas.height = Math.round(opts.height * scale);
-  const ctx = canvas.getContext('2d');
-  if (!ctx) throw new Error('Canvas unavailable');
-  ctx.scale(scale, scale);
-  const w = opts.width;
-  const h = opts.height;
-  ctx.fillStyle = 'rgba(240,249,255,0.92)';
-  ctx.strokeStyle = '#0284c7';
-  ctx.lineWidth = 1;
-  roundRect(ctx, 0.5, 0.5, w - 1, h - 1, 4);
-  ctx.fill();
-  ctx.stroke();
-  // Emerald check badge.
-  const r = Math.min(9, h / 5);
-  ctx.fillStyle = '#059669';
-  ctx.beginPath();
-  ctx.arc(6 + r, 6 + r, r, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.strokeStyle = '#ffffff';
-  ctx.lineWidth = r / 4;
-  ctx.beginPath();
-  ctx.moveTo(6 + r * 0.5, 6 + r);
-  ctx.lineTo(6 + r * 0.9, 6 + r * 1.4);
-  ctx.lineTo(6 + r * 1.55, 6 + r * 0.6);
-  ctx.stroke();
-  let textLeft = 12 + r * 2;
-  if (opts.inkSrc) {
-    const img = await new Promise<HTMLImageElement>((resolve, reject) => {
-      const i = new Image();
-      i.onload = () => resolve(i);
-      i.onerror = reject;
-      i.src = opts.inkSrc!;
-    });
-    const inkW = Math.min(w * 0.42, (img.naturalWidth / img.naturalHeight) * (h - 8));
-    const inkH = inkW / (img.naturalWidth / img.naturalHeight);
-    ctx.drawImage(img, textLeft, (h - inkH) / 2, inkW, inkH);
-    textLeft += inkW + 6;
-  }
-  const lines = [
-    { t: `Digitally signed by ${opts.signerName}`, bold: true },
-    { t: opts.when.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'medium' }), bold: false },
-    ...(opts.reason ? [{ t: `Reason: ${opts.reason}`, bold: false }] : []),
-    { t: `Issuer: ${opts.issuer}`, bold: false },
-  ];
-  const size = Math.max(5, Math.min(9, (h - 8) / (lines.length * 1.3)));
-  ctx.fillStyle = '#0f172a';
-  ctx.textBaseline = 'top';
-  let y = (h - lines.length * size * 1.3) / 2;
-  for (const line of lines) {
-    ctx.font = `${line.bold ? '600' : '400'} ${size}px "Adika Sans", "Segoe UI", sans-serif`;
-    let text = line.t;
-    while (text.length > 4 && ctx.measureText(text).width > w - textLeft - 4) text = `${text.slice(0, -2)}…`;
-    ctx.fillText(text, textLeft, y);
-    y += size * 1.3;
-  }
-  const blob = await new Promise<Blob | null>((res) => canvas.toBlob(res, 'image/png'));
-  if (!blob) throw new Error('Badge rendering failed');
-  return new Uint8Array(await blob.arrayBuffer());
-}
-
-function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
-  ctx.beginPath();
-  ctx.moveTo(x + r, y);
-  ctx.arcTo(x + w, y, x + w, y + h, r);
-  ctx.arcTo(x + w, y + h, x, y + h, r);
-  ctx.arcTo(x, y + h, x, y, r);
-  ctx.arcTo(x, y, x + w, y, r);
-  ctx.closePath();
-}
-
 async function signWith(
   signer: { identity: SigningIdentity } | { signer: ExternalSigner },
   display: { name: string; issuer: string },
@@ -156,6 +77,9 @@ async function signWith(
   onAbort?: () => void,
 ): Promise<void> {
   const store = usePDFStore.getState();
+  assertSigningIssuer('identity' in signer ? signer.identity.certificate : signer.signer.certificate);
+  if (meta.tsaUrl) assertOnline('timestamp');
+  if (meta.ltv) assertOnline('revocation');
   const hadSignatures = store.signatureStatus.length > 0;
   if (hadSignatures && store.dirty) {
     throw new Error(
@@ -166,15 +90,19 @@ async function signWith(
     const bytes = hadSignatures && !store.dirty ? primarySourceFile()! : await exportCurrentPdf({}, progress, consumeId ? [consumeId] : []);
     const when = new Date();
     const size = placement.rect ?? { width: 0, height: 0 };
-    const appearancePng = placement.rect
-      ? await renderSignatureBadge({ width: size.width, height: size.height, signerName: display.name, when, reason: meta.reason, issuer: display.issuer, inkSrc })
-      : undefined;
+    const certificate = 'identity' in signer ? signer.identity.certificate : signer.signer.certificate;
+    const appearance =
+      placement.rect && size.width > 0 && size.height > 0
+        ? (await appearanceBuilder(chosenProfile(placement.appearance), display.name, inkSrc))(
+            appearanceValues({ name: display.name, issuer: display.issuer, when, reason: meta.reason, location: meta.location, contact: meta.contactInfo, certificate }),
+          )
+        : undefined;
     progress('Waiting for signature…', null);
     return signPdf(bytes, {
       ...signer,
       pageIndex: placement.pageIndex,
       rect: await toPdfRect(bytes, placement.pageIndex, placement.rect),
-      appearancePng,
+      appearance,
       reason: meta.reason || undefined,
       location: meta.location || undefined,
       contactInfo: meta.contactInfo || undefined,
@@ -235,6 +163,7 @@ async function signWith(
  * authority's certificate expires keeps the signatures verifiable.
  */
 export async function addArchiveTimestamp(tsaUrl: string): Promise<void> {
+  assertOnline('timestamp');
   const store = usePDFStore.getState();
   const bytes = primarySourceFile();
   if (!bytes || !store.signatureStatus.length) return;
@@ -256,6 +185,7 @@ export async function addArchiveTimestamp(tsaUrl: string): Promise<void> {
 
 /** Verify → Add long-term validation: stores the validation data in an already signed PDF (the signatures stay valid). */
 export async function addLongTermValidation(): Promise<void> {
+  assertOnline('revocation');
   const store = usePDFStore.getState();
   const bytes = primarySourceFile();
   if (!bytes || !store.signatureStatus.length) return;
@@ -365,20 +295,41 @@ export async function issuerChain(leaf: forge.pki.Certificate): Promise<forge.pk
 
 // ---------------------------------------------------------------- EU Trusted Lists
 
+/** The downloaded files (TrustedListSources); their signatures are checked again on every load. */
 const TL_FILE = 'eu-trusted-lists.json';
 let tlCache: TrustedListCache | null = null;
+let tlLoading: Promise<TrustedListCache | null> | null = null;
 let tlIndex: ReturnType<typeof trustIndex> | null = null;
+let tlProblem: string | null = null;
 
-/** The downloaded EU Trusted Lists (null until downloaded once). */
+/** Why the saved lists could not be used (their signature check failed), or null. */
+export const euTrustedListsProblem = () => tlProblem;
+
+/** The downloaded EU Trusted Lists, signatures verified (null until downloaded once). */
 export async function euTrustedLists(): Promise<TrustedListCache | null> {
   if (tlCache) return tlCache;
-  try {
-    const raw = await appDataRead(TL_FILE);
-    tlCache = raw.length ? (JSON.parse(new TextDecoder().decode(raw)) as TrustedListCache) : null;
-  } catch {
-    tlCache = null; // missing or damaged: download again
-  }
-  return tlCache;
+  tlLoading ??= (async () => {
+    let src: TrustedListSources | null = null;
+    try {
+      const raw = await appDataRead(TL_FILE);
+      src = raw.length ? (JSON.parse(new TextDecoder().decode(raw)) as TrustedListSources) : null;
+    } catch {
+      src = null; // missing or damaged: download again
+    }
+    // Saved by an older version (parsed lists without the signed files): download again.
+    if (!src || typeof src.lotl !== 'string' || !Array.isArray(src.lists)) return null;
+    try {
+      tlCache = await buildTrustedLists(src);
+      tlProblem = null;
+    } catch (e) {
+      tlProblem = e instanceof Error ? e.message : String(e);
+      tlCache = null;
+    }
+    return tlCache;
+  })().finally(() => {
+    tlLoading = null;
+  });
+  return tlLoading;
 }
 
 async function euTrust() {
@@ -390,17 +341,22 @@ async function euTrust() {
 
 /** Downloads the EU list of trusted lists and every national list, and keeps them for offline use. */
 export async function updateEuTrustedLists(): Promise<TrustedListCache | null> {
+  assertOnline('trustedList');
   const store = usePDFStore.getState();
   const res = await withBusy('Downloading the EU Trusted Lists…', (progress) =>
     downloadTrustedLists(httpGet, (done, total) => progress(`Downloading the EU Trusted Lists (${done} / ${total})…`, total ? done / total : null)),
   );
   if (!res) return null;
-  await appDataWrite(TL_FILE, new TextEncoder().encode(JSON.stringify(res)));
+  await appDataWrite(TL_FILE, new TextEncoder().encode(JSON.stringify(res.sources)));
   tlCache = res;
   tlIndex = null;
-  const failed = res.lists.filter((l) => l.error).map((l) => l.territory);
-  const summary = `EU Trusted Lists updated: ${res.services.length} qualified services from ${res.lists.length - failed.length} countries.`;
-  store.toast(failed.length ? `${summary} Not available: ${failed.join(', ')}.` : summary, 'success');
+  tlProblem = null;
+  const rejected = res.rejected ?? [];
+  const failed = res.lists.filter((l) => l.error && !rejected.includes(l.territory)).map((l) => l.territory);
+  let summary = `EU Trusted Lists updated and their signatures verified: ${res.services.length} qualified services from ${res.lists.length - failed.length - rejected.length} countries.`;
+  if (rejected.length) summary += ` Not used (signature not valid): ${rejected.join(', ')}.`;
+  if (failed.length) summary += ` Not available: ${failed.join(', ')}.`;
+  store.toast(summary, rejected.length ? 'info' : 'success');
   return res;
 }
 

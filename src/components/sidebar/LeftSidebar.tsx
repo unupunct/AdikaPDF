@@ -1,10 +1,11 @@
 /**
  * Left sidebar: Pages (thumbnails), Bookmarks (outline), Attachments,
- * Layers (optional content) and Search results.
+ * Layers (optional content), Tags, Accessibility (PDF/UA check) and Search results.
  */
 import { useEffect, useState, type ReactNode } from 'react';
-import { MessagesSquare, Bookmark, FileSearch, Layers as LayersIcon, LayoutGrid, Paperclip, Save, ExternalLink, Tags as TagsIcon } from 'lucide-react';
+import { Accessibility as AccessibilityIcon, MessagesSquare, Bookmark, FileSearch, Layers as LayersIcon, LayoutGrid, Paperclip, Save, ExternalLink, Tags as TagsIcon } from 'lucide-react';
 import { TagsPanel } from './TagsPanel';
+import { AccessibilityPanel } from './AccessibilityPanel';
 import { blockedReason, usePDFStore, type SidebarTab } from '@/store/usePDFStore';
 import { ThumbnailSidebar } from './ThumbnailSidebar';
 import { Tooltip } from '@/components/ui/primitives';
@@ -22,6 +23,7 @@ const TABS: Array<{ id: SidebarTab; label: string; icon: ReactNode }> = [
   { id: 'attachments', label: 'Attachments', icon: <Paperclip size={16} /> },
   { id: 'layers', label: 'Layers', icon: <LayersIcon size={16} /> },
   { id: 'tags', label: 'Tags', icon: <TagsIcon size={16} /> },
+  { id: 'accessibility', label: 'Accessibility check (PDF/UA)', icon: <AccessibilityIcon size={16} /> },
   { id: 'search', label: 'Search results', icon: <FileSearch size={16} /> },
 ];
 
@@ -53,6 +55,7 @@ export function LeftSidebar() {
         {tab === 'attachments' ? <AttachmentsPanel /> : null}
         {tab === 'layers' ? <LayersPanel /> : null}
         {tab === 'tags' ? <TagsPanel /> : null}
+        {tab === 'accessibility' ? <AccessibilityPanel /> : null}
         {tab === 'search' ? <SearchResultsPanel /> : null}
       </div>
     </aside>
