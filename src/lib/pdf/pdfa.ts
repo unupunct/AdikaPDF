@@ -833,6 +833,25 @@ export async function convertToPdfADetailed(bytes: Uint8Array, meta: PdfAMeta): 
     );
     for (const k of r.kept) notes.push(`Not converted: ${k}.`);
   }
+  // PDF/A-1 allows annotation colours (/C, /IC) only under an RGB output intent
+  // (ISO 19005-1 6.5.3); the appearance streams keep the colours.
+  if (meta.keepCmyk && levelPart(level) === 1) {
+    let cleared = 0;
+    for (const page of doc.getPages()) {
+      const annots = page.node.Annots();
+      for (let i = 0; annots && i < annots.size(); i++) {
+        const a = annots.lookup(i);
+        if (!(a instanceof PDFDict)) continue;
+        for (const key of ['C', 'IC']) {
+          if (a.has(PDFName.of(key))) {
+            a.delete(PDFName.of(key));
+            cleared++;
+          }
+        }
+      }
+    }
+    if (cleared) notes.push('Annotation colour entries were removed (PDF/A-1 allows them only with an RGB output intent); the comments look the same.');
+  }
 
   // --- Info dictionary ----------------------------------------------------
   const now = new Date(Math.floor(Date.now() / 1000) * 1000);

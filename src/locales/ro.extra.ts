@@ -1899,4 +1899,5 @@ export const RO_EXTRA: Record<string, string> = {
   '{0} comment(s) without an appearance were given one.': '{0} comentarii fără aspect au primit unul.',
   '{0} page(s), image(s) or drawing(s) use DeviceRGB colours, but the output intent is CMYK. PDF/A requires device colours to match the output intent.': '{0} pagini, imagini sau desene folosesc culori DeviceRGB, dar profilul de ieșire este CMYK. PDF/A cere ca culorile dispozitiv să corespundă profilului de ieșire.',
   'Flattening page {0}…': 'Se aplatizează pagina {0}…',
+  'Annotation colour entries were removed (PDF/A-1 allows them only with an RGB output intent); the comments look the same.': 'Intrările de culoare ale adnotărilor au fost eliminate (PDF/A-1 le permite doar cu o intenție de ieșire RGB); comentariile arată la fel.',
 };
