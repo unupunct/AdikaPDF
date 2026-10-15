@@ -17,6 +17,7 @@ New to Adika? Start with [Getting started](getting-started.md).
 
 - [Read a received e-Factura](efactura-read.md)
 - [Create an invoice](efactura-create.md)
+- [VAT, currency and payment](efactura-vat-payment.md)
 - [Credit notes](efactura-credit-notes.md)
 - [Check an invoice with ANAF](efactura-anaf-check.md)
 - [Send invoices to ANAF (SPV)](efactura-anaf-send.md)

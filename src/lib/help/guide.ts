@@ -16,6 +16,7 @@ export const PAGE_ORDER = [
   'getting-started',
   'efactura-read',
   'efactura-create',
+  'efactura-vat-payment',
   'efactura-credit-notes',
   'efactura-anaf-check',
   'efactura-anaf-send',
