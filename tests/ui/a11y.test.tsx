@@ -11,6 +11,8 @@ import { PropertiesPanel } from '@/components/inspector/PropertiesPanel';
 import { LeftSidebar } from '@/components/sidebar/LeftSidebar';
 import { TabBar } from '@/components/shell/TabBar';
 import { usePDFStore, type ModalId } from '@/store/usePDFStore';
+import { HelpHost } from '@/components/help/HelpHost';
+import { useHelp } from '@/store/help';
 import { axeProblems, describeProblems } from './axe';
 
 // The dialogs most people use (and the larger forms), opened without a document.
@@ -65,6 +67,24 @@ describe('accessibility (axe, serious and critical)', () => {
       expect(problems, describeProblems(problems)).toEqual([]);
     });
   }
+
+  it('help viewer: contents, a page with pictures and tables, search results', async () => {
+    render(
+      <TooltipProvider>
+        <HelpHost />
+      </TooltipProvider>,
+    );
+    act(() => useHelp.getState().openHelp('efactura-troubleshooting'));
+    const dlg = await screen.findByRole('dialog', { name: 'Help' });
+    await screen.findByTestId('help-article');
+    let problems = await axeProblems(dlg);
+    expect(problems, describeProblems(problems)).toEqual([]);
+    act(() => useHelp.getState().setQuery('token PIN'));
+    await screen.findAllByTestId('help-result');
+    problems = await axeProblems(dlg);
+    expect(problems, describeProblems(problems)).toEqual([]);
+    act(() => useHelp.getState().close());
+  });
 
   it('ribbon: every tab, with and without a document', async () => {
     render(
