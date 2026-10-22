@@ -4,7 +4,7 @@
  * previous one), so everything before stays byte for byte identical and
  * existing digital signatures remain valid.
  */
-import { PDFContext, PDFDocument, PDFName, PDFNumber, PDFRawStream, PDFRef, decodePDFRawStream, type PDFObject } from 'pdf-lib';
+import { PDFArray, PDFContext, PDFDocument, PDFHexString, PDFName, PDFNumber, PDFRawStream, PDFRef, PDFString, decodePDFRawStream, type PDFObject } from 'pdf-lib';
 import type { Unlocked } from '@/lib/crypto/decrypt';
 import { gatherObjects, scanFile } from './repair';
 
@@ -36,6 +36,17 @@ function lastXref(bytes: Uint8Array): { offset: number; stream: boolean; size: n
   const section = new TextDecoder('latin1').decode(bytes.subarray(offset, Math.min(bytes.length, offset + (stream ? 1024 : bytes.length - offset))));
   const sm = stream ? /\/Size\s+(\d+)/.exec(section) : /trailer[\s\S]*?\/Size\s+(\d+)/.exec(section);
   return { offset, stream, size: sm ? Number(sm[1]) : 0 };
+}
+
+function idHex(id: unknown): string | null {
+  if (!(id instanceof PDFArray)) return null;
+  const parts: string[] = [];
+  for (let i = 0; i < id.size(); i++) {
+    const v = id.get(i);
+    if (!(v instanceof PDFString) && !(v instanceof PDFHexString)) return null;
+    parts.push(`<${Array.from(v.asBytes(), (b) => b.toString(16).padStart(2, '0')).join('')}>`);
+  }
+  return `[${parts.join(' ')}]`;
 }
 
 /** Object numbers stored in an object stream, in their order (index = position). */
@@ -139,7 +150,9 @@ export async function incrementalUpdate(original: Uint8Array, edit: (doc: PDFDoc
 
   const trailer = doc.context.trailerInfo;
   const refText = (v: unknown) => (v instanceof PDFRef ? `${v.objectNumber} ${v.generationNumber} R` : null);
-  const idText = trailer.ID ? new TextDecoder('latin1').decode(objBytes(trailer.ID as PDFObject)) : null;
+  // Written as hex: a literal ID string with bytes over 127 would otherwise come out UTF-8 encoded
+  // (and an encrypted file's key depends on ID[0]).
+  const idText = idHex(trailer.ID);
   const encryptText = encrypted ? `/Encrypt ${encrypted.unlocked.security.entry}` : '';
   const common = [`/Root ${refText(trailer.Root)}`, trailer.Info ? `/Info ${refText(trailer.Info)}` : '', idText ? `/ID ${idText}` : '', encryptText, prev ? `/Prev ${prev.offset}` : ''].filter(Boolean).join(' ');
 

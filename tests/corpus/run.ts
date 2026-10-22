@@ -295,6 +295,7 @@ async function runFile(file: string, index: number): Promise<void> {
     const doc = await reopenCheck(ctx, saved, 'save');
     const after = squash(itemsText(await pageText(doc, 1)));
     await doc.loadingTask.destroy();
+    if (rasterized) return `${rasterized} page(s) from their rendering`;
     if (text1.length >= 20 && kept(text1, after) < 0.9) throw new Wrong(`save: page 1 text lost (${text1.length} -> ${after.length} chars)`);
   });
 

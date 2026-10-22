@@ -153,6 +153,18 @@ describe('incremental save of a file whose cross-reference table is gone', () =>
   });
 });
 
+describe('incremental save of a file whose /ID is a literal string with high bytes', () => {
+  it('repeats the same ID bytes (the key of an encrypted file depends on them)', async () => {
+    const id = '\x085\xeb\xfa\xae\x94\xcaD\x84\x82\\)\xff\x03\xb4\xaa\xc7';
+    const bytes = rawPdf(['<< /Type /Catalog /Pages 2 0 R >>', '<< /Type /Pages /Kids [3 0 R] /Count 1 >>', '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 200] >>'], `/Root 1 0 R /ID [(${id}) (${id})]`);
+    const src: SourceDoc = { id: 's', name: 'a.pdf', bytes, pageCount: 1, original: true };
+    const note = { id: 'n', type: 'note' as const, pageId: 'p0', x: 10, y: 10, width: 20, height: 20, rotation: 0, opacity: 1, text: 'n', color: '#ffd400', author: 'a', createdAt: '2026-01-01T00:00:00Z', modifiedAt: '2026-01-01T00:00:00Z' };
+    const out = await buildIncrementalPdf({ sources: { s: src }, pages: refs(src, 1), objects: [note], fieldValues: {} }, { loadFont, measure });
+    const hex = '0835ebfaae94ca44848229ff03b4aac7';
+    expect(Buffer.from(out.subarray(bytes.length)).toString('latin1')).toContain(`/ID [<${hex}> <${hex}>]`);
+  });
+});
+
 describe('incremental save of an XFA form', () => {
   const bytes = rawPdf([
     '<< /Type /Catalog /Pages 2 0 R /AcroForm << /Fields [] /XFA 4 0 R >> >>',
