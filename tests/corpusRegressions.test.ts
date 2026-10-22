@@ -140,6 +140,41 @@ describe('a page pdf.js shows but pdf-lib cannot parse', () => {
   });
 });
 
+describe('saving files with odd structures', () => {
+  const save = async (bytes: Uint8Array) => {
+    const src: SourceDoc = { id: 's', name: 'a.pdf', bytes, pageCount: 1 };
+    return buildPdf({ sources: { s: src }, pages: refs(src, 1), objects: [], fieldValues: {} }, { loadFont, measure, rasterizeRedactedPage: rasterize, fallbackFonts: null });
+  };
+  const textPage = (extraCatalog = '', extraPage = '', more: string[] = []) =>
+    rawPdf([
+      `<< /Type /Catalog /Pages 2 0 R ${extraCatalog} >>`,
+      '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+      `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 200] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> ${extraPage} >>`,
+      stream('BT /F1 12 Tf 20 100 Td (Body text) Tj ET'),
+      FONT,
+      ...more,
+    ]);
+
+  it('no %PDF- header', async () => {
+    const s = Buffer.from(textPage()).toString('latin1');
+    // A binary comment where the header should be (pdfjs bug1606566), offsets unchanged.
+    const bytes = new Uint8Array(Buffer.from('%\xe2\xe3\xcf\xd3\xe2\xe3\xcf' + s.slice(8), 'latin1'));
+    expect(await pdfjsPages(bytes)).toEqual(['Body text']);
+    expect(await pdfjsPages(await save(bytes))).toEqual(['Body text']);
+  });
+
+  it('a rich text field without an appearance', async () => {
+    const bytes = textPage('/AcroForm << /Fields [6 0 R] /DA (/Helv 0 Tf 0 g) >>', '/Annots [6 0 R]', [
+      '<< /Type /Annot /Subtype /Widget /FT /Tx /T (Rich) /Ff 33554432 /V (plain) /RV (<body>plain</body>) /Rect [20 20 120 40] /P 3 0 R /DA (/Helv 10 Tf 0 g) >>',
+    ]);
+    expect(await pdfjsPages(await save(bytes))).toEqual(['Body text']);
+  });
+
+  it('an /AcroForm that is not a dictionary', async () => {
+    expect(await pdfjsPages(await save(textPage('/AcroForm []')))).toEqual(['Body text']);
+  });
+});
+
 describe('more pages in pdf.js than pdf-lib finds', () => {
   it('the missing page comes from its rendering, the others stay real', async () => {
     const d = await PDFDocument.create();

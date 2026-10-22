@@ -32,6 +32,7 @@ import {
   PDFDocument,
   PDFDropdown,
   PDFFont,
+  PDFForm,
   PDFImage,
   PDFName,
   PDFNumber,
@@ -938,7 +939,9 @@ async function addFormField(ctx: DrawContext, page: PDFPage, pm: Matrix, rotatio
 function applyFieldValues(doc: PDFDocument, values: Record<string, FieldValue>, sourceId: string): boolean {
   const prefix = `${sourceId}::`;
   let changed = false;
-  const form = doc.getForm();
+  if (!Object.keys(values).some((k) => k.startsWith(prefix))) return false;
+  const form = formOf(doc);
+  if (!form) return false;
   for (const [key, value] of Object.entries(values)) {
     if (!key.startsWith(prefix)) continue;
     const name = key.slice(prefix.length);
@@ -1419,9 +1422,46 @@ export async function buildPdf(input: ExportInput, options: ExportOptions = {}):
   // Embed fonts/images first, then drop orphans (replaced or deleted pages).
   await doc.flush();
   dropUnreachableObjects(doc);
-  const out = await doc.save({ useObjectStreams: true, updateFieldAppearances: !keepXfa });
+  if (!keepXfa) await updateAppearancesSafely(doc);
+  const out = await doc.save({ useObjectStreams: true, updateFieldAppearances: false });
   if (fontNotes.length) options.onFontFallback?.(fontNotes);
   return out;
+}
+
+/** pdf-lib's form, or null when the file's /AcroForm or its /Fields are not what pdf-lib can read. */
+function formOf(doc: PDFDocument): PDFForm | null {
+  try {
+    const form = doc.getForm();
+    form.getFields();
+    return form;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * What pdf-lib's save does with `updateFieldAppearances`, but a field it cannot draw
+ * (a rich text field, an odd /DA) keeps its appearance instead of failing the save.
+ */
+async function updateAppearancesSafely(doc: PDFDocument): Promise<void> {
+  const form = formOf(doc);
+  if (!form) return;
+  try {
+    form.updateFieldAppearances();
+    return;
+  } catch {
+    /* one field at a time below */
+  }
+  let font: PDFFont | null = null;
+  for (const field of form.getFields()) {
+    try {
+      if (!field.needsAppearancesUpdate()) continue;
+      font ??= await doc.embedFont(StandardFonts.Helvetica);
+      field.defaultUpdateAppearances(font);
+    } catch {
+      /* keeps its own appearance */
+    }
+  }
 }
 
 /** Original pages no longer in the document: their references move to the page that replaced them, or go. */
@@ -1454,8 +1494,8 @@ function cleanUpGonePages(doc: PDFDocument, original: PDFPage[], planned: Planne
 
 /** Calculated values, formatted display text and appearances of the form's fields. */
 function finishForm(doc: PDFDocument, fieldFont: PDFFont | null, fieldDisplay: Record<string, string> | undefined, baseSourceId: string | null): void {
-  const form = doc.getForm();
-  if (form.getFields().length === 0) return;
+  const form = formOf(doc);
+  if (!form || form.getFields().length === 0) return;
   const acro = lookupDict(doc, doc.catalog.get(PDFName.of('AcroForm')));
   const logic = readFieldLogic(doc);
   writeCalcOrder(doc, logic);

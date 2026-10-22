@@ -6,7 +6,7 @@
  * pdf.js shows, so saving, compressing and the checks see the same document.
  */
 import { PDFDocument, PDFName, PDFPageLeaf, PDFPageTree } from 'pdf-lib';
-import { repairPdf } from './repair';
+import { looksLikePdf, repairPdf } from './repair';
 
 type LoadOptions = Parameters<typeof PDFDocument.load>[1];
 
@@ -49,8 +49,22 @@ export function editableCopy(bytes: Uint8Array, expectedPages?: number): Promise
       } catch (e) {
         if (e instanceof Error && /encrypt/i.test(e.message)) return null;
       }
+      let input = bytes;
+      // No %PDF- header (pdf.js does without one): the same objects with one in front.
+      if (!looksLikePdf(bytes)) {
+        const head = new TextEncoder().encode('%PDF-1.7\n');
+        const withHeader = new Uint8Array(head.length + bytes.length);
+        withHeader.set(head);
+        withHeader.set(bytes, head.length);
+        try {
+          if (!pdfLibProblem(await PDFDocument.load(withHeader, { updateMetadata: false }), expectedPages)) return withHeader;
+        } catch {
+          /* repaired below */
+        }
+        input = withHeader;
+      }
       try {
-        const fixed = await repairPdf(bytes);
+        const fixed = await repairPdf(input);
         const doc = await PDFDocument.load(fixed.bytes, { updateMetadata: false });
         return pdfLibProblem(doc, expectedPages) ? null : fixed.bytes;
       } catch {
