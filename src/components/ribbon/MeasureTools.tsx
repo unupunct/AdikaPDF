@@ -4,6 +4,7 @@ import { ChevronDown, Pentagon, Ruler, Spline } from 'lucide-react';
 import { Popover, Select } from '@/components/ui/primitives';
 import { PAGE_UNITS, REAL_UNITS, scaleText, useMeasureScale, type MeasureScale, type PageUnit, type RealUnit } from '@/lib/measure';
 import { Group, I, i, Stack, ToolBtn } from './ReaderTabs';
+import { SMALL } from './parts';
 
 /** "1 mm = 1 mm" editor: page value + unit, real value + unit. */
 export function ScaleEditor({ value, onChange }: { value: MeasureScale; onChange: (s: MeasureScale) => void }) {
@@ -39,7 +40,7 @@ function ScaleButton() {
   return (
     <Popover
       trigger={
-        <button type="button" data-testid="btn-measure-scale" title="Drawing scale for new measurements" className="flex h-[19px] items-center gap-1 rounded px-1.5 text-[11.5px] hover-app">
+        <button type="button" data-testid="btn-measure-scale" title="Drawing scale for new measurements" className={`${SMALL} gap-1 hover-app`}>
           <span className="text-brand-700 dark:text-brand-400">1:</span>
           <span className="max-w-[110px] truncate">{scaleText(scale)}</span>
           <ChevronDown size={10} />

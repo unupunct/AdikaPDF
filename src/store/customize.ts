@@ -134,13 +134,9 @@ export function usableCombo(combo: string): boolean {
   return /^(Ctrl|Alt)\+/.test(combo) || /^(Shift\+)?F([1-9]|1[0-2])$/.test(combo);
 }
 
-/** Shows the command's tab and clicks its button. */
+/** Shows the command's tab and clicks its button (in the simple ribbon when it has one). */
 export async function runCommand(c: CommandRef): Promise<void> {
-  const { usePDFStore } = await import('./usePDFStore');
+  const { runRibbonCommand } = await import('./uiMode');
   const { originalAttr } = await import('@/lib/i18n');
-  usePDFStore.getState().setRibbonTab(c.tab);
-  window.setTimeout(() => {
-    const btn = [...document.querySelectorAll<HTMLButtonElement>('[data-testid="ribbon"] button[aria-label]')].find((b) => (originalAttr(b, 'aria-label') ?? b.getAttribute('aria-label')) === c.en);
-    if (btn && !btn.disabled) btn.click();
-  }, 60);
+  await runRibbonCommand(c.tab, (b) => (originalAttr(b, 'aria-label') ?? b.getAttribute('aria-label')) === c.en);
 }

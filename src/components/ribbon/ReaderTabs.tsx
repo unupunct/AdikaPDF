@@ -66,6 +66,7 @@ import {
   Cloud,
   Pentagon,
   Spline,
+  PanelTop,
 } from 'lucide-react';
 import { CommentFileMenu, StampMenu } from './CommentTools';
 import { ReadAloudGroup, ReadingToolsGroup } from './ReadingTools';
@@ -75,85 +76,17 @@ import { toggleSplit, useSplit } from '@/components/viewer/SplitView';
 import { getAuthor, setAuthor } from '@/lib/author';
 import { blockedReason, toolEditKind, usePDFStore } from '@/store/usePDFStore';
 import { useStorePick } from '@/hooks/useStorePick';
+import { useUiMode } from '@/store/uiMode';
 import { closeDocumentAction, openDialog, openPdfPath, saveDocument } from '@/actions/document';
-import { DropdownContent, DropdownItem, DropdownMenu, DropdownSeparator, DropdownTrigger, Tooltip } from '@/components/ui/primitives';
+import { DropdownContent, DropdownItem, DropdownMenu, DropdownSeparator, DropdownTrigger } from '@/components/ui/primitives';
 import { clearRecent, getRecent, removeRecent, type RecentFile } from '@/lib/recent';
 import { findPageByInput, usePageLabels } from '@/hooks/usePageLabels';
 import { normalizeRotation } from '@/lib/geometry';
 import { setFullscreen } from '@/lib/platform';
-import { cn } from '@/lib/cn';
 import type { ToolId } from '@/types';
+import { Big, Group, I, i, ROW, SMALL, Small, Stack } from './parts';
 
-export interface BtnProps {
-  icon: ReactNode;
-  label: string;
-  onClick?: () => void;
-  active?: boolean;
-  disabled?: boolean;
-  tip?: string;
-  testId?: string;
-  /** Accessible name of an icon-only button (no visible label). */
-  name?: string;
-}
-
-export const I = 22;
-export const i = 14;
-
-export function Group({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <div className="flex shrink-0 flex-col border-r border-app px-1.5 last:border-r-0">
-      <div className="flex flex-1 items-start gap-0.5">{children}</div>
-      <div className="text-center text-[10px] leading-3 text-muted">{label}</div>
-    </div>
-  );
-}
-
-export function Big({ icon, label, onClick, active, disabled, tip, testId }: BtnProps) {
-  return (
-    <Tooltip content={tip ?? label}>
-      <button
-        type="button"
-        data-testid={testId}
-        aria-label={label}
-        data-tip={tip}
-        aria-pressed={active}
-        disabled={disabled}
-        onClick={onClick}
-        className={cn(
-          'flex h-[60px] min-w-[54px] flex-col items-center justify-center gap-1 rounded-md px-1.5 text-[11px] leading-tight disabled:opacity-40',
-          active ? 'bg-brand-100 text-brand-800 ring-1 ring-brand-300 dark:bg-brand-900/50 dark:text-brand-100 dark:ring-brand-700' : 'hover-app',
-        )}
-      >
-        <span className={cn(active ? 'text-brand-700 dark:text-brand-200' : 'text-brand-600 dark:text-brand-400')}>{icon}</span>
-        <span className="max-w-[72px] text-center">{label}</span>
-      </button>
-    </Tooltip>
-  );
-}
-
-export function Small({ icon, label, onClick, active, disabled, tip, testId, name }: BtnProps) {
-  return (
-    <Tooltip content={tip ?? label}>
-      <button
-        type="button"
-        data-testid={testId}
-        aria-label={label || name || tip}
-        data-tip={tip}
-        aria-pressed={active}
-        disabled={disabled}
-        onClick={onClick}
-        className={cn('flex h-[19px] items-center gap-1.5 rounded px-1.5 text-[11.5px] disabled:opacity-40', active ? 'bg-brand-100 text-brand-800 dark:bg-brand-900/50 dark:text-brand-100' : 'hover-app')}
-      >
-        <span className="text-brand-600 dark:text-brand-400">{icon}</span>
-        {label}
-      </button>
-    </Tooltip>
-  );
-}
-
-export function Stack({ children }: { children: ReactNode }) {
-  return <div className="flex flex-col justify-start gap-px py-0.5">{children}</div>;
-}
+export { Big, Group, I, i, Small, Stack, type BtnProps } from './parts';
 
 export function ToolBtn({ tool, icon, label, tip, big = true }: { tool: ToolId; icon: ReactNode; label: string; tip?: string; big?: boolean }) {
   const active = usePDFStore((s) => s.tool === tool);
@@ -181,7 +114,7 @@ function RecentMenu() {
   return (
     <DropdownMenu>
       <DropdownTrigger asChild>
-        <button type="button" data-testid="btn-recent" className="flex h-[19px] items-center gap-1.5 rounded px-1.5 text-[11.5px] hover-app">
+        <button type="button" data-testid="btn-recent" className={`${SMALL} hover-app`}>
           <Clock size={i} className="text-brand-600 dark:text-brand-400" /> Recent <ChevronDown size={10} />
         </button>
       </DropdownTrigger>
@@ -256,7 +189,7 @@ export function PageNavigator() {
           }
         }}
         onBlur={() => setText(shown)}
-        className="h-[19px] w-12 rounded border border-app bg-panel-2 px-1 text-center text-[11.5px] tabular-nums outline-none focus:border-brand-500"
+        className={`${ROW} w-12 rounded border border-app bg-panel-2 px-1 text-center text-[11.5px] tabular-nums outline-none focus:border-brand-500`}
       />
       <span className="px-0.5 text-[11px] text-muted" data-testid="page-count">
         {hasLabel ? `(${idx + 1} of ${pages.length})` : `of ${pages.length}`}
@@ -281,13 +214,13 @@ export function HomeTab() {
         <Big icon={<FolderOpen size={I} />} label="Open" onClick={() => void openDialog()} tip="Open a PDF (Ctrl+O)" testId="btn-open" />
         <Big icon={<Save size={I} />} label="Save" disabled={!editable} onClick={() => void saveDocument(false)} tip="Save (Ctrl+S)" testId="btn-save" />
         <Big icon={<Printer size={I} />} label="Print" disabled={!hasDoc} onClick={() => usePDFStore.getState().openModal('print')} tip="Print (Ctrl+P): several pages per sheet, booklet, poster" testId="btn-print" />
-        <Big icon={<Mail size={I} />} label="E-mail" disabled={!hasDoc} onClick={() => void import('@/actions/share').then((m) => m.emailDocument())} tip="Send the document as an attachment from your mail program" testId="btn-email" />
         <Stack>
+          <Small icon={<Mail size={i} />} label="E-mail" disabled={!hasDoc} onClick={() => void import('@/actions/share').then((m) => m.emailDocument())} tip="Send the document as an attachment from your mail program" testId="btn-email" />
           <Small icon={<SaveAll size={i} />} label="Save as…" disabled={!editable} onClick={() => void saveDocument(true)} tip="Save a copy (Ctrl+Shift+S)" testId="btn-save-as" />
           <RecentMenu />
-          <Small icon={<FilePlus2 size={i} />} label="Create PDF" onClick={() => s.openModal('import')} testId="btn-create" />
         </Stack>
         <Stack>
+          <Small icon={<FilePlus2 size={i} />} label="Create PDF" onClick={() => s.openModal('import')} testId="btn-create" />
           <Small icon={<Info size={i} />} label="Properties" disabled={!hasDoc} onClick={() => s.openModal('properties')} tip="Document properties (Ctrl+D)" testId="btn-properties" />
           <Small icon={<FileDown size={i} />} label="Close" disabled={!hasDoc} onClick={() => void closeDocumentAction()} tip="Close (Ctrl+W)" />
         </Stack>
@@ -360,14 +293,14 @@ export function rotateView(delta: 90 | -90): void {
 
 function SplitButton({ disabled }: { disabled: boolean }) {
   const on = useSplit((s) => s.open);
-  return <Big icon={<Columns2 size={I} />} label="Split" active={on} disabled={disabled} onClick={toggleSplit} tip="Split view: another part of this document, or another open document, side by side (Ctrl+\)" testId="btn-split-view" />;
+  return <Small icon={<Columns2 size={i} />} label="Split" active={on} disabled={disabled} onClick={toggleSplit} tip="Split view: another part of this document, or another open document, side by side (Ctrl+\)" testId="btn-split-view" />;
 }
 
 function AutoScrollButton({ disabled }: { disabled: boolean }) {
   const on = useAutoScroll((s) => s.on);
   return (
-    <Big
-      icon={<ChevronsDown size={I} />}
+    <Small
+      icon={<ChevronsDown size={i} />}
       label="Auto-scroll"
       active={on}
       disabled={disabled}
@@ -387,8 +320,10 @@ export function ViewTab() {
       <Group label="Page layout">
         <Big icon={<FileIcon size={I} />} label="Single page" active={s.viewScroll === 'single' && s.viewSpread === 'none'} disabled={!hasDoc} onClick={() => s.setView({ viewScroll: 'single', viewSpread: 'none' })} testId="view-single" />
         <Big icon={<Rows3 size={I} />} label="Continuous" active={s.viewScroll === 'continuous' && s.viewSpread === 'none'} disabled={!hasDoc} onClick={() => s.setView({ viewScroll: 'continuous', viewSpread: 'none' })} testId="view-continuous" />
-        <Big icon={<Columns2 size={I} />} label="Two pages" active={s.viewSpread === 'odd'} disabled={!hasDoc} onClick={() => s.setView({ viewSpread: 'odd' })} tip="Facing pages" testId="view-two" />
-        <Big icon={<BookOpen size={I} />} label="Book view" active={s.viewSpread === 'even'} disabled={!hasDoc} onClick={() => s.setView({ viewSpread: 'even' })} tip="Facing pages with a separate cover" testId="view-book" />
+        <Stack>
+          <Small icon={<Columns2 size={i} />} label="Two pages" active={s.viewSpread === 'odd'} disabled={!hasDoc} onClick={() => s.setView({ viewSpread: 'odd' })} tip="Facing pages" testId="view-two" />
+          <Small icon={<BookOpen size={i} />} label="Book view" active={s.viewSpread === 'even'} disabled={!hasDoc} onClick={() => s.setView({ viewSpread: 'even' })} tip="Facing pages with a separate cover" testId="view-book" />
+        </Stack>
       </Group>
       <Group label="Rotate view">
         <Stack>
@@ -399,11 +334,13 @@ export function ViewTab() {
       </Group>
       <Group label="Reading">
         <Big icon={<BookText size={I} />} label="Reading view" disabled={!hasDoc} onClick={() => s.openModal('readingview')} tip="The text reflowed like an e-book: adjustable size, width, font and colours" testId="btn-reading-view" />
-        <Big icon={<Moon size={I} />} label="Night mode" active={s.nightMode} disabled={!hasDoc} onClick={() => s.setView({ nightMode: !s.nightMode })} tip="Dark pages for reading at night" testId="btn-night" />
         <Big icon={s.fullscreen ? <Minimize size={I} /> : <Maximize size={I} />} label="Full screen" active={s.fullscreen} onClick={() => void toggleFullscreen()} tip="Full screen (F11)" testId="btn-fullscreen" />
         <Big icon={<MonitorPlay size={I} />} label="Present" disabled={!hasDoc} onClick={startPresentation} tip="Presentation mode (F5)" testId="btn-present" />
-        <AutoScrollButton disabled={!hasDoc} />
-        <SplitButton disabled={!hasDoc} />
+        <Stack>
+          <Small icon={<Moon size={i} />} label="Night mode" active={s.nightMode} disabled={!hasDoc} onClick={() => s.setView({ nightMode: !s.nightMode })} tip="Dark pages for reading at night" testId="btn-night" />
+          <AutoScrollButton disabled={!hasDoc} />
+          <SplitButton disabled={!hasDoc} />
+        </Stack>
       </Group>
       <ReadAloudGroup />
       <ReadingToolsGroup />
@@ -417,6 +354,9 @@ export function ViewTab() {
           <Small icon={<LayersIcon size={i} />} label="Layers" onClick={() => openPanel('layers')} disabled={!hasDoc} />
           <Small icon={<Search size={i} />} label="Search results" onClick={() => openPanel('search')} disabled={!hasDoc} />
         </Stack>
+      </Group>
+      <Group label="Ribbon">
+        <Big icon={<PanelTop size={I} />} label="Simple ribbon" onClick={() => useUiMode.getState().setMode('simple')} tip="Only the most common commands, grouped by task (More tools brings the full ribbon back)" testId="btn-simple-ribbon" />
       </Group>
     </>
   );
@@ -439,9 +379,11 @@ export function CommentTab() {
   return (
     <>
       <Group label="Tools">
-        <ToolBtn tool="pan" icon={<Hand size={I} />} label="Hand" tip="Pan the page (H)" />
-        <ToolBtn tool="select" icon={<MousePointer2 size={I} />} label="Select" tip="Select, move and edit comments (V)" />
-        <ToolBtn tool="selectText" icon={<TextCursor size={I} />} label="Select text" tip="Select text — a mini toolbar offers highlight and more (S)" />
+        <Stack>
+          <ToolBtn big={false} tool="pan" icon={<Hand size={i} />} label="Hand" tip="Pan the page (H)" />
+          <ToolBtn big={false} tool="select" icon={<MousePointer2 size={i} />} label="Select" tip="Select, move and edit comments (V)" />
+          <ToolBtn big={false} tool="selectText" icon={<TextCursor size={i} />} label="Select text" tip="Select text — a mini toolbar offers highlight and more (S)" />
+        </Stack>
       </Group>
       <Group label="Comment">
         <ToolBtn tool="note" icon={<StickyNote size={I} />} label="Note" tip="Click to add a sticky note (N)" />
@@ -482,9 +424,9 @@ export function CommentTab() {
       <Group label="Manage">
         <Big icon={<MessagesSquare size={I} />} label={count ? `Comments (${count})` : 'Comments'} disabled={!hasDoc} onClick={() => usePDFStore.setState({ sidebarOpen: true, sidebarTab: 'comments' })} tip="List all comments" testId="btn-comments" />
         <CommentFileMenu />
-        <Big icon={<SpellCheck size={I} />} label="Spelling" disabled={!hasDoc || !!s.readOnlyReason} onClick={() => s.openModal('spell')} tip="Check the spelling of comments, text boxes and filled form fields (F7)" testId="btn-spell" />
         <Stack>
-          <label className="flex h-[19px] items-center gap-1 px-1 text-[11px] text-muted">
+          <Small icon={<SpellCheck size={i} />} label="Spelling" disabled={!hasDoc || !!s.readOnlyReason} onClick={() => s.openModal('spell')} tip="Check the spelling of comments, text boxes and filled form fields (F7)" testId="btn-spell" />
+          <label className={`flex ${ROW} items-center gap-1 px-1 text-[11px] text-muted`}>
             Author
             <input
               aria-label="Comment author"
@@ -496,7 +438,7 @@ export function CommentTab() {
                 e.stopPropagation();
                 if (e.key === 'Enter') e.currentTarget.blur();
               }}
-              className="h-[19px] w-28 rounded border border-app bg-panel-2 px-1 text-[11.5px] text-[var(--text)] outline-none focus:border-brand-500"
+              className={`${ROW} w-28 rounded border border-app bg-panel-2 px-1 text-[11.5px] text-[var(--text)] outline-none focus:border-brand-500`}
             />
           </label>
         </Stack>

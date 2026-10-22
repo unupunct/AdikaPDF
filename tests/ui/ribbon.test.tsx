@@ -6,6 +6,7 @@ import { Ribbon, RIBBON_TABS } from '@/components/ribbon/Ribbon';
 import { usePDFStore } from '@/store/usePDFStore';
 import { TabBar } from '@/components/shell/TabBar';
 import { newTab, useTabs } from '@/store/tabs';
+import { useUiMode } from '@/store/uiMode';
 import { axeProblems, describeProblems } from './axe';
 
 function renderRibbon() {
@@ -18,7 +19,10 @@ function renderRibbon() {
 
 describe('ribbon tabs (keyboard)', () => {
   beforeEach(() => {
-    act(() => usePDFStore.setState({ ribbonTab: 'home', modal: null, busy: null, presentation: false }));
+    act(() => {
+      usePDFStore.setState({ ribbonTab: 'home', modal: null, busy: null, presentation: false });
+      useUiMode.setState({ mode: 'full', peek: null });
+    });
   });
 
   it('is one tab stop: only the selected tab is focusable', () => {

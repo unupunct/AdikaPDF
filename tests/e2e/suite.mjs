@@ -45,6 +45,7 @@ import { registerSigDesignTests } from './sigdesign.part.mjs';
 import { registerA11yTests } from './a11y.part.mjs';
 import { registerHelpTests } from './help.part.mjs';
 import { registerDndTests } from './dnd.part.mjs';
+import { registerSimpleRibbonTests } from './simple.part.mjs';
 
 const only = process.argv.slice(2).filter((a) => !a.startsWith('--'));
 const shots = process.argv.includes('--shots');
@@ -883,6 +884,7 @@ registerA11yTests(test, { S, page, open, assert, F });
 registerHelpTests(test, { S, page, open, assert, F });
 // Round 16: not run yet.
 registerDndTests(test, { S, page, open, assert, F, idle, dir });
+registerSimpleRibbonTests(test, { S, page, open, assert, F });
 
 test('dark mode toggle and welcome after close', async () => {
   await page.click('[data-testid="theme-toggle"]');
