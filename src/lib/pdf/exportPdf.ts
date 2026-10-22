@@ -197,6 +197,14 @@ function pinInheritedAttributes(page: PDFPage): void {
   }
 }
 
+/** /Contents naming something that is not a stream (or an array of them) draws nothing: dropped so new content can be added. */
+function dropUnusableContents(page: PDFPage): void {
+  const c = page.node.get(PDFName.of('Contents'));
+  if (c === undefined) return;
+  const v = c instanceof PDFRef ? page.doc.context.lookup(c) : c;
+  if (!(v instanceof PDFStream) && !(v instanceof PDFArray)) page.node.delete(PDFName.of('Contents'));
+}
+
 /**
  * Makes `pages` the document's pages, in this order, as kids of the root
  * page tree node (inherited attributes are pinned on the pages first).
@@ -1033,7 +1041,10 @@ export async function buildPdf(input: ExportInput, options: ExportOptions = {}):
   const staticXfa = baseSourceId && xfaKindOf(doc) === 'static' ? readXfaPackets(doc) : null;
 
   const baseOriginal = baseSourceId ? doc.getPages() : [];
-  baseOriginal.forEach(pinInheritedAttributes);
+  baseOriginal.forEach((p) => {
+    pinInheritedAttributes(p);
+    dropUnusableContents(p);
+  });
   const baseUsed = new Set<number>();
   const foreignDocs = new Map<string, PDFDocument>();
 
@@ -1093,6 +1104,7 @@ export async function buildPdf(input: ExportInput, options: ExportOptions = {}):
       continue;
     }
     const [copy] = await doc.copyPages(await foreignDoc(ref.sourceId), [ref.sourceIndex]);
+    dropUnusableContents(copy);
     planned.push({ ref, page: copy, rasterized: false });
   }
 

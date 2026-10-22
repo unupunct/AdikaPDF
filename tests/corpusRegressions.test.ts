@@ -204,6 +204,14 @@ describe('saving files with odd structures', () => {
     expect(await pdfjsPages(await save(bytes))).toEqual(['Body text']);
   });
 
+  it('a /Contents that is not a stream, with a drawing added', async () => {
+    const bytes = rawPdf(['<< /Type /Catalog /Pages 2 0 R >>', '<< /Type /Pages /Kids [3 0 R] /Count 1 >>', '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 200] /Contents 4 0 R >>', '<< /Length 0 >>']);
+    const src: SourceDoc = { id: 's', name: 'a.pdf', bytes, pageCount: 1 };
+    const rect = { id: 'r', type: 'rect' as const, pageId: 'p0', x: 10, y: 10, width: 50, height: 20, rotation: 0, opacity: 1, stroke: '#ff0000', strokeWidth: 1, fill: null };
+    const out = await buildPdf({ sources: { s: src }, pages: refs(src, 1), objects: [rect], fieldValues: {} }, { loadFont, measure, rasterizeRedactedPage: rasterize, fallbackFonts: null });
+    expect((await PDFDocument.load(out)).getPageCount()).toBe(1);
+  });
+
   it('an /AcroForm that is not a dictionary', async () => {
     expect(await pdfjsPages(await save(textPage('/AcroForm []')))).toEqual(['Body text']);
   });
