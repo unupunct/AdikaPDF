@@ -11,7 +11,7 @@ import { it } from 'vitest';
 import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import * as pdfjs from 'pdfjs-dist/legacy/build/pdf.mjs';
-import { PDFDocument } from 'pdf-lib';
+import { PDFArray, PDFDict, PDFDocument, PDFHexString, PDFName, PDFString } from 'pdf-lib';
 import { fillXfaData, readXfaPackets, xfaInputs, xfaKind, type XfaHtmlNode } from '../../src/lib/pdf/xfa';
 import { buildXfaModel } from '../../src/lib/pdf/xfaScript/model';
 import { runXfaScripts } from '../../src/lib/pdf/xfaScript/run';
@@ -99,7 +99,6 @@ it('ANAF package (attach XML, sign)', { timeout: 10 * 60_000 }, async () => {
   const { incrementalUpdate } = await import('../../src/lib/pdf/incremental');
   const { signPdf, verifyPdfSignatures } = await import('../../src/lib/crypto/digitalSignature');
   const { issue, identityOf } = await import('../helpers/sigPki');
-  const { PDFName, PDFString, PDFHexString, PDFDict, PDFArray } = await import('pdf-lib');
   const original = new Uint8Array(readFileSync(join(DIR, name)));
   const xml = new Uint8Array(readFileSync(xmlPath));
   const xmlName = xmlPath.split(/[\\/]/).pop()!.replace(/^out-\w+-\w+-/, '');
