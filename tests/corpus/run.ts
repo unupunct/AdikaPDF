@@ -144,9 +144,14 @@ function kept(a: string, b: string): number {
   return hit / [...a].length;
 }
 
+/** Display space of the app (points of the page's view; pdf.js would also scale by /UserUnit). */
+function pageViewport(page: PDFPageProxy) {
+  return page.getViewport({ scale: 1 / ((page as unknown as { userUnit?: number }).userUnit || 1) });
+}
+
 /** A text item's box in display coordinates (top-left origin, page rotation applied). */
 function displayBox(page: PDFPageProxy, it: TextItem) {
-  const vp = page.getViewport({ scale: 1 });
+  const vp = pageViewport(page);
   const [a, b, c, d, e, f] = it.transform;
   // Text turned by a multiple of 90° (also mirrored by a negative size) only.
   const flat = Math.abs(b) < 1e-3 && Math.abs(c) < 1e-3;
@@ -378,7 +383,7 @@ async function runFile(file: string, index: number): Promise<void> {
       const inside = items.filter((it) => {
         if (!displayBox(page, it) || !it.str.trim()) return false;
         // Every letter's centre: what is left of a cut run sits outside the box.
-        const vp = page.getViewport({ scale: 1 });
+        const vp = pageViewport(page);
         const [a, b, c, d, e, f] = it.transform;
         const ul = Math.hypot(a, b) || 1;
         const vl = Math.hypot(c, d) || 1;
@@ -403,7 +408,7 @@ async function runFile(file: string, index: number): Promise<void> {
   if (word) {
     await stage(ctx, 'search', async () => {
       // As pageTextRuns (the app's fallback): pdf.js runs of page 1 in display space.
-      const vp = page1.getViewport({ scale: 1 });
+      const vp = pageViewport(page1);
       const runs = ctx.page1
         .filter((it) => it.str.length > 0)
         .map((it) => {
