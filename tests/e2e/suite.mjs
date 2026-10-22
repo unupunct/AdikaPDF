@@ -882,16 +882,21 @@ registerSigDesignTests(test, { S, page, open, idle, savedFile, assert, F, setToo
 registerA11yTests(test, { S, page, open, assert, F });
 // Round 15, not yet run against a build.
 registerHelpTests(test, { S, page, open, assert, F });
-// Round 16: not run yet.
+// Round 16.
 registerDndTests(test, { S, page, open, assert, F, idle, dir });
 registerSimpleRibbonTests(test, { S, page, open, assert, F });
 
 test('dark mode toggle and welcome after close', async () => {
+  // The app starts with the Windows setting (dark or light) until the user picks one.
+  const isDark = () => S(() => document.documentElement.classList.contains('dark'));
+  const wasDark = await isDark();
   await page.click('[data-testid="theme-toggle"]');
-  assert(await S(() => document.documentElement.classList.contains('dark')), 'dark mode on');
+  await page.waitForFunction((d) => document.documentElement.classList.contains('dark') !== d, wasDark, { timeout: 3000 }).catch(() => {});
+  assert((await isDark()) !== wasDark, `dark mode ${wasDark ? 'off' : 'on'}`);
   await shot('05-dark');
   await page.click('[data-testid="theme-toggle"]');
-  assert(!(await S(() => document.documentElement.classList.contains('dark'))), 'dark mode off');
+  await page.waitForFunction((d) => document.documentElement.classList.contains('dark') === d, wasDark, { timeout: 3000 }).catch(() => {});
+  assert((await isDark()) === wasDark, `dark mode ${wasDark ? 'on' : 'off'} again`);
   await S(() => window.__adika.store.getState().closeDocument());
   await page.waitForSelector('[data-testid="welcome"]');
 });

@@ -1,5 +1,4 @@
 // Drag and drop and "Report a problem" — included by suite.mjs.
-// Round 16: not run yet (needs an exe built with the drop handling).
 // Drops from Explorer cannot be started from a test: `window.__adika.dnd.e2eDropPaths(paths, { x, y })`
 // runs the same handling at a point in the window. Drags inside the page use synthetic
 // DragEvents with a real DataTransfer (Chromium lets the page build one).
@@ -7,7 +6,13 @@ import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 export function registerDndTests(test, ctx) {
-  const { S, page, open, assert, F, idle, dir } = ctx;
+  const { S, page, assert, F, idle, dir } = ctx;
+  // Earlier tests may leave another side panel (Comments, Tags…) showing: these drops need the thumbnails.
+  const open = async (path) => {
+    await ctx.open(path);
+    await S(() => window.__adika.store.setState({ sidebarOpen: true, sidebarTab: 'pages' }));
+    await page.waitForSelector('[data-testid="thumb-1"]');
+  };
   const pages = () => S(() => window.__adika.store.getState().pages.length);
   const tabs = () => S(() => window.__adika.tabs.useTabs.getState().tabs.length);
   const center = (sel) => S((s) => {
@@ -74,11 +79,14 @@ export function registerDndTests(test, ctx) {
     assert(toasts.some((t) => /unsupported file type.*tool\.exe/.test(t)), `toast (${toasts})`);
     // Pages restricted: a drop on the thumbnails opens a tab instead of inserting.
     await S(() => window.__adika.store.setState({ protection: { full: false, permissions: { modify: false, assemble: false, annotate: true, fillForms: true, print: true, copy: true } } }));
+    const [firstTab] = await S(() => window.__adika.tabs.useTabs.getState().tabs.map((t) => t.id));
     const before = await pages();
     await S((p) => window.__adika.dnd.e2eDropPaths([p], { kind: 'thumbs', index: 0 }), F.second);
     await idle();
-    assert((await pages()) === before, 'nothing inserted');
     assert((await tabs()) === 2, 'opened in a tab');
+    // The new tab is in front now: count the protected document's pages in its own (parked) tab.
+    const after = await S((id) => window.__adika.tabs.tabSlice(id).pages.length, firstTab);
+    assert(after === before, `nothing inserted (${before} → ${after})`);
   });
 
   test('dnd: a thumbnail dragged onto another tab and into its pages is copied', async () => {
@@ -113,6 +121,8 @@ export function registerDndTests(test, ctx) {
     await page.click('[role="dialog"] button:has-text("Cancel")');
     await drop;
     await S(() => window.__adika.store.getState().openModal('batch'));
+    // The dialog keeps its last view (the watched-folder test leaves "Watched folders" showing).
+    await page.click('[data-testid="batch-modal"] [role="tab"]:has-text("One operation")');
     await page.waitForSelector('[data-drop-list="batch"]');
     await page.waitForTimeout(300);
     await S(({ a, b }) => window.__adika.dnd.e2eDropPaths([a, b], { kind: 'list', list: 'batch' }), { a: F.sample, b: F.second });

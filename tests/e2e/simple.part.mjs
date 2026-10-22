@@ -1,5 +1,5 @@
 // Simple ribbon, collapsing groups and the first-run welcome — included by suite.mjs.
-// Round 16: not run yet (needs an exe built with the simple ribbon). The suite
+// The suite
 // itself runs in the full ribbon (E2E mode sets it, without collapsing); these
 // tests switch to the simple ribbon and back.
 
@@ -8,6 +8,18 @@ export function registerSimpleRibbonTests(test, ctx) {
   const ui = (fn) => S(fn);
 
   test('simple ribbon: common commands, a full-only command from the tool search, back to full', async () => {
+    try {
+      await simpleRibbon();
+    } finally {
+      // The rest of the suite clicks full-ribbon buttons.
+      await ui(() => {
+        window.__adika.uiMode.getState().setMode('full');
+        window.__adika.store.getState().openModal(null);
+      });
+    }
+  });
+
+  async function simpleRibbon() {
     await open(F.sample);
     await ui(() => window.__adika.uiMode.getState().setMode('simple'));
     await page.waitForSelector('[data-ribbon-mode="simple"] [data-testid="ribbon"]');
@@ -22,9 +34,12 @@ export function registerSimpleRibbonTests(test, ctx) {
     await page.waitForSelector('[data-testid="palette-item"]');
     await page.keyboard.press('Enter');
     await page.waitForSelector('[data-testid="ribbon-back-simple"]', { timeout: 5000 });
+    // The button is clicked once its tab is shown (a moment after the tab appears).
+    await page.waitForFunction(() => window.__adika.store.getState().modal === 'pageMarks', null, { timeout: 5000 }).catch(() => {});
     const modal = await ui(() => window.__adika.store.getState().modal);
     assert(modal === 'pageMarks', `watermark dialog opened (${modal})`);
     await page.keyboard.press('Escape');
+    await page.waitForFunction(() => !window.__adika.store.getState().modal, null, { timeout: 5000 });
     await page.click('[data-testid="ribbon-back-simple"]');
     await page.waitForSelector('[data-ribbon-mode="simple"]');
     // More tools: the full ribbon, remembered.
@@ -32,7 +47,7 @@ export function registerSimpleRibbonTests(test, ctx) {
     await page.waitForSelector('[data-testid="tab-home"]');
     const stored = await ui(() => localStorage.getItem('adika.ribbonMode'));
     assert(stored === 'full', `mode stored (${stored})`);
-  });
+  }
 
   test('ribbon: every tab fits a 1280 px window', async () => {
     const widths = await ui(async () => {

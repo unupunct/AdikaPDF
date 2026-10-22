@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { usePDFStore } from '@/store/usePDFStore';
+import { followSystemTheme, usePDFStore } from '@/store/usePDFStore';
 import { TooltipProvider } from '@/components/ui/primitives';
 import { TopBar } from '@/components/shell/TopBar';
 import { Ribbon } from '@/components/ribbon/Ribbon';
@@ -47,6 +47,8 @@ export default function App() {
   useEffect(() => {
     document.documentElement.classList.toggle('dark', theme === 'dark');
   }, [theme]);
+
+  useEffect(() => followSystemTheme(), []);
 
   useEffect(() => {
     ensureFontsLoaded()

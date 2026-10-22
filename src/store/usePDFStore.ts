@@ -311,14 +311,33 @@ function persistSignatures(list: SavedSignature[]): void {
   }
 }
 
-function initialTheme(): 'light' | 'dark' {
+/** The theme the user chose (null: none yet, the app follows Windows). */
+function storedTheme(): 'light' | 'dark' | null {
   try {
     const t = localStorage.getItem(THEME_KEY);
     if (t === 'light' || t === 'dark') return t;
   } catch {
     /* ignore */
   }
-  return window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  return null;
+}
+
+function initialTheme(): 'light' | 'dark' {
+  return storedTheme() ?? (window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+}
+
+/**
+ * Until the user picks a theme, the app follows the Windows light / dark
+ * setting when it changes while Adika runs (not only the one seen at start).
+ * Returns the unsubscribe function.
+ */
+export function followSystemTheme(mq: Pick<MediaQueryList, 'addEventListener' | 'removeEventListener'> | undefined = window.matchMedia?.('(prefers-color-scheme: dark)')): () => void {
+  if (!mq?.addEventListener) return () => {};
+  const onChange = (e: { matches: boolean }) => {
+    if (storedTheme() === null) usePDFStore.setState({ theme: e.matches ? 'dark' : 'light' });
+  };
+  mq.addEventListener('change', onChange);
+  return () => mq.removeEventListener('change', onChange);
 }
 
 function snapshot(s: UndoableState): UndoableState {
