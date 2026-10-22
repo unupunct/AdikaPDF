@@ -10,6 +10,8 @@ import { applyMatrix, displayToPdfMatrix, totalRotation, type Matrix, type Rect 
 import { analyzePageText, type Box, type Glyph } from './textRemoval';
 import { joinRuns, normalizeForSearch, type SearchOptions } from '@/lib/search';
 import { runRect, type TextRun } from './textGeometry';
+import { loadEditable } from './editable';
+import { viewBox } from './viewBox';
 
 export type Range = [number, number];
 export type Finder = (text: string) => Range[];
@@ -90,11 +92,30 @@ function union(rs: Rect[]): Rect {
 
 /** Matches on one page read by the glyph engine; null when the page needs the fallback. */
 export function engineMatches(doc: PDFDocument, ref: PageRef, finder: Finder): TextMatch[] | null {
+  return engineSearch(doc, ref, finder)?.matches ?? null;
+}
+
+/** Letters and digits of `a` (as a multiset) found in `b`, as a share of `a`'s. */
+function lettersKept(a: string, b: string): number {
+  const letters = (s: string) => normalizeForSearch(s, true).match(/[\p{L}\p{N}]/gu) ?? [];
+  const want = letters(a);
+  if (!want.length) return 1;
+  const have = new Map<string, number>();
+  for (const ch of letters(b)) have.set(ch, (have.get(ch) ?? 0) + 1);
+  let hit = 0;
+  for (const ch of want) {
+    const n = have.get(ch) ?? 0;
+    if (n > 0) (hit++, have.set(ch, n - 1));
+  }
+  return hit / want.length;
+}
+
+function engineSearch(doc: PDFDocument, ref: PageRef, finder: Finder): { matches: TextMatch[]; text: string } | null {
   if (ref.kind !== 'source') return null;
   const page = doc.getPage(ref.sourceIndex);
   const t = analyzePageText(doc, page);
   if (t.partial) return null;
-  const b = page.getCropBox();
+  const b = viewBox(page);
   const inv = invert(displayToPdfMatrix(totalRotation(ref), { x: b.x, y: b.y, width: b.width, height: b.height }));
   const lin: Matrix = [inv[0], inv[1], inv[2], inv[3], 0, 0];
   const out: TextMatch[] = [];
@@ -137,7 +158,7 @@ export function engineMatches(doc: PDFDocument, ref: PageRef, finder: Finder): T
       color: first.color,
     });
   }
-  return out;
+  return { matches: out, text: t.text };
 }
 
 /** Matches from pdf.js text runs (positions estimated within a run). */
@@ -197,11 +218,21 @@ export async function findTextMatches(
     let doc = docs.get(ref.sourceId);
     if (doc === undefined) {
       const src = sources[ref.sourceId];
-      doc = src ? await PDFDocument.load(src.bytes, { updateMetadata: false, ignoreEncryption: true }).catch(() => null) : null;
+      doc = src ? await loadEditable(src.bytes, { updateMetadata: false, ignoreEncryption: true }, src.pageCount || undefined).catch(() => null) : null;
       docs.set(ref.sourceId, doc);
     }
-    const exact = doc ? engineMatches(doc, ref, finder) : null;
-    if (exact) out.push(...exact);
+    const exact = doc ? engineSearch(doc, ref, finder) : null;
+    if (exact && fallbackRuns) {
+      // Fonts without (or with wrong) Unicode data: the engine reads other letters than pdf.js
+      // (which also recovers them from the font program); matches then come from pdf.js.
+      const runs = await fallbackRuns(ref);
+      const shown = runs.map((r) => r.str).join('');
+      if (lettersKept(shown, exact.text) < 0.95) {
+        out.push(...runMatches(ref, runs, finder));
+        continue;
+      }
+    }
+    if (exact) out.push(...exact.matches);
     else if (fallbackRuns) out.push(...runMatches(ref, await fallbackRuns(ref), finder));
   }
   return out;

@@ -3167,5 +3167,8 @@
  "The most common commands": "Die häufigsten Befehle",
  "Every command, in tabs": "Alle Befehle, in Registerkarten",
  "Don’t show this again": "Nicht mehr anzeigen",
- "Get started": "Loslegen"
+ "Get started": "Loslegen",
+ "A page of this document could not be read.": "Eine Seite dieses Dokuments konnte nicht gelesen werden.",
+ "1 page had no page size; US Letter was assumed.": "1 Seite hatte keine Seitengröße; US Letter wurde angenommen.",
+ "{0} pages had no page size; US Letter was assumed.": "{0} Seiten hatten keine Seitengröße; US Letter wurde angenommen."
 }

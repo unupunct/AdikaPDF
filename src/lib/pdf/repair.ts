@@ -56,8 +56,8 @@ const MAX_OBJSTM_OBJECTS = 100_000;
 const TRAILER_WINDOW = 64 * 1024;
 /** Depth limit when walking /Parent chains or page trees. */
 const MAX_TREE_DEPTH = 256;
-/** Default MediaBox (A4 portrait, in points). */
-const A4: [number, number, number, number] = [0, 0, 595.28, 841.89];
+/** Default MediaBox: US Letter, as pdf.js shows a page without one. */
+const LETTER: [number, number, number, number] = [0, 0, 612, 792];
 
 const INHERITABLE = ['Resources', 'MediaBox', 'CropBox', 'Rotate'] as const;
 /** Catalog entries carried over from a surviving original catalog. */
@@ -175,12 +175,19 @@ function headerBefore(bytes: Uint8Array, objAt: number): { num: number; gen: num
   while (p >= 0 && isDigit(bytes[p]) && numEnd - p <= 7) p--;
   const numStart = p + 1;
   if (numStart === numEnd || (p >= 0 && isDigit(bytes[p]))) return null;
-  // Anything but a regular letter may precede the number (newline, `>`, garbage…).
-  if (p >= 0 && isRegularLetter(bytes[p])) return null;
+  // Anything but a regular letter may precede the number (newline, `>`, garbage…), or
+  // `endobj` / `endstream` with no space after it (some writers save that way).
+  if (p >= 0 && isRegularLetter(bytes[p]) && !endsWithKeyword(bytes, p + 1, 'endobj') && !endsWithKeyword(bytes, p + 1, 'endstream')) return null;
   const num = readInt(bytes, numStart, numEnd);
   const gen = readInt(bytes, genStart, genEnd);
   if (num <= 0 || num > MAX_OBJECT_NUMBER || gen > 65535) return null;
   return { num, gen, start: numStart };
+}
+
+function endsWithKeyword(bytes: Uint8Array, end: number, word: string): boolean {
+  if (end < word.length) return false;
+  for (let i = 0; i < word.length; i++) if (bytes[end - word.length + i] !== word.charCodeAt(i)) return false;
+  return true;
 }
 
 function readInt(bytes: Uint8Array, from: number, to: number): number {
@@ -254,7 +261,7 @@ export interface Entry {
 export interface Collected {
   entries: Map<number, Entry>;
   /** Object streams found (unpacked by `expandObjectStreams`). */
-  objStms: { offset: number; num: number; gen: number; stream: PDFRawStream }[];
+  objStms: { offset: number; num: number; gen: number; stream: PDFRawStream; untyped?: boolean }[];
   damaged: number;
   truncatedStreams: number;
   objStmExpanded: number;
@@ -329,6 +336,10 @@ export function gatherObjects(bytes: Uint8Array, headers: ObjHeader[], context: 
         objStms.push({ offset: h.start, num: h.num, gen: h.gen, stream: obj });
         continue;
       }
+      // An object stream with a wrong /Type (pdf.js reads it through the xref): fills only gaps.
+      if (type !== N('XRef') && !obj.dict.has(N('Subtype')) && obj.dict.get(N('N')) instanceof PDFNumber && obj.dict.get(N('First')) instanceof PDFNumber) {
+        objStms.push({ offset: h.start, num: h.num, gen: h.gen, stream: obj, untyped: true });
+      }
     }
     putEntry(entries, h.num, { gen: h.gen, offset: h.start, obj });
   }
@@ -337,14 +348,19 @@ export function gatherObjects(bytes: Uint8Array, headers: ObjHeader[], context: 
 
 /** Unpacks the gathered object streams into the entries. */
 export function expandObjectStreams(collected: Collected, context: PDFContext): void {
-  for (const { offset, stream } of collected.objStms) {
+  // Untyped candidates last, so they never replace what a real object stream holds.
+  const ordered = [...collected.objStms.filter((o) => !o.untyped), ...collected.objStms.filter((o) => o.untyped)];
+  for (const { offset, stream, untyped } of ordered) {
     const got = expandObjectStream(stream, context);
     if (got === null) {
-      collected.objStmLost++;
+      if (!untyped) collected.objStmLost++;
       continue;
     }
     collected.objStmExpanded++;
-    for (const [num, obj] of got) putEntry(collected.entries, num, { gen: 0, offset, obj });
+    for (const [num, obj] of got) {
+      if (untyped && collected.entries.has(num)) continue;
+      putEntry(collected.entries, num, { gen: 0, offset, obj });
+    }
   }
 }
 
@@ -375,8 +391,15 @@ function peekDeclaredLength(bytes: Uint8Array, from: number, to: number, context
 }
 
 /** Expands a complete object stream; returns null when it cannot be decoded at all. */
+/** Abbreviated filter names (inline-image style, which some writers use for streams too). */
+const FILTER_NAMES: Record<string, string> = { Fl: 'FlateDecode', AHx: 'ASCIIHexDecode', A85: 'ASCII85Decode', LZW: 'LZWDecode', RL: 'RunLengthDecode' };
+
 function expandObjectStream(stream: PDFRawStream, context: PDFContext): Map<number, PDFObject> | null {
   let data: Uint8Array;
+  const filter = stream.dict.get(N('Filter'));
+  const full = (f: PDFObject | undefined) => (f instanceof PDFName && FILTER_NAMES[f.decodeText()] ? N(FILTER_NAMES[f.decodeText()]) : f);
+  if (filter instanceof PDFName) stream.dict.set(N('Filter'), full(filter)!);
+  else if (filter instanceof PDFArray) for (let i = 0; i < filter.size(); i++) filter.set(i, full(filter.get(i))!);
   try {
     data = decodePDFRawStream(stream).decode();
   } catch {
@@ -530,12 +553,20 @@ function walkPageTree(context: PDFContext, rootRef: PDFRef): TreeWalk {
     if (!(kidsArr instanceof PDFArray)) return;
     const here = withInherited(node, inh);
     for (let i = 0; i < kidsArr.size(); i++) {
-      const kidRef = kidsArr.get(i);
+      let kidRef = kidsArr.get(i);
+      // A page or node written directly into /Kids (not allowed; pdf.js reads it): made indirect.
+      if (kidRef instanceof PDFDict) {
+        kidRef = context.register(kidRef);
+        kidsArr.set(i, kidRef);
+      }
       if (!(kidRef instanceof PDFRef) || seen.has(kidRef.toString())) continue;
       seen.add(kidRef.toString());
       const kid = context.lookup(kidRef);
-      if (isPagesNode(kid)) visit(kid, here, depth + 1);
-      else if (isPageDict(kid)) walk.ordered.push({ ref: kidRef, inherited: here });
+      // As pdf.js: inside a reachable tree, /Type /Page or a dictionary without /Kids is a page.
+      if (!(kid instanceof PDFDict)) continue;
+      if (typeOf(kid) !== N('Page') && kid.get(N('Kids')) !== undefined) {
+        if (isPagesNode(kid)) visit(kid, here, depth + 1);
+      } else walk.ordered.push({ ref: kidRef, inherited: here });
     }
   };
   visit(root, {}, 0);
@@ -660,7 +691,9 @@ export async function repairPdf(bytes: Uint8Array): Promise<RepairResult> {
     return out;
   };
   let catalogRef: PDFRef | undefined;
-  if (trailer.root && typeOf(context.lookup(trailer.root)) === N('Catalog')) catalogRef = trailer.root;
+  const root = trailer.root ? context.lookup(trailer.root) : undefined;
+  // The trailer's /Root without /Type (pdf.js accepts it) still is the catalog.
+  if (trailer.root && (typeOf(root) === N('Catalog') || (root instanceof PDFDict && typeOf(root) === undefined && root.get(N('Pages')) !== undefined))) catalogRef = trailer.root;
   if (!catalogRef) {
     const cats = entriesByType('Catalog');
     // Prefer the catalog furthest into the file (latest incremental update).
@@ -725,7 +758,7 @@ export async function repairPdf(bytes: Uint8Array): Promise<RepairResult> {
       else if (own !== undefined) page.delete(N(key));
     }
     if (!(page.lookup(N('MediaBox')) instanceof PDFArray)) {
-      page.set(N('MediaBox'), context.obj(A4));
+      page.set(N('MediaBox'), context.obj(LETTER));
       defaultedMediaBox++;
     }
     if (page.get(N('Resources')) === undefined) page.set(N('Resources'), context.obj({}));
@@ -791,7 +824,7 @@ export async function repairPdf(bytes: Uint8Array): Promise<RepairResult> {
   if (pagesMissingResources > 0) {
     notes.push(`${plural(pagesMissingResources, 'page references', 'pages reference')} fonts or images that were lost; they may render partially.`);
   }
-  if (defaultedMediaBox > 0) notes.push(`${plural(defaultedMediaBox, 'page had', 'pages had')} no page size; A4 was assumed.`);
+  if (defaultedMediaBox > 0) notes.push(`${plural(defaultedMediaBox, 'page had', 'pages had')} no page size; US Letter was assumed.`);
   const brokenObjects = collected.damaged + collected.truncatedStreams + collected.objStmLost;
   if (brokenObjects > 0) notes.push(`${plural(brokenObjects, 'damaged object was', 'damaged objects were')} skipped.`);
   if (collected.objStmExpanded > 0) notes.push(`${plural(collected.objStmExpanded, 'object stream was', 'object streams were')} unpacked.`);

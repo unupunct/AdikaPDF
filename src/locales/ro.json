@@ -1312,5 +1312,8 @@
  "The most common commands": "Comenzile cele mai folosite",
  "Every command, in tabs": "Toate comenzile, în file",
  "Don’t show this again": "Nu mai afișați această fereastră",
- "Get started": "Începeți"
+ "Get started": "Începeți",
+ "A page of this document could not be read.": "O pagină a acestui document nu a putut fi citită.",
+ "1 page had no page size; US Letter was assumed.": "O pagină nu avea dimensiune; s-a presupus formatul US Letter.",
+ "{0} pages had no page size; US Letter was assumed.": "{0} pagini nu aveau dimensiune; s-a presupus formatul US Letter."
 }

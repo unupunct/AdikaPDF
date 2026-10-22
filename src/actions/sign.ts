@@ -24,6 +24,7 @@ import type { SignatureValidation } from '@/types';
 import { PDFDocument } from 'pdf-lib';
 import { appearanceBuilder, appearanceValues, chosenProfile } from './sigAppearance';
 import { displaySize, displayToPdfMatrix, normalizeRotation, transformRectBounds } from '@/lib/geometry';
+import { viewBox } from '@/lib/pdf/viewBox';
 
 export interface SignPlacement {
   pageIndex: number;
@@ -61,7 +62,7 @@ async function toPdfRect(bytes: Uint8Array, pageIndex: number, rect: SignPlaceme
   if (!rect) return [0, 0, 0, 0];
   const doc = await PDFDocument.load(bytes, { updateMetadata: false });
   const page = doc.getPage(pageIndex);
-  const box = page.getCropBox();
+  const box = viewBox(page);
   const m = displayToPdfMatrix(normalizeRotation(page.getRotation().angle), box);
   const b = transformRectBounds(m, rect);
   return [b.x, b.y, b.x + b.width, b.y + b.height];

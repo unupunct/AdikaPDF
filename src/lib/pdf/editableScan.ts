@@ -24,6 +24,7 @@ import {
 import fontkit from '@pdf-lib/fontkit';
 import { embedFontForText } from './fontEmbed';
 import { sanitizeForFont, type OcrWord } from './ocr';
+import { viewBox } from './viewBox';
 
 type RGB = [number, number, number];
 
@@ -171,7 +172,7 @@ export async function makeEditable(
   for (const p of pages) {
     const page = all[p.pageNumber - 1];
     if (!page || !p.lines.length) continue;
-    const crop = page.getCropBox();
+    const crop = viewBox(page);
     const sx = p.widthPt > 0 ? crop.width / p.widthPt : 1;
     const sy = p.heightPt > 0 ? crop.height / p.heightPt : 1;
     // Isolate the scan's graphics state from the new text.

@@ -3167,5 +3167,8 @@
  "The most common commands": "I comandi più usati",
  "Every command, in tabs": "Tutti i comandi, in schede",
  "Don’t show this again": "Non mostrare più",
- "Get started": "Inizia"
+ "Get started": "Inizia",
+ "A page of this document could not be read.": "Non è stato possibile leggere una pagina di questo documento.",
+ "1 page had no page size; US Letter was assumed.": "1 pagina non aveva un formato; è stato usato US Letter.",
+ "{0} pages had no page size; US Letter was assumed.": "{0} pagine non avevano un formato; è stato usato US Letter."
 }

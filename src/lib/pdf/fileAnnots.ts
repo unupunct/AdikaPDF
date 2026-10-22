@@ -66,6 +66,7 @@ import { uid } from '@/lib/uid';
 import { addToPage, appearance, hexToRgbTuple, linear, pdfDate, rotateEntry, text, transparency } from './annotations';
 import { parseSvgPath } from './vectorEdit';
 import { parseCss, parseRichText, type RunStyle } from '@/lib/richText';
+import { viewBox } from './viewBox';
 
 // ------------------------------------------------------------------ ids
 
@@ -232,7 +233,7 @@ function stampPlacement(d: PDFDict, inv: Matrix): { x: number; y: number; width:
 }
 
 function pageMatrix(page: PDFPage, ref: PageRef): Matrix {
-  const b = page.getCropBox();
+  const b = viewBox(page);
   return displayToPdfMatrix(totalRotation(ref), { x: b.x, y: b.y, width: b.width, height: b.height });
 }
 

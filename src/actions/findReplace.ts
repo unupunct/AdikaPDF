@@ -17,6 +17,7 @@ import type { DocMeta, FieldValue } from '@/store/usePDFStore';
 import type { ElsewhereHit, ElsewhereKind, ElsewhereOptions } from '@/lib/pdf/redactElsewhere';
 import type { SearchOptions } from '@/lib/search';
 import { tellFontFallbacks } from './fontNotes';
+import { viewBox } from '@/lib/pdf/viewBox';
 
 export async function findMatches(finder: Finder): Promise<TextMatch[]> {
   const s = usePDFStore.getState();
@@ -103,7 +104,7 @@ export async function replaceAll(query: string, replacement: string, opts: Searc
       const refs: PageRef[] = lib.getPages().map((pg, i) => {
         const cur = pages.find((p) => p.sourceId === sid && p.sourceIndex === i);
         if (cur) return cur;
-        const box = pg.getCropBox();
+        const box = viewBox(pg);
         return { id: `tmp-${sid}-${i}`, kind: 'source', sourceId: sid, sourceIndex: i, baseRotation: normalizeRotation(pg.getRotation().angle), userRotation: 0, width: box.width, height: box.height };
       });
       const onRefs = new Set(refs.map((r) => r.id));

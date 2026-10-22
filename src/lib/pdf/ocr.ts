@@ -24,6 +24,7 @@ import {
 import { canvasToBlob, renderPageToCanvas } from './convert';
 import { loadFontBytes } from '../fonts';
 import { BUNDLED_OCR_LANGS, OcrLangMissingError, downloadedOcrLangs, planOcrLangs, readDownloadedLangs, stageForWorker } from '../ocrLangs';
+import { viewBox } from './viewBox';
 
 /** Languages whose traineddata is bundled under public/tesseract/lang (more can be downloaded: lib/ocrLangs.ts). */
 export const OCR_LANGUAGES: Array<{ code: string; label: string }> = BUNDLED_OCR_LANGS;
@@ -318,7 +319,7 @@ export async function makeSearchable(
   for (const r of results) {
     const page = pages[r.pageNumber - 1];
     if (!page || !r.words.length) continue;
-    const crop = page.getCropBox();
+    const crop = viewBox(page);
     // OCR coordinates may come from a slightly different page size; scale.
     const sx = r.widthPt > 0 ? crop.width / r.widthPt : 1;
     const sy = r.heightPt > 0 ? crop.height / r.heightPt : 1;

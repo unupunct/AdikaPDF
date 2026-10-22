@@ -32,6 +32,7 @@ import {
   PDFDocument,
   PDFDropdown,
   PDFFont,
+  PDFForm,
   PDFImage,
   PDFName,
   PDFNumber,
@@ -97,6 +98,7 @@ import { dropUnreachableObjects } from './prune';
 import { retargetPageRefs, scrubStructTree } from './redactCleanup';
 
 import { correctPages, hasEstimated, pageSizesReady } from './pageSizeRegistry';
+import { loadEditable } from './editable';
 import { removeGlyphs, type Box, type EditFonts, type LineEdit } from './textRemoval';
 import { attachFallbacks, defaultFallbackSources, type FallbackSources } from './fontFallback';
 import { readFieldLogic, writeCalcOrder, writeFieldLogic } from './formScripts';
@@ -109,6 +111,7 @@ import { pressureWidth } from '@/lib/objectFactory';
 const LAYERED = new Set<EditorObject['type']>(['text', 'image', 'signature', 'rect', 'ellipse', 'highlight', 'line', 'arrow', 'pen', 'vector']);
 import { calcOrder, calculate, displayValue, parseNumber } from '@/lib/formLogic';
 import type { FieldValue } from '@/store/usePDFStore';
+import { viewBox } from './viewBox';
 
 export interface ExportInput {
   sources: Record<string, SourceDoc>;
@@ -195,6 +198,14 @@ function pinInheritedAttributes(page: PDFPage): void {
   }
 }
 
+/** /Contents naming something that is not a stream (or an array of them) draws nothing: dropped so new content can be added. */
+function dropUnusableContents(page: PDFPage): void {
+  const c = page.node.get(PDFName.of('Contents'));
+  if (c === undefined) return;
+  const v = c instanceof PDFRef ? page.doc.context.lookup(c) : c;
+  if (!(v instanceof PDFStream) && !(v instanceof PDFArray)) page.node.delete(PDFName.of('Contents'));
+}
+
 /**
  * Makes `pages` the document's pages, in this order, as kids of the root
  * page tree node (inherited attributes are pinned on the pages first).
@@ -222,7 +233,7 @@ export function setPageOrder(doc: PDFDocument, pages: PDFPage[]): void {
 }
 
 function visibleBox(page: PDFPage): Rect {
-  const b = page.getCropBox();
+  const b = viewBox(page);
   return { x: b.x, y: b.y, width: b.width, height: b.height };
 }
 
@@ -937,7 +948,9 @@ async function addFormField(ctx: DrawContext, page: PDFPage, pm: Matrix, rotatio
 function applyFieldValues(doc: PDFDocument, values: Record<string, FieldValue>, sourceId: string): boolean {
   const prefix = `${sourceId}::`;
   let changed = false;
-  const form = doc.getForm();
+  if (!Object.keys(values).some((k) => k.startsWith(prefix))) return false;
+  const form = formOf(doc);
+  if (!form) return false;
   for (const [key, value] of Object.entries(values)) {
     if (!key.startsWith(prefix)) continue;
     const name = key.slice(prefix.length);
@@ -1014,7 +1027,7 @@ export async function buildPdf(input: ExportInput, options: ExportOptions = {}):
     const src = sources[baseSourceId];
     if (!src) throw new ExportError('A source document is missing.');
     try {
-      doc = await PDFDocument.load(src.bytes, { updateMetadata: false });
+      doc = await loadEditable(src.bytes, { updateMetadata: false }, src.pageCount || undefined);
     } catch (e) {
       if (e instanceof Error && /encrypt/i.test(e.message)) {
         throw new ExportError('This PDF is encrypted. Remove its password protection before editing.');
@@ -1029,7 +1042,10 @@ export async function buildPdf(input: ExportInput, options: ExportOptions = {}):
   const staticXfa = baseSourceId && xfaKindOf(doc) === 'static' ? readXfaPackets(doc) : null;
 
   const baseOriginal = baseSourceId ? doc.getPages() : [];
-  baseOriginal.forEach(pinInheritedAttributes);
+  baseOriginal.forEach((p) => {
+    pinInheritedAttributes(p);
+    dropUnusableContents(p);
+  });
   const baseUsed = new Set<number>();
   const foreignDocs = new Map<string, PDFDocument>();
 
@@ -1042,6 +1058,27 @@ export async function buildPdf(input: ExportInput, options: ExportOptions = {}):
     redactsByPage.set(o.pageId, list);
   }
 
+  async function foreignDoc(id: string): Promise<PDFDocument> {
+    let foreign = foreignDocs.get(id);
+    if (!foreign) {
+      const src = sources[id];
+      if (!src) throw new ExportError('A merged document is missing.');
+      foreign = await loadEditable(src.bytes, { updateMetadata: false }, src.pageCount || undefined);
+      foreignDocs.set(id, foreign);
+    }
+    return foreign;
+  }
+  async function rasterPage(ref: PageRef, rects: Array<Rect & { fill: string }>): Promise<PDFPage> {
+    if (!options.rasterizeRedactedPage) throw new ExportError('A page of this document could not be read.');
+    const raster = await options.rasterizeRedactedPage(ref, rects);
+    const size = displaySize(ref);
+    const rp = PDFPage.create(doc);
+    rp.setSize(size.width, size.height);
+    const img = raster.format === 'jpeg' ? await doc.embedJpg(raster.bytes) : await doc.embedPng(raster.bytes);
+    rp.drawImage(img, { x: 0, y: 0, width: size.width, height: size.height });
+    return rp;
+  }
+
   const planned: PlannedPage[] = [];
   for (let i = 0; i < pages.length; i++) {
     const ref = pages[i];
@@ -1050,6 +1087,12 @@ export async function buildPdf(input: ExportInput, options: ExportOptions = {}):
       const page = PDFPage.create(doc);
       page.setSize(ref.width, ref.height);
       planned.push({ ref, page, rasterized: false });
+      continue;
+    }
+    // A page pdf.js shows but pdf-lib cannot find (damaged page tree): rebuilt from its rendering.
+    const missing = ref.sourceId === baseSourceId ? !baseOriginal[ref.sourceIndex] : ref.sourceIndex >= (await foreignDoc(ref.sourceId)).getPageCount();
+    if (missing) {
+      planned.push({ ref, page: await rasterPage(ref, redactsByPage.get(ref.id) ?? []), rasterized: true });
       continue;
     }
     if (ref.sourceId === baseSourceId) {
@@ -1061,14 +1104,8 @@ export async function buildPdf(input: ExportInput, options: ExportOptions = {}):
       }
       continue;
     }
-    let foreign = foreignDocs.get(ref.sourceId);
-    if (!foreign) {
-      const src = sources[ref.sourceId];
-      if (!src) throw new ExportError('A merged document is missing.');
-      foreign = await PDFDocument.load(src.bytes, { updateMetadata: false });
-      foreignDocs.set(ref.sourceId, foreign);
-    }
-    const [copy] = await doc.copyPages(foreign, [ref.sourceIndex]);
+    const [copy] = await doc.copyPages(await foreignDoc(ref.sourceId), [ref.sourceIndex]);
+    dropUnusableContents(copy);
     planned.push({ ref, page: copy, rasterized: false });
   }
 
@@ -1141,6 +1178,11 @@ export async function buildPdf(input: ExportInput, options: ExportOptions = {}):
     const redactions = redactsByPage.get(ref.id);
     const replacers = replacersByPage.get(ref.id);
     if (!redactions?.length && !replacers?.length) continue;
+    if (planned[k].rasterized) {
+      // Rebuilt from a rendering above, the boxes burned in.
+      if (replacers?.length) coverReplaced.add(ref.id);
+      continue;
+    }
     const toPdf = pdfBoxes(ref, page);
     const editable = ref.kind === 'source' && !!ref.sourceId;
     if (redactions?.length) {
@@ -1150,13 +1192,7 @@ export async function buildPdf(input: ExportInput, options: ExportOptions = {}):
       if (res?.ok) noteRemoval(page, res);
       if (!res?.ok) {
         if (!options.rasterizeRedactedPage) throw new ExportError('Redaction needs a page rasterizer.');
-        const raster = await options.rasterizeRedactedPage(ref, redactions);
-        const size = displaySize(ref);
-        const rp = PDFPage.create(doc);
-        rp.setSize(size.width, size.height);
-        const img = raster.format === 'jpeg' ? await doc.embedJpg(raster.bytes) : await doc.embedPng(raster.bytes);
-        rp.drawImage(img, { x: 0, y: 0, width: size.width, height: size.height });
-        planned[k] = { ref, page: rp, rasterized: true };
+        planned[k] = { ref, page: await rasterPage(ref, redactions), rasterized: true };
         if (replacers?.length) coverReplaced.add(ref.id);
         continue;
       }
@@ -1399,9 +1435,46 @@ export async function buildPdf(input: ExportInput, options: ExportOptions = {}):
   // Embed fonts/images first, then drop orphans (replaced or deleted pages).
   await doc.flush();
   dropUnreachableObjects(doc);
-  const out = await doc.save({ useObjectStreams: true, updateFieldAppearances: !keepXfa });
+  if (!keepXfa) await updateAppearancesSafely(doc);
+  const out = await doc.save({ useObjectStreams: true, updateFieldAppearances: false });
   if (fontNotes.length) options.onFontFallback?.(fontNotes);
   return out;
+}
+
+/** pdf-lib's form, or null when the file's /AcroForm or its /Fields are not what pdf-lib can read. */
+function formOf(doc: PDFDocument): PDFForm | null {
+  try {
+    const form = doc.getForm();
+    form.getFields();
+    return form;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * What pdf-lib's save does with `updateFieldAppearances`, but a field it cannot draw
+ * (a rich text field, an odd /DA) keeps its appearance instead of failing the save.
+ */
+async function updateAppearancesSafely(doc: PDFDocument): Promise<void> {
+  const form = formOf(doc);
+  if (!form) return;
+  try {
+    form.updateFieldAppearances();
+    return;
+  } catch {
+    /* one field at a time below */
+  }
+  let font: PDFFont | null = null;
+  for (const field of form.getFields()) {
+    try {
+      if (!field.needsAppearancesUpdate()) continue;
+      font ??= await doc.embedFont(StandardFonts.Helvetica);
+      field.defaultUpdateAppearances(font);
+    } catch {
+      /* keeps its own appearance */
+    }
+  }
 }
 
 /** Original pages no longer in the document: their references move to the page that replaced them, or go. */
@@ -1434,8 +1507,8 @@ function cleanUpGonePages(doc: PDFDocument, original: PDFPage[], planned: Planne
 
 /** Calculated values, formatted display text and appearances of the form's fields. */
 function finishForm(doc: PDFDocument, fieldFont: PDFFont | null, fieldDisplay: Record<string, string> | undefined, baseSourceId: string | null): void {
-  const form = doc.getForm();
-  if (form.getFields().length === 0) return;
+  const form = formOf(doc);
+  if (!form || form.getFields().length === 0) return;
   const acro = lookupDict(doc, doc.catalog.get(PDFName.of('AcroForm')));
   const logic = readFieldLogic(doc);
   writeCalcOrder(doc, logic);
@@ -1532,6 +1605,8 @@ export function incrementalBlocker(input: ExportInput, meta?: import('@/store/us
   // An encrypted file is updated with objects encrypted like its own; one Adika could not decrypt is not.
   if (src.password && !src.encryption) return 'The document is encrypted.';
   if (removingProtection) return 'The password protection is being removed.';
+  // Values of an XFA form (its AcroForm names /XFA; in an object stream it is found when saving); comments alone are fine.
+  if (Object.keys(input.fieldValues).some((k) => k.startsWith(`${base}::`)) && hasToken(src.bytes, '/XFA')) return 'XFA forms are saved in full.';
   if (input.pages.length !== src.pageCount || input.pages.some((p, i) => p.kind !== 'source' || p.sourceId !== base || p.sourceIndex !== i || p.userRotation !== 0)) {
     return 'Pages were added, removed, moved or rotated.';
   }
@@ -1541,6 +1616,19 @@ export function incrementalBlocker(input: ExportInput, meta?: import('@/store/us
   if (Object.keys(input.fieldValues).some((k) => !k.startsWith(`${base}::`))) return 'Form values of another document.';
   if (meta) return 'The document properties were changed.';
   return null;
+}
+
+/** Whether `token` occurs in the raw bytes followed by a delimiter (cheap: no parsing). */
+function hasToken(bytes: Uint8Array, token: string): boolean {
+  const t = Array.from(token, (c) => c.charCodeAt(0));
+  for (let i = bytes.indexOf(t[0]); i !== -1; i = bytes.indexOf(t[0], i + 1)) {
+    let k = 1;
+    while (k < t.length && bytes[i + k] === t[k]) k++;
+    if (k < t.length) continue;
+    const next = bytes[i + k];
+    if (next === undefined || !((next >= 0x30 && next <= 0x39) || (next >= 0x41 && next <= 0x5a) || (next >= 0x61 && next <= 0x7a))) return true;
+  }
+  return false;
 }
 
 /**
@@ -1559,9 +1647,11 @@ export async function buildIncrementalPdf(input: ExportInput, options: ExportOpt
   const encrypted = src.encryption ? { plain: src.bytes, unlocked: src.encryption.unlocked } : undefined;
   const res = await incrementalUpdate(src.encryption?.file ?? src.bytes, async (doc) => {
     doc.registerFontkit(fontkit);
-    if (xfaKindOf(doc)) throw new ExportError('XFA forms are saved in full.');
     const docPages = doc.getPages();
+    if (docPages.length < input.pages.length) throw new ExportError('A page of this document could not be read.');
     const prefix = `${baseSourceId}::`;
+    // Filled-in XFA values also go into its datasets, which only a full save writes; comments do not touch the form.
+    if (Object.keys(input.fieldValues).some((k) => k.startsWith(prefix)) && xfaKindOf(doc)) throw new ExportError('XFA forms are saved in full.');
     const formTouched = Object.keys(input.fieldValues).some((k) => k.startsWith(prefix)) && applyFieldValues(doc, input.fieldValues, baseSourceId);
     const ctx: DrawContext = { doc, fonts: new Map(), fontTexts: collectFontTexts(input.objects), images: new Map(), opts, fieldFont: null, fieldNames: [], fieldObjects: [] };
     if (formTouched) ctx.fieldFont = await doc.embedFont(await opts.loadFont({ family: 'sans', bold: false, italic: false }), { subset: false });

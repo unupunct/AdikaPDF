@@ -31,7 +31,8 @@ export async function pageTextRuns(page: PageRef): Promise<TextRun[]> {
     getTextItems(page.sourceId, page.sourceIndex),
     getTextStyles(page.sourceId, page.sourceIndex),
   ]);
-  const vp = pdfPage.getViewport({ scale: 1, rotation: totalRotation(page) });
+  // Display space is the page's own points: pdf.js would also scale by /UserUnit.
+  const vp = pdfPage.getViewport({ scale: 1 / (pdfPage.userUnit || 1), rotation: totalRotation(page) });
   return items
     .filter((it: TextItem) => it.str.length > 0)
     .map((it: TextItem) => {

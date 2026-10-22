@@ -14,6 +14,7 @@ import { readXfaPackets, xfaKindOf } from './xfa';
 import { readFontProgram } from './fontProgram';
 import { glyphNameToUnicode, standardMaps } from './fontEncoding';
 import { resourcesOf, type Box } from './textRemoval';
+import { loadEditable } from './editable';
 
 export type UaFix =
   | 'tagDocument'
@@ -280,7 +281,7 @@ export function numberingOf(labels: string[]): string | null {
 // ---------------------------------------------------------------- checker
 
 export async function checkPdfUa(bytes: Uint8Array): Promise<UaReport> {
-  const doc = await PDFDocument.load(bytes, { ignoreEncryption: true, updateMetadata: false });
+  const doc = await loadEditable(bytes, { ignoreEncryption: true, updateMetadata: false });
   return checkPdfUaDoc(doc);
 }
 

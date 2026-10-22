@@ -3167,5 +3167,8 @@
  "The most common commands": "A leggyakoribb parancsok",
  "Every command, in tabs": "Minden parancs, lapokon",
  "Don’t show this again": "Ne jelenjen meg többé",
- "Get started": "Kezdés"
+ "Get started": "Kezdés",
+ "A page of this document could not be read.": "A dokumentum egyik oldalát nem sikerült beolvasni.",
+ "1 page had no page size; US Letter was assumed.": "1 oldalnak nem volt mérete; US Letter méretet feltételeztünk.",
+ "{0} pages had no page size; US Letter was assumed.": "{0} oldalnak nem volt mérete; US Letter méretet feltételeztünk."
 }
