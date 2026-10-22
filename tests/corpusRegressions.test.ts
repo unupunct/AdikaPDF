@@ -1,6 +1,7 @@
 // Small synthetic reproductions of failures found by the corpus run (tests/corpus).
 import { afterAll, describe, expect, it } from 'vitest';
 import { PDFDocument } from 'pdf-lib';
+import { deflateSync } from 'node:zlib';
 import * as pdfjs from 'pdfjs-dist/legacy/build/pdf.mjs';
 import { editableCopy, loadEditable, pdfLibProblem } from '@/lib/pdf/editable';
 import { buildIncrementalPdf, buildPdf, incrementalBlocker } from '@/lib/pdf/exportPdf';
@@ -137,6 +138,39 @@ describe('a page pdf.js shows but pdf-lib cannot parse', () => {
     expect(doc.getPage(0).getSize()).toEqual({ width: 200, height: 200 });
     // Repaired (the text stays real) or, failing that, rebuilt from the rendering with the box burned in.
     expect(asked === 1 || (await pdfjsPages(out))[0] === 'Direct').toBe(true);
+  });
+});
+
+describe('repair reads what pdf.js reads', () => {
+  const body = ['<< /Type /Catalog /Pages 2 0 R >>', '<< /Type /Pages /Kids [3 0 R] /Count 1 >>', '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 200] >>'];
+  /** Objects 1-3 in an object stream (object 4), stored with `dict` and `data`. */
+  const inStream = (dict: string, pack: (s: string) => Buffer) => {
+    let head = '';
+    let objs = '';
+    body.forEach((b, i) => {
+      head += `${i + 1} ${objs.length} `;
+      objs += `${b}\n`;
+    });
+    const data = pack(head + objs);
+    const pre = `%PDF-1.5\n4 0 obj\n<< ${dict} /N 3 /First ${head.length} /Length ${data.length} >>\nstream\n`;
+    return new Uint8Array(Buffer.concat([Buffer.from(pre, 'latin1'), data, Buffer.from('\nendstream\nendobj\ntrailer\n<< /Root 1 0 R >>\n%%EOF\n', 'latin1')]));
+  };
+
+  it('an object stream with a wrong /Type', async () => {
+    const fixed = await editableCopy(inStream('/Type /Potato', (s) => Buffer.from(s, 'latin1')), 1);
+    expect(fixed).not.toBeNull();
+  });
+
+  it('an object stream with an abbreviated filter name (/Fl)', async () => {
+    const fixed = await editableCopy(inStream('/Type /ObjStm /Filter /Fl', (s) => deflateSync(Buffer.from(s, 'latin1'))), 1);
+    expect(fixed).not.toBeNull();
+  });
+
+  it('pages written directly into /Kids', async () => {
+    const bytes = rawPdf(['<< /Type /Catalog /Pages 2 0 R >>', '<< /Type /Pages /Kids [<< /Type /Page /MediaBox [0 0 200 200] >> << /Type /Page /MediaBox [0 0 300 300] >>] /Count 2 >>']);
+    const fixed = await editableCopy(bytes, 2);
+    expect(fixed).not.toBeNull();
+    expect((await PDFDocument.load(fixed!)).getPages().map((p) => p.getWidth())).toEqual([200, 300]);
   });
 });
 

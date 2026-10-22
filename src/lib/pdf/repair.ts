@@ -254,7 +254,7 @@ export interface Entry {
 export interface Collected {
   entries: Map<number, Entry>;
   /** Object streams found (unpacked by `expandObjectStreams`). */
-  objStms: { offset: number; num: number; gen: number; stream: PDFRawStream }[];
+  objStms: { offset: number; num: number; gen: number; stream: PDFRawStream; untyped?: boolean }[];
   damaged: number;
   truncatedStreams: number;
   objStmExpanded: number;
@@ -329,6 +329,10 @@ export function gatherObjects(bytes: Uint8Array, headers: ObjHeader[], context: 
         objStms.push({ offset: h.start, num: h.num, gen: h.gen, stream: obj });
         continue;
       }
+      // An object stream with a wrong /Type (pdf.js reads it through the xref): fills only gaps.
+      if (type !== N('XRef') && !obj.dict.has(N('Subtype')) && obj.dict.get(N('N')) instanceof PDFNumber && obj.dict.get(N('First')) instanceof PDFNumber) {
+        objStms.push({ offset: h.start, num: h.num, gen: h.gen, stream: obj, untyped: true });
+      }
     }
     putEntry(entries, h.num, { gen: h.gen, offset: h.start, obj });
   }
@@ -337,14 +341,19 @@ export function gatherObjects(bytes: Uint8Array, headers: ObjHeader[], context: 
 
 /** Unpacks the gathered object streams into the entries. */
 export function expandObjectStreams(collected: Collected, context: PDFContext): void {
-  for (const { offset, stream } of collected.objStms) {
+  // Untyped candidates last, so they never replace what a real object stream holds.
+  const ordered = [...collected.objStms.filter((o) => !o.untyped), ...collected.objStms.filter((o) => o.untyped)];
+  for (const { offset, stream, untyped } of ordered) {
     const got = expandObjectStream(stream, context);
     if (got === null) {
-      collected.objStmLost++;
+      if (!untyped) collected.objStmLost++;
       continue;
     }
     collected.objStmExpanded++;
-    for (const [num, obj] of got) putEntry(collected.entries, num, { gen: 0, offset, obj });
+    for (const [num, obj] of got) {
+      if (untyped && collected.entries.has(num)) continue;
+      putEntry(collected.entries, num, { gen: 0, offset, obj });
+    }
   }
 }
 
@@ -375,8 +384,15 @@ function peekDeclaredLength(bytes: Uint8Array, from: number, to: number, context
 }
 
 /** Expands a complete object stream; returns null when it cannot be decoded at all. */
+/** Abbreviated filter names (inline-image style, which some writers use for streams too). */
+const FILTER_NAMES: Record<string, string> = { Fl: 'FlateDecode', AHx: 'ASCIIHexDecode', A85: 'ASCII85Decode', LZW: 'LZWDecode', RL: 'RunLengthDecode' };
+
 function expandObjectStream(stream: PDFRawStream, context: PDFContext): Map<number, PDFObject> | null {
   let data: Uint8Array;
+  const filter = stream.dict.get(N('Filter'));
+  const full = (f: PDFObject | undefined) => (f instanceof PDFName && FILTER_NAMES[f.decodeText()] ? N(FILTER_NAMES[f.decodeText()]) : f);
+  if (filter instanceof PDFName) stream.dict.set(N('Filter'), full(filter)!);
+  else if (filter instanceof PDFArray) for (let i = 0; i < filter.size(); i++) filter.set(i, full(filter.get(i))!);
   try {
     data = decodePDFRawStream(stream).decode();
   } catch {
@@ -530,7 +546,12 @@ function walkPageTree(context: PDFContext, rootRef: PDFRef): TreeWalk {
     if (!(kidsArr instanceof PDFArray)) return;
     const here = withInherited(node, inh);
     for (let i = 0; i < kidsArr.size(); i++) {
-      const kidRef = kidsArr.get(i);
+      let kidRef = kidsArr.get(i);
+      // A page or node written directly into /Kids (not allowed; pdf.js reads it): made indirect.
+      if (kidRef instanceof PDFDict) {
+        kidRef = context.register(kidRef);
+        kidsArr.set(i, kidRef);
+      }
       if (!(kidRef instanceof PDFRef) || seen.has(kidRef.toString())) continue;
       seen.add(kidRef.toString());
       const kid = context.lookup(kidRef);
