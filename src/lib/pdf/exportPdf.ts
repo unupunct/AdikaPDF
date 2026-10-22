@@ -97,6 +97,7 @@ import { dropUnreachableObjects } from './prune';
 import { retargetPageRefs, scrubStructTree } from './redactCleanup';
 
 import { correctPages, hasEstimated, pageSizesReady } from './pageSizeRegistry';
+import { loadEditable } from './editable';
 import { removeGlyphs, type Box, type EditFonts, type LineEdit } from './textRemoval';
 import { attachFallbacks, defaultFallbackSources, type FallbackSources } from './fontFallback';
 import { readFieldLogic, writeCalcOrder, writeFieldLogic } from './formScripts';
@@ -1014,7 +1015,7 @@ export async function buildPdf(input: ExportInput, options: ExportOptions = {}):
     const src = sources[baseSourceId];
     if (!src) throw new ExportError('A source document is missing.');
     try {
-      doc = await PDFDocument.load(src.bytes, { updateMetadata: false });
+      doc = await loadEditable(src.bytes, { updateMetadata: false }, src.pageCount || undefined);
     } catch (e) {
       if (e instanceof Error && /encrypt/i.test(e.message)) {
         throw new ExportError('This PDF is encrypted. Remove its password protection before editing.');
@@ -1065,7 +1066,7 @@ export async function buildPdf(input: ExportInput, options: ExportOptions = {}):
     if (!foreign) {
       const src = sources[ref.sourceId];
       if (!src) throw new ExportError('A merged document is missing.');
-      foreign = await PDFDocument.load(src.bytes, { updateMetadata: false });
+      foreign = await loadEditable(src.bytes, { updateMetadata: false }, src.pageCount || undefined);
       foreignDocs.set(ref.sourceId, foreign);
     }
     const [copy] = await doc.copyPages(foreign, [ref.sourceIndex]);
@@ -1532,6 +1533,8 @@ export function incrementalBlocker(input: ExportInput, meta?: import('@/store/us
   // An encrypted file is updated with objects encrypted like its own; one Adika could not decrypt is not.
   if (src.password && !src.encryption) return 'The document is encrypted.';
   if (removingProtection) return 'The password protection is being removed.';
+  // An XFA form (its AcroForm names /XFA; in an object stream it is found when saving).
+  if (hasToken(src.bytes, '/XFA')) return 'XFA forms are saved in full.';
   if (input.pages.length !== src.pageCount || input.pages.some((p, i) => p.kind !== 'source' || p.sourceId !== base || p.sourceIndex !== i || p.userRotation !== 0)) {
     return 'Pages were added, removed, moved or rotated.';
   }
@@ -1541,6 +1544,19 @@ export function incrementalBlocker(input: ExportInput, meta?: import('@/store/us
   if (Object.keys(input.fieldValues).some((k) => !k.startsWith(`${base}::`))) return 'Form values of another document.';
   if (meta) return 'The document properties were changed.';
   return null;
+}
+
+/** Whether `token` occurs in the raw bytes followed by a delimiter (cheap: no parsing). */
+function hasToken(bytes: Uint8Array, token: string): boolean {
+  const t = Array.from(token, (c) => c.charCodeAt(0));
+  for (let i = bytes.indexOf(t[0]); i !== -1; i = bytes.indexOf(t[0], i + 1)) {
+    let k = 1;
+    while (k < t.length && bytes[i + k] === t[k]) k++;
+    if (k < t.length) continue;
+    const next = bytes[i + k];
+    if (next === undefined || !((next >= 0x30 && next <= 0x39) || (next >= 0x41 && next <= 0x5a) || (next >= 0x61 && next <= 0x7a))) return true;
+  }
+  return false;
 }
 
 /**

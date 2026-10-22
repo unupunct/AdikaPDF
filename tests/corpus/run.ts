@@ -20,6 +20,8 @@ import { scanHiddenInfo } from '../../src/lib/pdf/hiddenInfo';
 import { findTextMatches, queryFinder } from '../../src/lib/pdf/textSearch';
 import { isPdfEncrypted } from '../../src/lib/crypto/encrypt';
 import { decryptPdf, encryptWithSecurity, PdfPasswordError, UnsupportedEncryptionError, type Unlocked } from '../../src/lib/crypto/decrypt';
+import { editableCopy } from '../../src/lib/pdf/editable';
+import { looksLikePdf, repairPdf } from '../../src/lib/pdf/repair';
 import { normalizeRotation } from '../../src/lib/geometry';
 import type { FontVariant } from '../../src/lib/fonts';
 import type { EditorObject, PageRef, SourceDoc } from '../../src/types';
@@ -200,16 +202,27 @@ function sampled(file: string): boolean {
 }
 
 async function runFile(file: string, index: number): Promise<void> {
-  const bytes = new Uint8Array(readFileSync(file));
+  let bytes: Uint8Array = new Uint8Array(readFileSync(file));
   const ctx: FileCtx = { file, bytes, plain: bytes, unlocked: null, pdf: null, pages: [], source: null, page1: [], index };
   const encrypted = isPdfEncrypted(bytes);
 
   const opened = await stage(ctx, 'open', async () => {
+    // As the app (openPdfBytes / addSource): a file pdf.js refuses, or with a page it cannot read, is repaired first.
+    let repaired = false;
     try {
       ctx.pdf = await open(bytes);
+      for (let i = 1; i <= ctx.pdf.numPages; i++) await ctx.pdf.getPage(i);
     } catch (e) {
       if (e instanceof Error && e.name === 'PasswordException') throw new Skip('needs a password');
-      throw e;
+      if (!looksLikePdf(bytes)) throw e;
+      try {
+        bytes = (await repairPdf(bytes)).bytes;
+      } catch (re) {
+        throw new Error(`not opened (${signature(e).slice(0, 90)}); repair failed (${signature(re).slice(0, 90)})`);
+      }
+      ctx.bytes = ctx.plain = bytes;
+      ctx.pdf = await open(bytes);
+      repaired = true;
     }
     const pdf = ctx.pdf;
     for (let i = 1; i <= pdf.numPages; i++) {
@@ -224,7 +237,7 @@ async function runFile(file: string, index: number): Promise<void> {
     const vp = page.getViewport({ scale: Math.min(1, 2000 / Math.max(page.view[2] - page.view[0], page.view[3] - page.view[1], 1)) });
     const canvas = createCanvas(Math.max(1, Math.ceil(vp.width)), Math.max(1, Math.ceil(vp.height)));
     await page.render({ canvasContext: canvas.getContext('2d') as unknown as CanvasRenderingContext2D, viewport: vp, canvas: canvas as unknown as HTMLCanvasElement }).promise;
-    return `${pdf.numPages} pages${encrypted ? ', encrypted' : ''}`;
+    return `${pdf.numPages} pages${encrypted ? ', encrypted' : ''}${repaired ? ', repaired' : ''}`;
   });
   if (!opened || !ctx.pdf) return;
   const pdf = ctx.pdf;
@@ -246,7 +259,17 @@ async function runFile(file: string, index: number): Promise<void> {
       return;
     }
   }
-  ctx.source = { id: 'src', name: 'corpus.pdf', bytes: ctx.plain, pageCount: pdf.numPages, original: !encrypted, ...(ctx.unlocked ? { encryption: { file: bytes, unlocked: ctx.unlocked } } : {}) };
+  // As addSource: a file pdf-lib cannot use is edited from its repaired copy.
+  let original = true;
+  if (process.env.CORPUS_NO_EDITABLE !== '1') {
+    const fixed = await within(editableCopy(ctx.plain, pdf.numPages)).catch(() => null);
+    if (fixed) {
+      ctx.plain = fixed;
+      original = false;
+      emit({ file, stage: 'repair', status: 'pass', note: 'edited from the repaired copy' });
+    }
+  }
+  ctx.source = { id: 'src', name: 'corpus.pdf', bytes: ctx.plain, pageCount: pdf.numPages, original, ...(ctx.unlocked ? { encryption: { file: bytes, unlocked: ctx.unlocked } } : {}) };
   const input = (objects: EditorObject[] = []): ExportInput => ({ sources: { src: ctx.source! }, pages: ctx.pages, objects, fieldValues: {}, baseSourceId: 'src' });
   const text1 = squash(itemsText(ctx.page1));
 
