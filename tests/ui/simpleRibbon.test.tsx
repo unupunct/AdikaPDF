@@ -76,11 +76,11 @@ describe('simple ribbon', () => {
     expect(screen.queryByRole('tablist', { name: 'Ribbon' })).toBeNull();
     const region = screen.getByRole('region', { name: 'Simple ribbon' });
     expect(region.getAttribute('data-testid')).toBe('ribbon');
-    for (const name of ['Open', 'Save', 'Print', 'E-mail', 'Edit text', 'Add text', 'Highlight', 'Note', 'Fill & Sign', 'Digital signature', 'Sign many files', 'Verify', 'Combine PDFs', 'Organize', 'Compress', 'OCR', 'Convert', 'Protect', 'e-Factura', 'More tools', 'Help']) {
+    for (const name of ['Open', 'Save', 'Print', 'E-mail', 'Edit text', 'Add text', 'Highlight', 'Note', 'Fill & Sign', 'Digital signature', 'Sign many files', 'Verify', 'Combine PDFs', 'Organize', 'Compress', 'OCR', 'Convert', 'Protect', 'e-Factura', 'More tools']) {
       expect(within(region).getByRole('button', { name }), name).toBeTruthy();
     }
     const groups = [...region.querySelectorAll('[data-ribbon-group]')].map((g) => g.getAttribute('data-ribbon-group'));
-    expect(groups).toEqual(['File', 'Edit & comment', 'Sign', 'Pages', 'Convert', 'Protect', 'E-invoice', 'More']);
+    expect(groups).toEqual(['File', 'Edit & comment', 'Sign', 'Pages', 'Convert', 'Protect', 'E-invoice', 'All commands']);
     expect(screen.getAllByRole('button').filter((b) => region.contains(b)).length).toBeLessThanOrEqual(22);
   });
 

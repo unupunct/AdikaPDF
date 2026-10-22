@@ -62,12 +62,14 @@ interface UiMode {
   /** A full-ribbon tab shown for a while in simple mode (a command found by the tool search or Quick Access). */
   peek: RibbonTab | null;
   welcome: boolean;
+  /** Groups that do not fit collapse into a button (off in end-to-end tests: they click buttons by position). */
+  collapse: boolean;
   setMode: (mode: RibbonMode) => void;
   setPeek: (tab: RibbonTab | null) => void;
   openWelcome: () => void;
   /** Closes the welcome; `again` shows it at the next start too. */
   closeWelcome: (again: boolean) => void;
-  /** End-to-end tests: the full ribbon (tests click its buttons) and no welcome. */
+  /** End-to-end tests: the full ribbon (tests click its buttons), no collapsed groups and no welcome. */
   e2eDefaults: () => void;
 }
 
@@ -83,6 +85,7 @@ function decide(): Pick<UiMode, 'mode' | 'welcome'> {
 export const useUiMode = create<UiMode>()((set) => ({
   ...decide(),
   peek: null,
+  collapse: true,
   setMode: (mode) => {
     write(MODE_KEY, mode);
     set({ mode, peek: null });
@@ -93,7 +96,7 @@ export const useUiMode = create<UiMode>()((set) => ({
     write(WELCOME_KEY, again ? 'show' : 'hide');
     set({ welcome: false });
   },
-  e2eDefaults: () => set({ mode: 'full', peek: null, welcome: false }),
+  e2eDefaults: () => set({ mode: 'full', peek: null, welcome: false, collapse: false }),
 }));
 
 /** Ribbon buttons that run commands (not the buttons of collapsed groups). */

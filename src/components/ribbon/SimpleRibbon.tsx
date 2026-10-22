@@ -4,7 +4,6 @@
  * Quick Access and the tool search use these buttons in simple mode.
  */
 import {
-  CircleHelp,
   Cloud,
   Combine,
   EyeOff,
@@ -43,7 +42,6 @@ import {
 import { blockedReason, usePDFStore } from '@/store/usePDFStore';
 import { useUiMode } from '@/store/uiMode';
 import { useModalArgs } from '@/store/useModalArgs';
-import { openHelp } from '@/store/help';
 import { openDialog, saveDocument, mergeDialog } from '@/actions/document';
 import type { ExportFormat } from '@/actions/convert';
 import type { QuickToolId } from '@/actions/quickTools';
@@ -77,8 +75,8 @@ export function SimpleRibbon() {
       </Group>
       <Group label="Edit & comment">
         <ToolBtn tool="editText" icon={<TextCursorInput size={I} />} label="Edit text" tip="Click existing text to edit it" />
-        <ToolBtn tool="text" icon={<Type size={I} />} label="Add text" tip="Click to add a text box (T)" />
         <Stack>
+          <ToolBtn big={false} tool="text" icon={<Type size={i} />} label="Add text" tip="Click to add a text box (T)" />
           <ToolBtn big={false} tool="markup-highlight" icon={<Highlighter size={i} />} label="Highlight" tip="Select text to highlight it" />
           <ToolBtn big={false} tool="note" icon={<StickyNote size={i} />} label="Note" tip="Click to add a sticky note (N)" />
         </Stack>
@@ -109,8 +107,8 @@ export function SimpleRibbon() {
       </Group>
       <Group label="Pages">
         <Big icon={<Combine size={I} />} label="Combine PDFs" onClick={() => (usePDFStore.getState().pages.length ? void mergeDialog() : quickTool('merge'))} tip="Combine several PDFs in the order you choose" testId="simple-combine" />
-        <Big icon={<LayoutGrid size={I} />} label="Organize" disabled={!pagesOk} onClick={() => open('organizer')} tip="Grid view: drag, rotate, delete, insert pages" testId="simple-organize" />
         <Stack>
+          <Small icon={<LayoutGrid size={i} />} label="Organize" disabled={!pagesOk} onClick={() => open('organizer')} tip="Grid view: drag, rotate, delete, insert pages" testId="simple-organize" />
           <Small icon={<FileArchive size={i} />} label="Compress" onClick={() => (usePDFStore.getState().pages.length ? open('compress') : quickTool('compress'))} tip="Smaller files, same text quality" testId="simple-compress" />
           <Small icon={<ScanText size={i} />} label="OCR" disabled={!hasDoc} onClick={() => open('ocr')} tip="Make scanned pages searchable" testId="simple-ocr" />
         </Stack>
@@ -173,11 +171,8 @@ export function SimpleRibbon() {
           </DropdownContent>
         </DropdownMenu>
       </Group>
-      <Group label="More">
+      <Group label="All commands">
         <Big icon={<PanelsTopLeft size={I} />} label="More tools" onClick={() => useUiMode.getState().setMode('full')} tip="Show the full ribbon with every command (Simple ribbon on the View tab comes back here)" testId="simple-more-tools" />
-        <Stack>
-          <Small icon={<CircleHelp size={i} />} label="Help" onClick={() => openHelp()} tip="Help (F1)" testId="simple-help" />
-        </Stack>
       </Group>
     </>
   );

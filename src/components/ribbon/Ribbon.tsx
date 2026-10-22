@@ -2,7 +2,7 @@
  * Top ribbon: Home, Edit, Sign, Organize, Forms, Security, Convert. Every
  * button maps to a store action or an operation in src/actions.
  */
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject } from 'react';
 import {
   ArrowLeft,
   ArrowUpRight,
@@ -99,6 +99,7 @@ import { removeAllPageMarks } from '@/actions/pageTools';
 import { BIG, Big, CollapsedGroups, Group, I, i, ROW, Small, Stack } from './parts';
 import { SimpleRibbon } from './SimpleRibbon';
 import { useUiMode } from '@/store/uiMode';
+import { useLang } from '@/lib/i18n';
 
 function openMarks(tab: 'watermark' | 'header' | 'background') {
   useModalArgs.setState({ pageMarksTab: tab });
@@ -252,21 +253,42 @@ export function Ribbon() {
 function useCollapse(panel: RefObject<HTMLDivElement | null>, key: string): ReadonlySet<string> {
   const [collapsed, setCollapsed] = useState<string[]>([]);
   const [width, setWidth] = useState(0);
+  const enabled = useUiMode((u) => u.collapse);
+  const lang = useLang((l) => l.lang);
+  const current = useRef(collapsed);
+  current.current = collapsed;
+
+  // Collapses one more group when the ribbon overflows: the rightmost one that gets narrower as one button.
+  const check = useCallback(() => {
+    const el = panel.current;
+    if (!enabled || !el || el.scrollWidth <= el.clientWidth + 1) return;
+    const done = current.current;
+    const groups = [...el.querySelectorAll<HTMLElement>(':scope > [data-ribbon-group]')].filter((g) => !done.includes(g.dataset.ribbonGroup ?? '') && g.offsetWidth > 90);
+    const last = groups[groups.length - 1]?.dataset.ribbonGroup;
+    if (last) setCollapsed([...done, last]);
+  }, [enabled, panel]);
+
   useEffect(() => {
     const el = panel.current;
     if (!el) return;
     const ro = new ResizeObserver(() => setWidth(el.clientWidth));
     ro.observe(el);
-    return () => ro.disconnect();
-  }, [panel, key]);
-  useLayoutEffect(() => setCollapsed([]), [key, width]);
-  useLayoutEffect(() => {
-    const el = panel.current;
-    if (!el || el.scrollWidth <= el.clientWidth + 1) return;
-    const open = [...el.querySelectorAll<HTMLElement>(':scope > [data-ribbon-group]')].map((g) => g.dataset.ribbonGroup ?? '').filter((l) => l && !collapsed.includes(l));
-    const last = open[open.length - 1];
-    if (last) setCollapsed([...collapsed, last]);
-  }, [collapsed, panel]);
+    // Labels change after rendering (the interface translation): measure again.
+    let t = 0;
+    const mo = new MutationObserver(() => {
+      window.clearTimeout(t);
+      t = window.setTimeout(check, 50);
+    });
+    mo.observe(el, { subtree: true, childList: true, characterData: true });
+    t = window.setTimeout(check, 50);
+    return () => {
+      ro.disconnect();
+      mo.disconnect();
+      window.clearTimeout(t);
+    };
+  }, [panel, key, check]);
+  useLayoutEffect(() => setCollapsed([]), [key, width, enabled, lang]);
+  useLayoutEffect(check, [collapsed, check]);
   return useMemo(() => new Set(collapsed), [collapsed]);
 }
 
@@ -589,49 +611,49 @@ function ConvertTab() {
       <Group label="Create PDF from">
         <Big icon={<FileType2 size={I} />} label="Office" onClick={() => openImport('office')} tip="Word, Excel, PowerPoint (uses Microsoft Office on this PC)" testId="btn-import-office" />
         <Big icon={<ScanLine size={I} />} label="Scan" onClick={() => s.openModal('scan')} tip="Scan to PDF: flatbed or document feeder, cleanup, blank pages and separator sheets, OCR" testId="btn-scan" />
-        <Big icon={<FileImage size={I} />} label="Images" onClick={() => openImport('images')} tip="PNG, JPG, WebP, TIFF, GIF, BMP" testId="btn-import-images" />
         <Stack>
-          <Small icon={<FileCode2 size={i} />} label="HTML / URL" onClick={() => openImport('html')} />
-          <Small icon={<FileText size={i} />} label="Markdown / text" onClick={() => openImport('markdown')} />
+          <Small icon={<FileImage size={i} />} label="Images" onClick={() => openImport('images')} tip="PNG, JPG, WebP, TIFF, GIF, BMP" testId="btn-import-images" />
           <Small icon={<Camera size={i} />} label="Camera" onClick={() => openImport('scan')} />
+          <Small icon={<FileCode2 size={i} />} label="HTML / URL" onClick={() => openImport('html')} />
         </Stack>
         <Stack>
+          <Small icon={<FileText size={i} />} label="Markdown / text" onClick={() => openImport('markdown')} />
           <Small icon={<BookCopy size={i} />} label="EPUB / e-mail / XPS" onClick={() => openImport('documents')} testId="btn-import-documents" />
           <Small icon={<PenTool size={i} />} label="CAD (DXF)" onClick={() => openImport('cad')} testId="btn-import-cad" />
         </Stack>
       </Group>
       <Group label="Export PDF to">
         <Big icon={<FileInput size={I} />} label="Word" disabled={!hasDoc} onClick={() => openExport('docx')} testId="btn-export-docx" />
-        <Big icon={<FileSpreadsheet size={I} />} label="Excel" disabled={!hasDoc} onClick={() => openExport('xlsx')} />
-        <Big icon={<Presentation size={I} />} label="PowerPoint" disabled={!hasDoc} onClick={() => openExport('pptx')} />
         <Stack>
+          <Small icon={<FileSpreadsheet size={i} />} label="Excel" disabled={!hasDoc} onClick={() => openExport('xlsx')} />
+          <Small icon={<Presentation size={i} />} label="PowerPoint" disabled={!hasDoc} onClick={() => openExport('pptx')} />
           <Small icon={<FileImage size={i} />} label="Images" disabled={!hasDoc} onClick={() => openExport('png')} />
+        </Stack>
+        <Stack>
           <Small icon={<ImageDown size={i} />} label="Export pictures (ZIP)" disabled={!hasDoc} onClick={() => void import('@/actions/pageOps').then((m) => m.exportImages())} testId="btn-export-images" />
           <Small icon={<PenTool size={i} />} label="SVG" disabled={!hasDoc} onClick={() => openExport('svg')} />
-          <Small icon={<FileCode2 size={i} />} label="HTML / Markdown" disabled={!hasDoc} onClick={() => openExport('html')} />
+          <Small icon={<TableProperties size={i} />} label="CSV / JSON" disabled={!hasDoc} onClick={() => openExport('csv')} />
         </Stack>
         <Stack>
           <Small icon={<FileText size={i} />} label="ODT / RTF" disabled={!hasDoc} onClick={() => openExport('odt')} />
+          <Small icon={<FileCode2 size={i} />} label="HTML / Markdown" disabled={!hasDoc} onClick={() => openExport('html')} />
           <Small icon={<BookCopy size={i} />} label="EPUB" disabled={!hasDoc} onClick={() => openExport('epub')} />
-          <Small icon={<TableProperties size={i} />} label="CSV / JSON" disabled={!hasDoc} onClick={() => openExport('csv')} />
         </Stack>
       </Group>
       <Group label="Optimize">
         <Big icon={<ScanText size={I} />} label="OCR" disabled={!hasDoc} onClick={() => s.openModal('ocr')} tip="Make scanned pages searchable" testId="btn-ocr" />
         <Big icon={<FileArchive size={I} />} label="Compress" disabled={!hasDoc} onClick={() => s.openModal('compress')} testId="btn-compress" />
-        <Big icon={<FileCheck2 size={I} />} label="PDF/A" disabled={!hasDoc} onClick={() => s.openModal('pdfa')} tip="Archival PDF/A-2b" />
-        <Big icon={<Stamp size={I} />} label="Flatten" disabled={!hasDoc} onClick={() => void flattenCurrent()} />
-      </Group>
-      <Group label="Print shop">
-        <Big icon={<Printer size={I} />} label="Print production" disabled={!hasDoc} onClick={() => s.openModal('printprod')} tip="PDF/X preflight and conversion, grey or CMYK colours, ink preview, bleed and printer marks" testId="btn-printprod" />
+        <Stack>
+          <Small icon={<FileCheck2 size={i} />} label="PDF/A" disabled={!hasDoc} onClick={() => s.openModal('pdfa')} tip="Archival PDF/A-2b" />
+          <Small icon={<Stamp size={i} />} label="Flatten" disabled={!hasDoc} onClick={() => void flattenCurrent()} />
+          <Small icon={<Printer size={i} />} label="Print production" disabled={!hasDoc} onClick={() => s.openModal('printprod')} tip="PDF/X preflight and conversion, grey or CMYK colours, ink preview, bleed and printer marks" testId="btn-printprod" />
+        </Stack>
+        <Big icon={<FileStack size={I} />} label="Batch" onClick={() => s.openModal('batch')} tip="OCR, compress, watermark, page numbers, PDF/A, protect, sanitize or flatten many PDFs at once, one operation or a saved sequence of steps" testId="btn-batch" />
       </Group>
       <Group label="E-invoice">
         <Big icon={<Receipt size={I} />} label="E-invoice" onClick={() => s.openModal('einvoice')} tip="e-Factura, UBL and Factur-X / ZUGFeRD: open invoice XML as a readable PDF, show the invoice inside a PDF, embed an invoice XML" testId="btn-einvoice" />
         <Big icon={<ReceiptText size={I} />} label="New e-invoice" onClick={() => void import('@/actions/einvoiceCreate').then((m) => m.openNewEInvoice())} tip="Issue an e-Factura (ANAF), Peppol or Factur-X invoice: saved sellers, customers and products, live totals and checks" testId="btn-einvoice-new" />
         <Big icon={<Landmark size={I} />} label="ANAF e-Factura" onClick={() => void import('@/actions/anaf').then((m) => m.openAnafDialog())} tip="Send e-Factura invoices to ANAF's SPV, follow their status, list and download received invoices (needs an application registered with ANAF)" testId="btn-anaf" />
-      </Group>
-      <Group label="Many files">
-        <Big icon={<FileStack size={I} />} label="Batch" onClick={() => s.openModal('batch')} tip="OCR, compress, watermark, page numbers, PDF/A, protect, sanitize or flatten many PDFs at once, one operation or a saved sequence of steps" testId="btn-batch" />
       </Group>
     </>
   );

@@ -57,9 +57,9 @@ const TASKS: Array<{ id: WelcomeTask; title: string; text: string; icon: ReactNo
   { id: 'sign', title: 'Sign a PDF', text: 'Your handwritten signature, or a digital one with a certificate or token', icon: <Signature size={20} />, help: HELP_TOPICS.welcomeSign },
   { id: 'einvoice', title: 'Create an e-Factura', text: 'Issue an invoice, check it and send it to ANAF', icon: <ReceiptText size={20} />, help: HELP_TOPICS.welcomeInvoice },
   { id: 'editText', title: 'Edit text in a PDF', text: 'Click a line and type, in the document’s own font', icon: <TextCursorInput size={20} />, help: HELP_TOPICS.welcome },
-  { id: 'combine', title: 'Combine PDFs', text: 'Several files into one, in the order you choose', icon: <Combine size={20} />, help: HELP_TOPICS.welcome },
+  { id: 'combine', title: 'Combine PDF files', text: 'Several files into one, in the order you choose', icon: <Combine size={20} />, help: HELP_TOPICS.welcome },
   { id: 'form', title: 'Fill in a form', text: 'Type into the fields of a PDF form, then save or print it', icon: <FormInput size={20} />, help: HELP_TOPICS.welcome },
-  { id: 'convert', title: 'Convert to Word or Excel', text: 'And pictures, PowerPoint, or Office files to PDF', icon: <FileOutput size={20} />, help: HELP_TOPICS.welcome },
+  { id: 'convert', title: 'Convert to Word or Excel', text: 'Also to pictures or PowerPoint, and Office files to PDF', icon: <FileOutput size={20} />, help: HELP_TOPICS.welcome },
 ];
 
 export function FirstRunWelcome() {
@@ -93,7 +93,7 @@ function WelcomeDialog() {
             <Checkbox checked={hide} onChange={setHide} label="Don’t show this again" />
           </div>
           <Button variant="primary" onClick={close} data-testid="first-run-close" data-autofocus>
-            Start
+            Get started
           </Button>
         </>
       }

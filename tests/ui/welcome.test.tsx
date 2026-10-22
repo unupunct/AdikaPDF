@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { TooltipProvider } from '@/components/ui/primitives';
@@ -34,6 +34,11 @@ function renderWelcome() {
   );
 }
 
+// The cards load these on first use: load them once up front (slow under a full parallel run).
+beforeAll(async () => {
+  await Promise.all([import('@/actions/document'), import('@/actions/einvoiceCreate'), import('@/components/modals/ToolsModal')]);
+}, 60000);
+
 beforeEach(async () => {
   quick.ids = [];
   act(() => {
@@ -45,11 +50,11 @@ beforeEach(async () => {
 });
 
 describe('first-run welcome', () => {
-  it('is a dialog with the privacy line, the task cards, language and ribbon choices; focus on Start', async () => {
+  it('is a dialog with the privacy line, the task cards, language and ribbon choices; focus on Get started', async () => {
     renderWelcome();
     const dlg = await screen.findByRole('dialog', { name: 'Welcome to Adika PDF Editor' });
     expect(dlg.textContent).toContain('works offline');
-    for (const name of ['Sign a PDF', 'Create an e-Factura', 'Edit text in a PDF', 'Combine PDFs', 'Fill in a form', 'Convert to Word or Excel']) {
+    for (const name of ['Sign a PDF', 'Create an e-Factura', 'Edit text in a PDF', 'Combine PDF files', 'Fill in a form', 'Convert to Word or Excel']) {
       expect(screen.getByRole('button', { name: new RegExp(`^${name}`) }), name).toBeTruthy();
     }
     expect(screen.getAllByRole('button', { name: 'How it works' })).toHaveLength(6);
