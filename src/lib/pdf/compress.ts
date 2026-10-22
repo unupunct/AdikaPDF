@@ -21,6 +21,7 @@ import {
 } from 'pdf-lib';
 import { decodeStreamWithPredictors } from './predictor';
 import { dropUnreachableObjects } from './prune';
+import { loadEditable } from './editable';
 
 export interface CompressOptions {
   /** JPEG quality 0..1 */
@@ -369,7 +370,7 @@ export async function compressPdf(
   signal?: AbortSignal,
 ): Promise<CompressResult> {
   const before = bytes.length;
-  const doc = await PDFDocument.load(bytes, { updateMetadata: false });
+  const doc = await loadEditable(bytes, { updateMetadata: false });
   const ctx = doc.context;
   const quality = Math.min(1, Math.max(0.05, opts.imageQuality));
   const maxDpi = Math.max(36, opts.maxImageDpi || 150);

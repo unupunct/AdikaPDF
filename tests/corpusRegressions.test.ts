@@ -6,6 +6,9 @@ import * as pdfjs from 'pdfjs-dist/legacy/build/pdf.mjs';
 import { editableCopy, loadEditable, pdfLibProblem } from '@/lib/pdf/editable';
 import { buildIncrementalPdf, buildPdf, incrementalBlocker } from '@/lib/pdf/exportPdf';
 import { analyzePageText } from '@/lib/pdf/textRemoval';
+import { checkPdfUa } from '@/lib/pdf/pdfua';
+import { scanHiddenInfo } from '@/lib/pdf/hiddenInfo';
+import { compressPdf } from '@/lib/pdf/compress';
 import { findTextMatches, queryFinder } from '@/lib/pdf/textSearch';
 import type { PageRef, SourceDoc } from '@/types';
 import { loadFont, measure, rasterize } from './helpers/redaction';
@@ -54,6 +57,13 @@ describe('files pdf.js opens but pdf-lib cannot edit as they are', () => {
     const src: SourceDoc = { id: 's', name: 'a.pdf', bytes: untyped, pageCount: 1 };
     const out = await buildPdf({ sources: { s: src }, pages: refs(src, 1), objects: [], fieldValues: {} }, { loadFont, measure, rasterizeRedactedPage: rasterize, fallbackFonts: null });
     expect(await pdfjsPages(out)).toEqual(['Untyped tree']);
+  });
+
+  it('the checks and Compress read it through the repaired copy', async () => {
+    await expect(checkPdfUa(untyped)).resolves.toBeTruthy();
+    await expect(scanHiddenInfo(untyped)).resolves.toBeTruthy();
+    const res = await compressPdf(untyped, { imageQuality: 0.6, maxImageDpi: 150, stripMetadata: false });
+    expect(await pdfjsPages(res.bytes)).toEqual(['Untyped tree']);
   });
 
   it('a sound file is loaded as it is', async () => {

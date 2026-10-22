@@ -10,6 +10,7 @@ import { applyMatrix, displayToPdfMatrix, totalRotation, type Matrix, type Rect 
 import { analyzePageText, type Box, type Glyph } from './textRemoval';
 import { joinRuns, normalizeForSearch, type SearchOptions } from '@/lib/search';
 import { runRect, type TextRun } from './textGeometry';
+import { loadEditable } from './editable';
 
 export type Range = [number, number];
 export type Finder = (text: string) => Range[];
@@ -216,7 +217,7 @@ export async function findTextMatches(
     let doc = docs.get(ref.sourceId);
     if (doc === undefined) {
       const src = sources[ref.sourceId];
-      doc = src ? await PDFDocument.load(src.bytes, { updateMetadata: false, ignoreEncryption: true }).catch(() => null) : null;
+      doc = src ? await loadEditable(src.bytes, { updateMetadata: false, ignoreEncryption: true }, src.pageCount || undefined).catch(() => null) : null;
       docs.set(ref.sourceId, doc);
     }
     const exact = doc ? engineSearch(doc, ref, finder) : null;
