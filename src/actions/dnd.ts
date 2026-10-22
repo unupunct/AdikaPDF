@@ -171,10 +171,12 @@ export function previewDrag(kind: 'files' | 'pages', target: DropTarget, entries
   let label: string;
   let rejected: string | null;
   let effect: 'copy' | 'move' = 'copy';
+  let insertAt: number | null = null;
   if (kind === 'pages') {
     const drag = useDnd.getState().pageDrag;
     const r = drag ? planPageDrop(drag, useTabs.getState().activeId, target, doc) : { action: 'none' as const, at: null, rejected: null };
     rejected = r.rejected;
+    insertAt = r.at;
     label = rejected ?? { switch: 'Hold to switch to this document', reorder: 'Move the page here', copy: 'Copy the page into this document', none: '' }[r.action];
     // Nothing to do here (the toolbar, the status bar): no drop, but nothing to explain either.
     if (r.action === 'none' && rejected === null) rejected = '';
@@ -186,9 +188,10 @@ export function previewDrag(kind: 'files' | 'pages', target: DropTarget, entries
     const plan = planDrop(entries, target, doc);
     rejected = plan.rejected;
     label = dropLabel(plan, target, pageCount);
+    insertAt = plan.insertAt;
   }
   hoverTabFor(target);
-  useDnd.setState({ active: kind, target, label, rejected: rejected !== null });
+  useDnd.setState({ active: kind, target, label, rejected: rejected !== null, insertAt: rejected === null ? insertAt : null });
   return rejected === null ? effect : 'none';
 }
 
@@ -197,7 +200,7 @@ const pagesWord = (verb: 'Inserted' | 'Copied', n: number) => (n === 1 ? `${verb
 
 export function endDrag(): void {
   hoverTabFor(null);
-  useDnd.setState({ active: null, target: null, label: '', rejected: false, pageDrag: null });
+  useDnd.setState({ active: null, target: null, label: '', rejected: false, insertAt: null, pageDrag: null });
 }
 
 // ---------------------------------------------------------------- reading a drop

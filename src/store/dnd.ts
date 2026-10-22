@@ -15,7 +15,9 @@ export interface DndState {
   target: DropTarget | null;
   label: string;
   rejected: boolean;
+  /** Where pages would go (the thumbnails draw a line there); null: no insert here. */
+  insertAt: number | null;
   pageDrag: PageDrag | null;
 }
 
-export const useDnd = create<DndState>()(() => ({ active: null, target: null, label: '', rejected: false, pageDrag: null }));
+export const useDnd = create<DndState>()(() => ({ active: null, target: null, label: '', rejected: false, insertAt: null, pageDrag: null }));

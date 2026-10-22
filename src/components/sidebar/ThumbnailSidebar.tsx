@@ -27,7 +27,7 @@ export function ThumbnailSidebar() {
   // Drags are followed window-wide (actions/dnd.ts): pages from this or another tab, files from Explorer.
   const activeTab = useTabs((s) => s.activeId);
   const dragId = useDnd((s) => (s.pageDrag?.tabId === activeTab ? s.pageDrag.pageIds[0] : null));
-  const dropIndex = useDnd((s) => (s.active && !s.rejected && s.target?.kind === 'thumbs' ? s.target.index : null));
+  const dropIndex = useDnd((s) => (s.active && s.target?.kind === 'thumbs' ? s.insertAt : null));
 
   const store = usePDFStore.getState;
 
