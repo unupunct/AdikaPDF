@@ -147,6 +147,25 @@ function LogsInfo() {
     </div>
   );
 }
+
+/** Report a problem / Suggest a feature (a GitHub issue the user reviews first). */
+function FeedbackInfo() {
+  const open = (kind: 'bug' | 'feature') => void import('@/actions/report').then((m) => m.openReport(kind));
+  return (
+    <div className="mt-4 flex flex-wrap items-center gap-2 rounded-lg border border-app px-3 py-2 text-[11.5px]" data-testid="feedback-info">
+      <span className="min-w-0 flex-1">
+        <span className="block font-semibold">Feedback</span>
+        <span className="block text-muted">Opens a GitHub issue; you see the text first.</span>
+      </span>
+      <Button size="sm" onClick={() => open('bug')} data-testid="report-problem">
+        Report a problem
+      </Button>
+      <Button size="sm" onClick={() => open('feature')} data-testid="suggest-feature">
+        Suggest a feature
+      </Button>
+    </div>
+  );
+}
 import { cn } from '@/lib/cn';
 import { ocrLangLabel } from '@/lib/ocrLangs';
 import { OcrLanguageManager, useInstalledOcrLangs } from './OcrLanguages';
@@ -836,6 +855,7 @@ export function AboutModal() {
       <ManagedInfo />
       <UpdateInfo />
       <SaveInfo />
+      <FeedbackInfo />
       <LogsInfo />
       <p className="mt-4 text-[11px] text-muted">
         Built with pdf.js (Mozilla), pdf-lib, Konva, node-forge, Tesseract.js, libheif (LGPL-3.0), postal-mime, msgreader, dxf-parser, Noto fonts (SIL OFL) and Tauri.

@@ -1,0 +1,11 @@
+blank_issues_enabled: true
+contact_links:
+  - name: User guide (English)
+    url: https://github.com/unupunct/AdikaPDF/blob/main/docs/guide/en/index.md
+    about: Getting started, e-Factura and digital signatures, with troubleshooting pages. Also built into the app (F1).
+  - name: Ghidul utilizatorului (română)
+    url: https://github.com/unupunct/AdikaPDF/blob/main/docs/guide/ro/index.md
+    about: Primii pași, e-Factura și semnături digitale, cu pagini de depanare. Disponibil și în aplicație (F1).
+  - name: README (features, install, company deployment)
+    url: https://github.com/unupunct/AdikaPDF#readme
+    about: What Adika does, how to install it, policies and the portable copy.

@@ -72,6 +72,8 @@ export default function App() {
       void ensurePrintWatcher();
       maybeAutoCheck();
       void import('@/actions/automation').then((m) => m.restartWatching());
+      // A crash report from an earlier run: offered once for reporting (never sent by itself).
+      void import('@/actions/report').then((m) => m.offerCrashReport());
       // Crash recovery: offer what an earlier run left, then back up from now on.
       void import('@/lib/recovery').then(async (r) => {
         const items = await r.listBackups();

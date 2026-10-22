@@ -49,6 +49,8 @@ function extras(): Item[] {
       }),
     ),
     mk('about', 'About', 'Version, updates, shortcuts and logs', () => s.openModal('about')),
+    mk('report', 'Report a problem', 'Open a GitHub issue with the Adika and Windows versions filled in (you see the text first)', () => void import('@/actions/report').then((m) => m.openReport('bug'))),
+    mk('suggest', 'Suggest a feature', 'Open a GitHub feature request (you see the text first)', () => void import('@/actions/report').then((m) => m.openReport('feature'))),
     mk('newwindow', 'Move to a new window', 'Open this document in a window of its own', () => void import('@/actions/windows').then((m) => m.moveTabToWindow(useTabs.getState().activeId))),
     mk('customize', 'Customize', 'Quick Access toolbar and keyboard shortcuts', () => s.openModal('customize')),
   ];
