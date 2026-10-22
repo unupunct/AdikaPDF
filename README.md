@@ -6,6 +6,8 @@ OCR and convert PDFs entirely on your computer. Nothing is uploaded. The interfa
 
 **User guide** (English and Romanian), focused on e-Factura and digital signatures: [docs/guide](docs/guide/en/index.md) · [Ghidul utilizatorului](docs/guide/ro/index.md). The same guide is built into the app (F1).
 
+**Found a problem or have an idea?** [Open an issue](https://github.com/unupunct/AdikaPDF/issues/new/choose), or use **Report a problem** / **Suggest a feature** in the app (About, or the help viewer): it shows the pre-filled text (Adika and Windows versions, language, installed or portable; never documents, file names or paths) before opening GitHub. After a crash the app offers the crash report, cleaned of paths and names, for review.
+
 ## Features
 
 | Area | What you can do |

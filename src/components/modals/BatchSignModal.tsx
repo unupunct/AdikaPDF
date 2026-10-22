@@ -17,6 +17,7 @@ import { errorMessage } from '@/actions/document';
 import { askConfirm } from '@/store/useDialogs';
 import { base64ToBytes, isDesktop, pickFiles, pickFolder, pickPaths, pkcs11DetectModules, pkcs11ListTokens, winstoreList, type Pkcs11Module, type StoreCertificate, type TokenCertificate, type TokenInfo } from '@/lib/platform';
 import { cn } from '@/lib/cn';
+import { useDropList } from '@/hooks/useDropList';
 import { defaultTsaUrl, onlineAllowed, usePolicy } from '@/lib/policy';
 
 type Source = 'pfx' | 'store' | 'token' | 'cloud';
@@ -204,6 +205,15 @@ export function BatchSignModal() {
     setResults(null);
     setFiles((cur) => [...cur, ...picked.filter((p) => !cur.includes(p))]);
   };
+  // PDFs and folders dragged from Explorer onto the list ("Include subfolders" applies).
+  const dropOver = useDropList(
+    'batchsign',
+    (paths) => {
+      setResults(null);
+      setFiles((cur) => [...cur, ...paths.filter((p) => !cur.includes(p))]);
+    },
+    { subfolders, enabled: open && !running && isDesktop },
+  );
   const addFolder = async () => {
     const folder = await pickFolder();
     if (!folder) return;
@@ -346,6 +356,7 @@ export function BatchSignModal() {
             <FilePlus2 size={13} /> Add PDFs…
           </Button>
         </div>
+        <div data-drop-list="batchsign" className={cn('rounded-md', dropOver && 'ring-2 ring-brand-500')}>
         {files.length ? (
           <ul className="max-h-40 overflow-auto rounded-md border border-app text-[12px]" data-testid="batchsign-files">
             {files.map((f, i) => {
@@ -382,8 +393,9 @@ export function BatchSignModal() {
             })}
           </ul>
         ) : (
-          <p className="rounded-md border border-dashed border-app px-3 py-4 text-center text-[12px] text-muted">No files yet. Add PDFs or a folder.</p>
+          <p className="rounded-md border border-dashed border-app px-3 py-4 text-center text-[12px] text-muted">No files yet. Add PDFs or a folder, or drag them here.</p>
         )}
+        </div>
         {progress && running ? (
           <p className="mt-1 text-[11px] text-muted" data-testid="batchsign-progress">
             File {Math.min(progress.done + 1, progress.total)} of {progress.total}: <span data-no-translate>{progress.current}</span>

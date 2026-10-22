@@ -4,6 +4,7 @@ import { Button, Callout, Dialog, Field, Input } from '@/components/ui/primitive
 import { SignatureModal } from './SignatureModal';
 import { CertificateModal, StoreCertModal, TokenModal, VerifyModal } from './DigitalSignModals';
 import { UpdateModal } from './UpdateModal';
+import { ReportModal } from './ReportModal';
 import { CloudSignModal } from './CloudSignModal';
 import { BatchSignModal } from './BatchSignModal';
 import { AboutModal, CompressModal, OcrModal, OrganizerModal, PasswordModal, PdfaModal, SplitModal } from './DocumentModals';
@@ -51,6 +52,7 @@ export function Modals() {
       <ImportModal />
       <AboutModal />
       <UpdateModal />
+      <ReportModal />
       <PropertiesModal />
       <ToolsModal />
       <LinkModal />

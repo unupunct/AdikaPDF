@@ -1,0 +1,33 @@
+name: Suggest a feature
+description: An idea for something Adika PDF Editor could do (or do better).
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for the suggestion. Tell us what you want to get done; we will look for the best way to do it.
+        *Vă mulțumim! Puteți scrie și în limba română.*
+  # The field ids below are filled from the address Adika opens (src/lib/report.ts): keep them in step.
+  - type: input
+    id: version
+    attributes:
+      label: Adika version
+      placeholder: "1.16.0"
+  - type: input
+    id: language
+    attributes:
+      label: Interface language
+      placeholder: "en (English)"
+  - type: textarea
+    id: problem
+    attributes:
+      label: What would you like to do
+      description: The task, and why it is hard or impossible today.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: How could it work
+      description: Where would you look for it (which tab or dialog)? Other programs that do it well?

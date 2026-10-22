@@ -283,6 +283,7 @@ export function PDFCanvas() {
     <div
       ref={containerRef}
       data-testid="pdf-canvas"
+      data-drop-area="pages"
       // Focusable, so the pages scroll with the keyboard.
       tabIndex={0}
       role="region"

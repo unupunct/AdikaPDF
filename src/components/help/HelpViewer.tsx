@@ -131,6 +131,14 @@ function HelpDialog({ guide }: { guide: Guide }) {
             )}
           </div>
           {guide.fallback ? <p className="px-2 text-[11px] text-muted">The guide is available in English and Romanian.</p> : null}
+          <div className="flex flex-col items-start gap-0.5 border-t border-app px-1 pt-2 text-[12px]">
+            <button type="button" className="rounded px-1 py-0.5 text-brand-700 underline-offset-2 hover:underline dark:text-brand-300" onClick={() => void import('@/actions/report').then((m) => m.openReport('bug'))} data-testid="help-report">
+              Report a problem
+            </button>
+            <button type="button" className="rounded px-1 py-0.5 text-brand-700 underline-offset-2 hover:underline dark:text-brand-300" onClick={() => void import('@/actions/report').then((m) => m.openReport('feature'))} data-testid="help-suggest">
+              Suggest a feature
+            </button>
+          </div>
         </div>
         <div className="flex min-h-0 flex-col">
           <div className="mb-2 flex items-center gap-1">

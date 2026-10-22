@@ -8,6 +8,8 @@ import { ocrLangLabel } from '@/lib/ocrLangs';
 import { useInstalledOcrLangs } from './OcrLanguages';
 import type { BatchResult } from '@/actions/batch';
 import { WatchPanel } from './WatchPanel';
+import { useDropList } from '@/hooks/useDropList';
+import { cn } from '@/lib/cn';
 
 const name = (p: string) => p.split(/[\\/]/).pop() ?? p;
 
@@ -120,6 +122,16 @@ export function BatchModal() {
     setFiles((cur) => [...cur, ...picked.filter((p) => !cur.includes(p))]);
   };
 
+  // PDFs and folders (with their subfolders) dragged from Explorer onto the list.
+  const dropOver = useDropList(
+    'batch',
+    (paths) => {
+      setResults(null);
+      setFiles((cur) => [...cur, ...paths.filter((p) => !cur.includes(p))]);
+    },
+    { subfolders: true, enabled: open && !running },
+  );
+
   const protectStep = steps.find((s) => s.kind === 'protect');
   const seqProblem = sequenceProblem(steps) ?? (protectStep && protectStep.kind === 'protect' && protectStep.userPassword !== seqPw2 ? 'The passwords differ.' : null);
   const job = (): BatchOp | ActionSequence | null =>
@@ -213,6 +225,7 @@ export function BatchModal() {
             <FilePlus2 size={13} /> Add PDFs…
           </Button>
         </div>
+        <div data-drop-list="batch" className={cn('rounded-md', dropOver && 'ring-2 ring-brand-500')}>
         {files.length ? (
           <ul className="max-h-36 overflow-auto rounded-md border border-app text-[12px]" data-testid="batch-files">
             {files.map((f) => {
@@ -236,8 +249,9 @@ export function BatchModal() {
             })}
           </ul>
         ) : (
-          <p className="rounded-md border border-dashed border-app px-3 py-4 text-center text-[12px] text-muted">No files yet. Add the PDFs to process.</p>
+          <p className="rounded-md border border-dashed border-app px-3 py-4 text-center text-[12px] text-muted">No files yet. Add the PDFs to process, or drag PDFs and folders here.</p>
         )}
+        </div>
       </div>
       {mode === 'watch' ? null : mode === 'single' ? (
         <>

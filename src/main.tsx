@@ -68,6 +68,8 @@ void (async () => {
     i18n: await import('./lib/i18n'),
     anaf: await import('./actions/anaf'),
     customize: (await import('./store/customize')).useCustomize,
+    // Drops: `dnd.e2eDropPaths(paths, { x, y })` stands in for files dragged from Explorer.
+    dnd: await import('./actions/dnd'),
     // Closes this window without asking (a test closing a window it opened).
     closeWindow: async () => {
       store.usePDFStore.setState({ dirty: false });

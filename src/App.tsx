@@ -35,7 +35,7 @@ export default function App() {
   const inspectorOpen = usePDFStore((s) => s.inspectorOpen);
   const theme = usePDFStore((s) => s.theme);
   const [fontsReady, setFontsReady] = useState(false);
-  const dragging = useFileDrop();
+  useFileDrop();
   const presentation = usePDFStore((s) => s.presentation);
   const fullscreen = usePDFStore((s) => s.fullscreen);
   const split = useSplit((s) => s.open);
@@ -72,6 +72,8 @@ export default function App() {
       void ensurePrintWatcher();
       maybeAutoCheck();
       void import('@/actions/automation').then((m) => m.restartWatching());
+      // A crash report from an earlier run: offered once for reporting (never sent by itself).
+      void import('@/actions/report').then((m) => m.offerCrashReport());
       // Crash recovery: offer what an earlier run left, then back up from now on.
       void import('@/lib/recovery').then(async (r) => {
         const items = await r.listBackups();
@@ -171,7 +173,7 @@ export default function App() {
         <CommandPalette />
         <Toasts />
         <BusyOverlay />
-        {dragging ? <DropOverlay /> : null}
+        <DropOverlay />
       </div>
     </TooltipProvider>
   );
