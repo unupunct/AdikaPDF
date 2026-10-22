@@ -534,8 +534,11 @@ function walkPageTree(context: PDFContext, rootRef: PDFRef): TreeWalk {
       if (!(kidRef instanceof PDFRef) || seen.has(kidRef.toString())) continue;
       seen.add(kidRef.toString());
       const kid = context.lookup(kidRef);
-      if (isPagesNode(kid)) visit(kid, here, depth + 1);
-      else if (isPageDict(kid)) walk.ordered.push({ ref: kidRef, inherited: here });
+      // As pdf.js: inside a reachable tree, /Type /Page or a dictionary without /Kids is a page.
+      if (!(kid instanceof PDFDict)) continue;
+      if (typeOf(kid) !== N('Page') && kid.get(N('Kids')) !== undefined) {
+        if (isPagesNode(kid)) visit(kid, here, depth + 1);
+      } else walk.ordered.push({ ref: kidRef, inherited: here });
     }
   };
   visit(root, {}, 0);
@@ -660,7 +663,9 @@ export async function repairPdf(bytes: Uint8Array): Promise<RepairResult> {
     return out;
   };
   let catalogRef: PDFRef | undefined;
-  if (trailer.root && typeOf(context.lookup(trailer.root)) === N('Catalog')) catalogRef = trailer.root;
+  const root = trailer.root ? context.lookup(trailer.root) : undefined;
+  // The trailer's /Root without /Type (pdf.js accepts it) still is the catalog.
+  if (trailer.root && (typeOf(root) === N('Catalog') || (root instanceof PDFDict && typeOf(root) === undefined && root.get(N('Pages')) !== undefined))) catalogRef = trailer.root;
   if (!catalogRef) {
     const cats = entriesByType('Catalog');
     // Prefer the catalog furthest into the file (latest incremental update).

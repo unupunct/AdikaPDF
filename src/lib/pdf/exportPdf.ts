@@ -1043,6 +1043,27 @@ export async function buildPdf(input: ExportInput, options: ExportOptions = {}):
     redactsByPage.set(o.pageId, list);
   }
 
+  async function foreignDoc(id: string): Promise<PDFDocument> {
+    let foreign = foreignDocs.get(id);
+    if (!foreign) {
+      const src = sources[id];
+      if (!src) throw new ExportError('A merged document is missing.');
+      foreign = await loadEditable(src.bytes, { updateMetadata: false }, src.pageCount || undefined);
+      foreignDocs.set(id, foreign);
+    }
+    return foreign;
+  }
+  async function rasterPage(ref: PageRef, rects: Array<Rect & { fill: string }>): Promise<PDFPage> {
+    if (!options.rasterizeRedactedPage) throw new ExportError('A page of this document could not be read.');
+    const raster = await options.rasterizeRedactedPage(ref, rects);
+    const size = displaySize(ref);
+    const rp = PDFPage.create(doc);
+    rp.setSize(size.width, size.height);
+    const img = raster.format === 'jpeg' ? await doc.embedJpg(raster.bytes) : await doc.embedPng(raster.bytes);
+    rp.drawImage(img, { x: 0, y: 0, width: size.width, height: size.height });
+    return rp;
+  }
+
   const planned: PlannedPage[] = [];
   for (let i = 0; i < pages.length; i++) {
     const ref = pages[i];
@@ -1051,6 +1072,12 @@ export async function buildPdf(input: ExportInput, options: ExportOptions = {}):
       const page = PDFPage.create(doc);
       page.setSize(ref.width, ref.height);
       planned.push({ ref, page, rasterized: false });
+      continue;
+    }
+    // A page pdf.js shows but pdf-lib cannot find (damaged page tree): rebuilt from its rendering.
+    const missing = ref.sourceId === baseSourceId ? !baseOriginal[ref.sourceIndex] : ref.sourceIndex >= (await foreignDoc(ref.sourceId)).getPageCount();
+    if (missing) {
+      planned.push({ ref, page: await rasterPage(ref, redactsByPage.get(ref.id) ?? []), rasterized: true });
       continue;
     }
     if (ref.sourceId === baseSourceId) {
@@ -1062,14 +1089,7 @@ export async function buildPdf(input: ExportInput, options: ExportOptions = {}):
       }
       continue;
     }
-    let foreign = foreignDocs.get(ref.sourceId);
-    if (!foreign) {
-      const src = sources[ref.sourceId];
-      if (!src) throw new ExportError('A merged document is missing.');
-      foreign = await loadEditable(src.bytes, { updateMetadata: false }, src.pageCount || undefined);
-      foreignDocs.set(ref.sourceId, foreign);
-    }
-    const [copy] = await doc.copyPages(foreign, [ref.sourceIndex]);
+    const [copy] = await doc.copyPages(await foreignDoc(ref.sourceId), [ref.sourceIndex]);
     planned.push({ ref, page: copy, rasterized: false });
   }
 
@@ -1142,6 +1162,11 @@ export async function buildPdf(input: ExportInput, options: ExportOptions = {}):
     const redactions = redactsByPage.get(ref.id);
     const replacers = replacersByPage.get(ref.id);
     if (!redactions?.length && !replacers?.length) continue;
+    if (planned[k].rasterized) {
+      // Rebuilt from a rendering above, the boxes burned in.
+      if (replacers?.length) coverReplaced.add(ref.id);
+      continue;
+    }
     const toPdf = pdfBoxes(ref, page);
     const editable = ref.kind === 'source' && !!ref.sourceId;
     if (redactions?.length) {
@@ -1151,13 +1176,7 @@ export async function buildPdf(input: ExportInput, options: ExportOptions = {}):
       if (res?.ok) noteRemoval(page, res);
       if (!res?.ok) {
         if (!options.rasterizeRedactedPage) throw new ExportError('Redaction needs a page rasterizer.');
-        const raster = await options.rasterizeRedactedPage(ref, redactions);
-        const size = displaySize(ref);
-        const rp = PDFPage.create(doc);
-        rp.setSize(size.width, size.height);
-        const img = raster.format === 'jpeg' ? await doc.embedJpg(raster.bytes) : await doc.embedPng(raster.bytes);
-        rp.drawImage(img, { x: 0, y: 0, width: size.width, height: size.height });
-        planned[k] = { ref, page: rp, rasterized: true };
+        planned[k] = { ref, page: await rasterPage(ref, redactions), rasterized: true };
         if (replacers?.length) coverReplaced.add(ref.id);
         continue;
       }
@@ -1577,6 +1596,7 @@ export async function buildIncrementalPdf(input: ExportInput, options: ExportOpt
     doc.registerFontkit(fontkit);
     if (xfaKindOf(doc)) throw new ExportError('XFA forms are saved in full.');
     const docPages = doc.getPages();
+    if (docPages.length < input.pages.length) throw new ExportError('A page of this document could not be read.');
     const prefix = `${baseSourceId}::`;
     const formTouched = Object.keys(input.fieldValues).some((k) => k.startsWith(prefix)) && applyFieldValues(doc, input.fieldValues, baseSourceId);
     const ctx: DrawContext = { doc, fonts: new Map(), fontTexts: collectFontTexts(input.objects), images: new Map(), opts, fieldFont: null, fieldNames: [], fieldObjects: [] };

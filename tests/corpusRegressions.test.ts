@@ -4,6 +4,8 @@ import { PDFDocument } from 'pdf-lib';
 import * as pdfjs from 'pdfjs-dist/legacy/build/pdf.mjs';
 import { editableCopy, loadEditable, pdfLibProblem } from '@/lib/pdf/editable';
 import { buildIncrementalPdf, buildPdf, incrementalBlocker } from '@/lib/pdf/exportPdf';
+import { analyzePageText } from '@/lib/pdf/textRemoval';
+import { findTextMatches, queryFinder } from '@/lib/pdf/textSearch';
 import type { PageRef, SourceDoc } from '@/types';
 import { loadFont, measure, rasterize } from './helpers/redaction';
 import { rawPdf, stream } from './helpers/rawPdf';
@@ -110,5 +112,60 @@ describe('incremental save of an XFA form', () => {
     ]);
     const src: SourceDoc = { id: 's', name: 'a.pdf', bytes, pageCount: 1, original: true };
     expect(incrementalBlocker({ sources: { s: src }, pages: refs(src, 1), objects: [], fieldValues: {} })).toMatch(/XFA/);
+  });
+});
+
+describe('a page pdf.js shows but pdf-lib cannot parse', () => {
+  // /Contents is a direct stream (not allowed): pdf-lib drops the page object, pdf.js still draws it.
+  const s = 'BT /F1 24 Tf 20 100 Td (Direct) Tj ET';
+  const bytes = rawPdf([
+    '<< /Type /Catalog /Pages 2 0 R >>',
+    '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+    `<< /Type /Page /Contents << /Length ${s.length} >>\nstream\n${s}\nendstream\n/Parent 2 0 R /MediaBox [0 0 200 200] /Resources << /Font << /F1 << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> >> >> >>`,
+  ]);
+
+  it('is saved from its rendering instead of failing', async () => {
+    expect(await pdfjsPages(bytes)).toEqual(['Direct']);
+    const src: SourceDoc = { id: 's', name: 'a.pdf', bytes, pageCount: 1 };
+    let asked = 0;
+    const out = await buildPdf(
+      { sources: { s: src }, pages: refs(src, 1), objects: [{ id: 'rd', type: 'redact', pageId: 'p0', x: 10, y: 10, width: 50, height: 20, rotation: 0, opacity: 1, fill: '#000000' }], fieldValues: {} },
+      { loadFont, measure, fallbackFonts: null, rasterizeRedactedPage: async (_p, rects) => (asked++, expect(rects).toHaveLength(1), rasterize()) },
+    );
+    const doc = await PDFDocument.load(out);
+    expect(doc.getPageCount()).toBe(1);
+    expect(doc.getPage(0).getSize()).toEqual({ width: 200, height: 200 });
+    // Repaired (the text stays real) or, failing that, rebuilt from the rendering with the box burned in.
+    expect(asked === 1 || (await pdfjsPages(out))[0] === 'Direct').toBe(true);
+  });
+});
+
+describe('more pages in pdf.js than pdf-lib finds', () => {
+  it('the missing page comes from its rendering, the others stay real', async () => {
+    const d = await PDFDocument.create();
+    d.addPage([200, 200]);
+    const src: SourceDoc = { id: 's', name: 'a.pdf', bytes: await d.save(), pageCount: 2 };
+    const asked: number[] = [];
+    const out = await buildPdf({ sources: { s: src }, pages: refs(src, 2), objects: [], fieldValues: {} }, { loadFont, measure, fallbackFonts: null, rasterizeRedactedPage: async (p) => (asked.push(p.sourceIndex), rasterize()) });
+    expect(asked).toEqual([1]);
+    expect((await PDFDocument.load(out)).getPageCount()).toBe(2);
+  });
+});
+
+describe('text drawn with a negative font size (upside down)', () => {
+  const bytes = rawPdf([
+    '<< /Type /Catalog /Pages 2 0 R >>',
+    '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+    `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 300] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>`,
+    stream('BT /F1 -12 Tf 250 150 Td (Negative size) Tj ET'),
+    FONT,
+  ]);
+
+  it('reads as one line of words and is found by search', async () => {
+    const doc = await PDFDocument.load(bytes);
+    expect(analyzePageText(doc, doc.getPage(0)).text).toBe('Negative size');
+    const src: SourceDoc = { id: 's', name: 'a.pdf', bytes, pageCount: 1 };
+    const hits = await findTextMatches(refs(src, 1), { s: src }, queryFinder('Negative'));
+    expect(hits).toHaveLength(1);
   });
 });

@@ -641,7 +641,8 @@ function interpret(doc: PDFDocument, page: PDFPage): Interpretation {
           origin: o,
           dir: [(e[0] - o[0]) / len, (e[1] - o[1]) / len],
           size: Math.hypot(up[0] - o[0], up[1] - o[1]),
-          advance: advance * Math.hypot(mul(Tm, gs.ctm)[0], mul(Tm, gs.ctm)[1]),
+          // Along `dir`, which a negative font size (or horizontal scaling) turns around.
+          advance: advance * Math.sign(gs.fs * gs.Th || 1) * Math.hypot(mul(Tm, gs.ctm)[0], mul(Tm, gs.ctm)[1]),
           font: f.baseName,
           color: gs.fill,
           mode: gs.Tr,

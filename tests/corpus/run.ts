@@ -88,7 +88,11 @@ const out = process.env.CORPUS_OUT!;
 const emit = (o: object) => appendFileSync(out, JSON.stringify(o) + '\n');
 
 class StageTimeout extends Error {}
-class Wrong extends Error {}
+class Wrong extends Error {
+  constructor(message: string, readonly detail?: unknown) {
+    super(message);
+  }
+}
 class Skip extends Error {}
 
 function within<T>(p: Promise<T>, ms = STAGE_MS): Promise<T> {
@@ -143,12 +147,18 @@ function kept(a: string, b: string): number {
 /** A text item's box in display coordinates (top-left origin, page rotation applied). */
 function displayBox(page: PDFPageProxy, it: TextItem) {
   const vp = page.getViewport({ scale: 1 });
-  const [, b, c, , e, f] = it.transform;
-  if (Math.abs(b) > 1e-3 || Math.abs(c) > 1e-3) return null;
-  const h = it.height || Math.abs(it.transform[3]);
+  const [a, b, c, d, e, f] = it.transform;
+  // Text turned by a multiple of 90° (also mirrored by a negative size) only.
+  const flat = Math.abs(b) < 1e-3 && Math.abs(c) < 1e-3;
+  const upright = Math.abs(a) < 1e-3 && Math.abs(d) < 1e-3;
+  if (!flat && !upright) return null;
+  const ul = Math.hypot(a, b) || 1;
+  const vl = Math.hypot(c, d) || 1;
+  const [ux, uy, vx, vy] = [a / ul, b / ul, c / vl, d / vl];
+  const h = it.height || vl;
   const pts = [
-    [e, f - h * 0.2],
-    [e + it.width, f + h * 0.85],
+    [e - vx * h * 0.2, f - vy * h * 0.2],
+    [e + ux * it.width + vx * h * 0.85, f + uy * it.width + vy * h * 0.85],
   ].map(([x, y]) => vp.convertToViewportPoint(x, y));
   const x0 = Math.min(pts[0][0], pts[1][0]);
   const x1 = Math.max(pts[0][0], pts[1][0]);
@@ -178,7 +188,7 @@ async function stage(ctx: FileCtx, name: string, fn: () => Promise<string | void
     return true;
   } catch (e) {
     const status = e instanceof Skip ? 'skip' : e instanceof StageTimeout ? 'timeout' : e instanceof Wrong ? 'wrong' : 'error';
-    emit({ file: ctx.file, stage: name, status, ms: Date.now() - t0, sig: status === 'error' ? signature(e) : (e as Error).message });
+    emit({ file: ctx.file, stage: name, status, ms: Date.now() - t0, sig: status === 'error' ? signature(e) : (e as Error).message, ...(status === 'error' && e instanceof Error ? { stack: e.stack?.split('\n').slice(0, 12).join('\n') } : {}), ...(e instanceof Wrong && e.detail ? { detail: e.detail } : {}) });
     return false;
   }
 }
@@ -366,15 +376,23 @@ async function runFile(file: string, index: number): Promise<void> {
       const page = await doc.getPage(1);
       const items = await pageText(doc, 1);
       const inside = items.filter((it) => {
-        const b = displayBox(page, it);
-        if (!b || !it.str.trim()) return false;
+        if (!displayBox(page, it) || !it.str.trim()) return false;
         // Every letter's centre: what is left of a cut run sits outside the box.
-        const step = b.width / Math.max(1, it.str.length);
-        const cy = b.y + b.height / 2;
-        return [...it.str].some((ch, k) => ch.trim() && b.x + step * (k + 0.5) > rect.x + 1 && b.x + step * (k + 0.5) < rect.x + rect.width - 1 && cy > rect.y + 1 && cy < rect.y + rect.height - 1);
+        const vp = page.getViewport({ scale: 1 });
+        const [a, b, c, d, e, f] = it.transform;
+        const ul = Math.hypot(a, b) || 1;
+        const vl = Math.hypot(c, d) || 1;
+        const h = it.height || vl;
+        const chars = [...it.str];
+        return chars.some((ch, k) => {
+          if (!ch.trim()) return false;
+          const t = (it.width * (k + 0.5)) / chars.length;
+          const [x, y] = vp.convertToViewportPoint(e + (a / ul) * t + (c / vl) * h * 0.33, f + (b / ul) * t + (d / vl) * h * 0.33);
+          return x > rect.x + 1 && x < rect.x + rect.width - 1 && y > rect.y + 1 && y < rect.y + rect.height - 1;
+        });
       });
       await doc.loadingTask.destroy();
-      if (inside.some((it) => squash(it.str).length >= 2 && squash(target.it.str).includes(squash(it.str)))) throw new Wrong('redact: text under the box survived');
+      if (inside.some((it) => squash(it.str).length >= 2 && squash(target.it.str).includes(squash(it.str)))) throw new Wrong('redact: text under the box survived', { rect, target: target.it.str, inside: inside.map((it) => ({ str: it.str, box: displayBox(page, it) })) });
       const rest = text1.length - squash(target.it.str).length;
       const after = squash(itemsText(items));
       if (rest >= 40 && after.length < rest * 0.8) throw new Wrong(`redact: page 1 text around the box lost (${rest} -> ${after.length} chars)`);
