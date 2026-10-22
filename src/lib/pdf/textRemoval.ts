@@ -697,6 +697,18 @@ function interpret(doc: PDFDocument, page: PDFPage): Interpretation {
         Tlm = I;
         positioned = true;
         break;
+      case 'gs': {
+        // A graphics state can set the font too (/Font [font size]).
+        const egs = res?.lookup(PDFName.of('ExtGState'));
+        const st = egs instanceof PDFDict && a[0]?.k === 'name' ? egs.lookup(PDFName.of(a[0].v)) : undefined;
+        const fa = st instanceof PDFDict ? st.lookup(PDFName.of('Font')) : undefined;
+        if (fa instanceof PDFArray && fa.size() >= 2) {
+          gs.font = loadFont(doc, fa.get(0));
+          gs.fontKey = '';
+          gs.fs = num(fa.lookup(1));
+        }
+        break;
+      }
       case 'Tf': {
         const name = a[0]?.k === 'name' ? a[0].v : '';
         let f = fontCache.get(name);
@@ -1318,6 +1330,8 @@ function editSpan(it: Interpretation, remove: Set<number>, e: LineEdit): number[
   });
   if (!R.length) return null;
   const ref = it.glyphs[R[0]].run;
+  // A font set by a graphics state has no resource name to write new text with.
+  if (!ref.key) return null;
   if (R.some((i) => it.glyphs[i].run.key !== ref.key || Math.abs(it.glyphs[i].run.fs - ref.fs) > 1e-3)) return null;
   return R;
 }

@@ -130,7 +130,7 @@ async function run(corpusDir, resultsDir) {
   report(resultsDir);
 }
 
-const STAGES = ['open', 'decrypt', 'save', 'incremental', 'text', 'docx', 'compress', 'pdfa', 'signature', 'pdfua', 'hidden', 'redact', 'search', 'harness'];
+const STAGES = ['open', 'decrypt', 'repair', 'save', 'incremental', 'text', 'docx', 'compress', 'pdfa', 'signature', 'pdfua', 'hidden', 'redact', 'search', 'harness'];
 const BAD = ['error', 'wrong', 'timeout', 'crash'];
 
 function collect(resultsDir) {
@@ -148,7 +148,7 @@ function collect(resultsDir) {
 
 function counts(byFile) {
   const c = Object.fromEntries(STAGES.map((s) => [s, { pass: 0, skip: 0, error: 0, wrong: 0, timeout: 0, crash: 0 }]));
-  for (const r of byFile.values()) for (const [s, l] of Object.entries(r.stages)) c[s][l.status] = (c[s][l.status] ?? 0) + 1;
+  for (const r of byFile.values()) for (const [s, l] of Object.entries(r.stages)) if (c[s]) c[s][l.status] = (c[s][l.status] ?? 0) + 1;
   return c;
 }
 

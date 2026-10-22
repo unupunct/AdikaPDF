@@ -270,6 +270,28 @@ describe('redaction on a page whose CropBox reaches past the MediaBox', () => {
   }
 });
 
+describe('a font set by a graphics state (gs /Font)', () => {
+  it('is measured with that font and size, so redaction removes the text', async () => {
+    const bytes = rawPdf([
+      '<< /Type /Catalog /Pages 2 0 R >>',
+      '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+      `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 300] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> /ExtGState << /GS1 6 0 R >> >> >>`,
+      stream('/F1 4 Tf /GS1 gs BT 20 100 Td (SECRET) Tj 0 100 Td (Public) Tj ET'),
+      FONT,
+      '<< /Type /ExtGState /Font [7 0 R 30] >>',
+      '<< /Type /Font /Subtype /Type1 /BaseFont /Courier >>',
+    ]);
+    const doc = await PDFDocument.load(bytes);
+    const t = analyzePageText(doc, doc.getPage(0));
+    expect(t.glyphs[0].size).toBeCloseTo(30);
+    const src: SourceDoc = { id: 's', name: 'a.pdf', bytes, pageCount: 1 };
+    // "SECRET" in 30 pt Courier: x 20..128, baseline 100 -> display y 172..206.
+    const redact = { id: 'rd', type: 'redact' as const, pageId: 'p0', x: 15, y: 170, width: 120, height: 40, rotation: 0, opacity: 1, fill: '#000000' };
+    const out = await buildPdf({ sources: { s: src }, pages: [{ ...refs(src, 1)[0], width: 300, height: 300 }], objects: [redact], fieldValues: {} }, { loadFont, measure, rasterizeRedactedPage: rasterize, fallbackFonts: null });
+    expect(await pdfjsPages(out)).toEqual(['Public']);
+  });
+});
+
 describe('search on a font the text engine cannot read', () => {
   it('takes the matches from pdf.js when the engine reads other letters', async () => {
     // Glyph names without Unicode meaning: pdf.js recovers such text from the font program, the engine cannot.
