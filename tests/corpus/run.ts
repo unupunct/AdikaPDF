@@ -400,7 +400,7 @@ async function runFile(file: string, index: number): Promise<void> {
       if (inside.some((it) => squash(it.str).length >= 2 && squash(target.it.str).includes(squash(it.str)))) throw new Wrong('redact: text under the box survived', { rect, target: target.it.str, inside: inside.map((it) => ({ str: it.str, box: displayBox(page, it) })) });
       const rest = text1.length - squash(target.it.str).length;
       const after = squash(itemsText(items));
-      if (rest >= 40 && after.length < rest * 0.8) throw new Wrong(`redact: page 1 text around the box lost (${rest} -> ${after.length} chars)`);
+      if (rest >= 40 && after.length < rest * 0.8) throw new Wrong(`redact: page 1 text around the box lost (${rest} -> ${after.length} chars)`, { target: target.it.str, rect, before: itemsText(ctx.page1).slice(0, 400), after: itemsText(items).slice(0, 400) });
     });
   }
 

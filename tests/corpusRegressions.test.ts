@@ -13,6 +13,9 @@ import { findTextMatches, queryFinder } from '@/lib/pdf/textSearch';
 import type { PageRef, SourceDoc } from '@/types';
 import { loadFont, measure, rasterize } from './helpers/redaction';
 import { rawPdf, stream } from './helpers/rawPdf';
+import { encryptFixture } from './helpers/pdfEncryptor';
+import { scanFile } from '@/lib/pdf/repair';
+import { decryptPdf, UnsupportedEncryptionError } from '@/lib/crypto/decrypt';
 
 const tasks: Array<{ destroy(): Promise<void> }> = [];
 afterAll(async () => {
@@ -229,6 +232,25 @@ describe('repair reads what pdf.js reads', () => {
     const fixed = await editableCopy(bytes, 2);
     expect(fixed).not.toBeNull();
     expect((await PDFDocument.load(fixed!)).getPages().map((p) => p.getWidth())).toEqual([200, 300]);
+  });
+});
+
+describe('objects written right after endobj (no line break)', () => {
+  it('are found by the scan (repair, decryption)', () => {
+    const s = '%PDF-1.7\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 200 200]>>endobj\ntrailer<</Root 1 0 R>>\n%%EOF\n';
+    expect(scanFile(new Uint8Array(Buffer.from(s, 'latin1'))).headers.map((h) => h.num)).toEqual([1, 2, 3]);
+  });
+});
+
+describe('decryption that does not produce readable object streams', () => {
+  it('is refused (the file stays read-only) instead of saving garbage', async () => {
+    const d = await PDFDocument.create();
+    d.addPage([200, 200]);
+    const f = await encryptFixture(await d.save({ useObjectStreams: false }), { handler: 'rc4-128', userPassword: '', ownerPassword: 'o', p: -4, objectStreams: true });
+    expect((await decryptPdf(f.bytes, '')).bytes.length).toBeGreaterThan(0);
+    // The same object stream claiming Flate data: after decryption it does not inflate.
+    const bad = new Uint8Array(Buffer.from(Buffer.from(f.bytes).toString('latin1').replace('<< /Type /ObjStm', '<< /Filter /FlateDecode /Type /ObjStm'), 'latin1'));
+    await expect(decryptPdf(bad, '')).rejects.toBeInstanceOf(UnsupportedEncryptionError);
   });
 });
 

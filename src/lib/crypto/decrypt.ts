@@ -605,6 +605,9 @@ export async function decryptPdf(bytes: Uint8Array, password = ''): Promise<{ by
     if (rep instanceof PDFRawStream) s.stream = rep;
   }
   expandObjectStreams(collected, context);
+  // Object streams that do not inflate after decryption: the key or scheme is not what we read, and
+  // saving would write garbage. The file stays read-only instead.
+  if (collected.objStmLost > 0) throw new UnsupportedEncryptionError('Some objects of this PDF could not be decrypted.');
   for (const [n, e] of collected.entries) {
     if (n === encNum || isXref(e.obj)) continue;
     context.assign(PDFRef.of(n, e.gen), e.obj);

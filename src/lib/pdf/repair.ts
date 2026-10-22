@@ -175,12 +175,19 @@ function headerBefore(bytes: Uint8Array, objAt: number): { num: number; gen: num
   while (p >= 0 && isDigit(bytes[p]) && numEnd - p <= 7) p--;
   const numStart = p + 1;
   if (numStart === numEnd || (p >= 0 && isDigit(bytes[p]))) return null;
-  // Anything but a regular letter may precede the number (newline, `>`, garbage…).
-  if (p >= 0 && isRegularLetter(bytes[p])) return null;
+  // Anything but a regular letter may precede the number (newline, `>`, garbage…), or
+  // `endobj` / `endstream` with no space after it (some writers save that way).
+  if (p >= 0 && isRegularLetter(bytes[p]) && !endsWithKeyword(bytes, p + 1, 'endobj') && !endsWithKeyword(bytes, p + 1, 'endstream')) return null;
   const num = readInt(bytes, numStart, numEnd);
   const gen = readInt(bytes, genStart, genEnd);
   if (num <= 0 || num > MAX_OBJECT_NUMBER || gen > 65535) return null;
   return { num, gen, start: numStart };
+}
+
+function endsWithKeyword(bytes: Uint8Array, end: number, word: string): boolean {
+  if (end < word.length) return false;
+  for (let i = 0; i < word.length; i++) if (bytes[end - word.length + i] !== word.charCodeAt(i)) return false;
+  return true;
 }
 
 function readInt(bytes: Uint8Array, from: number, to: number): number {
