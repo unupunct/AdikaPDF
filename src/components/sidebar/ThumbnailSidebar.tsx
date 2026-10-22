@@ -8,6 +8,10 @@ import { cn } from '@/lib/cn';
 import { usePageLabels } from '@/hooks/usePageLabels';
 import { displaySize } from '@/lib/geometry';
 import { visibleRows, VIRTUAL_MIN_PAGES } from '@/lib/pdf/pageSizes';
+import { useDnd } from '@/store/dnd';
+import { useTabs } from '@/store/tabs';
+import { startPageDrag } from '@/actions/dnd';
+import { PAGE_MIME } from '@/hooks/useFileDrop';
 
 const THUMB_WIDTH = 132;
 /** Button padding, gap and label line around the thumbnail, and the margin below an item. */
@@ -18,9 +22,12 @@ export function ThumbnailSidebar() {
   const pages = usePDFStore((s) => s.pages);
   const currentPageId = usePDFStore((s) => s.currentPageId);
   const readOnly = usePDFStore((s) => blockedReason(s, 'pages') !== null);
+  const noCopy = usePDFStore((s) => blockedReason(s, 'copy') !== null);
   const labels = usePageLabels();
-  const [dragId, setDragId] = useState<string | null>(null);
-  const [dropIndex, setDropIndex] = useState<number | null>(null);
+  // Drags are followed window-wide (actions/dnd.ts): pages from this or another tab, files from Explorer.
+  const activeTab = useTabs((s) => s.activeId);
+  const dragId = useDnd((s) => (s.pageDrag?.tabId === activeTab ? s.pageDrag.pageIds[0] : null));
+  const dropIndex = useDnd((s) => (s.active && !s.rejected && s.target?.kind === 'thumbs' ? s.target.index : null));
 
   const store = usePDFStore.getState;
 
@@ -59,17 +66,6 @@ export function ThumbnailSidebar() {
   const before = bands[first]?.top ?? 0;
   const after = last >= 0 && bands[last] ? total - bands[last].top - bands[last].height : 0;
 
-  const onDrop = () => {
-    if (dragId === null || dropIndex === null) return;
-    const ids = pages.map((p) => p.id).filter((id) => id !== dragId);
-    const from = pages.findIndex((p) => p.id === dragId);
-    const target = dropIndex > from ? dropIndex - 1 : dropIndex;
-    ids.splice(target, 0, dragId);
-    store().reorderPages(ids);
-    setDragId(null);
-    setDropIndex(null);
-  };
-
   return (
     <div data-testid="thumbnail-sidebar" className="flex h-full min-h-0 flex-1 flex-col">
       <div className="flex h-9 items-center justify-between border-b border-app px-3 text-[11px] font-semibold uppercase tracking-wide text-muted">
@@ -80,13 +76,7 @@ export function ThumbnailSidebar() {
         ref={scroller}
         onScroll={readView}
         className="flex-1 overflow-y-auto px-2 py-3"
-        onDragOver={(e) => {
-          if (dragId) e.preventDefault();
-        }}
-        onDrop={(e) => {
-          e.preventDefault();
-          onDrop();
-        }}
+        data-drop-area="thumbs"
       >
         {before > 0 ? <div style={{ height: before }} /> : null}
         {pages.slice(first, last + 1).map((page, k) => {
@@ -95,25 +85,17 @@ export function ThumbnailSidebar() {
             <div
               key={page.id}
               style={{ height: bands[i].height }}
-              draggable={!readOnly}
+              data-thumb-index={i}
+              // Reordered here, or copied into another tab's document (drag onto its tab, then into its pages).
+              draggable={!(readOnly && noCopy)}
               onDragStart={(e) => {
-                setDragId(page.id);
-                e.dataTransfer.effectAllowed = 'move';
-                e.dataTransfer.setData('text/x-adika-page', page.id);
-              }}
-              onDragEnd={() => {
-                setDragId(null);
-                setDropIndex(null);
-              }}
-              onDragOver={(e) => {
-                if (!dragId) return;
-                e.preventDefault();
-                const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
-                setDropIndex(e.clientY < r.top + r.height / 2 ? i : i + 1);
+                startPageDrag([page.id]);
+                e.dataTransfer.effectAllowed = 'copyMove';
+                e.dataTransfer.setData(PAGE_MIME, page.id);
               }}
               className="group relative mb-3"
             >
-              {dropIndex === i && dragId ? <div className="absolute -top-2 left-2 right-2 h-0.5 rounded bg-brand-500" /> : null}
+              {dropIndex === i ? <div className="absolute -top-2 left-2 right-2 h-0.5 rounded bg-brand-500" data-testid="thumb-drop-line" /> : null}
               <button
                 type="button"
                 data-testid={`thumb-${i + 1}`}
@@ -150,7 +132,7 @@ export function ThumbnailSidebar() {
           );
         })}
         {after > 0 ? <div style={{ height: after }} /> : null}
-        {dropIndex === pages.length && dragId ? <div className="mx-2 h-0.5 rounded bg-brand-500" /> : null}
+        {dropIndex === pages.length ? <div className="mx-2 h-0.5 rounded bg-brand-500" data-testid="thumb-drop-line" /> : null}
       </div>
     </div>
   );

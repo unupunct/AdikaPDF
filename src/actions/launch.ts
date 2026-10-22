@@ -46,30 +46,31 @@ async function convertFile(path: string): Promise<void> {
     await openPdfPath(path);
     return;
   }
-  if (OFFICE.test(name)) {
-    const bytes = await withBusy(`Converting ${name}…`, () => officeToPdf(path));
-    if (bytes) await (await import('./convert')).deliverPdf(bytes, name, false);
-    return;
-  }
-  // Pictures, e-mails, e-books, XPS, web pages, DXF: always a new PDF (not added to the open document).
-  const bytes = await readFile(path);
+  // Office files, pictures, e-mails, e-books, XPS, web pages, DXF: always a new PDF (not added to the open document).
+  const pdf = await withBusy(`Converting ${name}…`, async () => fileToPdf(name, path, OFFICE.test(name) ? null : await readFile(path)));
+  if (pdf) await (await import('./convert')).deliverPdf(pdf, name, false);
+}
+
+/**
+ * A file converted to PDF bytes (not opened). Office files are converted from
+ * their location on disk, so they need `path`; everything else reads `bytes`.
+ */
+export async function fileToPdf(name: string, path: string | null, bytes: Uint8Array | null): Promise<Uint8Array> {
   const convert = await import('./convert');
   const ext = name.split('.').pop()?.toLowerCase() ?? '';
-  const pdf = await withBusy(`Converting ${name}…`, async () => {
-    if (convert.IMAGE_EXTENSIONS.includes(ext)) {
-      const [{ decodeTiff }, { imageFileToDataUrl }] = await Promise.all([import('@/lib/images'), import('@/lib/objectFactory')]);
-      const images = /^tiff?$/.test(ext) ? decodeTiff(bytes) : [await imageFileToDataUrl(bytes, name)];
-      return convert.imagesToPdf(images, { pageSize: 'a4', orientation: 'auto', marginMm: 10 });
-    }
-    const text = convert.textKind(name);
-    if (text) return convert.textLikeToPdf(bytes, name, path, text, { pageSize: 'A4', landscape: false, marginMm: 15 });
-    if (ext === 'dxf') {
-      const [{ DXF_DEFAULT_OPTIONS, decodeDxf, dxfToPdf }, { loadFontBytes }] = await Promise.all([import('@/lib/pdf/dxf'), import('@/lib/fonts')]);
-      return (await dxfToPdf(decodeDxf(bytes), { ...DXF_DEFAULT_OPTIONS, loadFont: () => loadFontBytes({ family: 'sans', bold: false, italic: false }) })).bytes;
-    }
-    return (await convert.documentToPdf(bytes, name, { pageSize: 'A4', landscape: false, marginMm: 15 })).bytes;
-  });
-  if (pdf) await convert.deliverPdf(pdf, name, false);
+  if (OFFICE.test(name) || (convert.OFFICE_EXTENSIONS.includes(ext) && !convert.textKind(name))) {
+    if (!path) throw new Error(`${name}: converting Office files needs the file's location on disk. Use Convert → Office.`);
+    return officeToPdf(path);
+  }
+  const data = bytes ?? (path ? await readFile(path) : new Uint8Array());
+  if (convert.IMAGE_EXTENSIONS.includes(ext)) return convert.imagesToPdf(await convert.decodeImageFile(data, name), { pageSize: 'a4', orientation: 'auto', marginMm: 10 });
+  const text = convert.textKind(name);
+  if (text) return convert.textLikeToPdf(data, name, path, text, { pageSize: 'A4', landscape: false, marginMm: 15 });
+  if (ext === 'dxf') {
+    const [{ DXF_DEFAULT_OPTIONS, decodeDxf, dxfToPdf }, { loadFontBytes }] = await Promise.all([import('@/lib/pdf/dxf'), import('@/lib/fonts')]);
+    return (await dxfToPdf(decodeDxf(data), { ...DXF_DEFAULT_OPTIONS, loadFont: () => loadFontBytes({ family: 'sans', bold: false, italic: false }) })).bytes;
+  }
+  return (await convert.documentToPdf(data, name, { pageSize: 'A4', landscape: false, marginMm: 15 })).bytes;
 }
 
 export async function handleLaunch(req: LaunchRequest): Promise<void> {

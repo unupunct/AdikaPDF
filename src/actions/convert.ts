@@ -30,6 +30,7 @@ import type { DxfToPdfOptions } from '@/lib/pdf/dxf';
 export type { DxfToPdfOptions };
 import { buildPdf } from '@/lib/pdf/exportPdf';
 import { loadFontBytes } from '@/lib/fonts';
+import { CAD_EXTENSIONS, DOCUMENT_EXTENSIONS, IMAGE_EXTENSIONS, OFFICE_EXTENSIONS } from '@/lib/fileKinds';
 
 // ================================================================ helpers
 
@@ -118,29 +119,26 @@ function dataUrlToBytes(src: string): Uint8Array {
   return out;
 }
 
-export const IMAGE_EXTENSIONS = ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp', 'tif', 'tiff', 'svg', 'heic', 'heif'];
-export const DOCUMENT_EXTENSIONS = ['epub', 'eml', 'mht', 'mhtml', 'msg', 'xps', 'oxps'];
-export const CAD_EXTENSIONS = ['dxf'];
+export { IMAGE_EXTENSIONS, DOCUMENT_EXTENSIONS, CAD_EXTENSIONS, OFFICE_EXTENSIONS };
+
+/** The pictures in an image file (a TIFF or HEIC file can hold several). */
+export async function decodeImageFile(bytes: Uint8Array, name: string): Promise<Array<{ src: string; width: number; height: number }>> {
+  if (/\.tiff?$/i.test(name)) return decodeTiff(bytes);
+  if (/\.hei[cf]$/i.test(name)) {
+    const { decodeHeic } = await import('@/lib/images/heic');
+    return decodeHeic(bytes);
+  }
+  return [await imageFileToDataUrl(bytes, name)];
+}
 
 export async function pickImagesAsDataUrls(): Promise<Array<{ src: string; width: number; height: number; name: string }>> {
   const files = await pickFiles([{ name: 'Images', extensions: IMAGE_EXTENSIONS }], true);
   const out: Array<{ src: string; width: number; height: number; name: string }> = [];
-  for (const f of files) {
-    if (/\.tiff?$/i.test(f.name)) {
-      for (const p of decodeTiff(f.bytes)) out.push({ ...p, name: f.name });
-    } else if (/\.hei[cf]$/i.test(f.name)) {
-      const { decodeHeic } = await import('@/lib/images/heic');
-      for (const p of await decodeHeic(f.bytes)) out.push({ ...p, name: f.name });
-    } else {
-      out.push({ ...(await imageFileToDataUrl(f.bytes, f.name)), name: f.name });
-    }
-  }
+  for (const f of files) for (const p of await decodeImageFile(f.bytes, f.name)) out.push({ ...p, name: f.name });
   return out;
 }
 
 // ================================================================ import: office / html / text
-
-export const OFFICE_EXTENSIONS = ['doc', 'docx', 'docm', 'dotx', 'rtf', 'odt', 'xls', 'xlsx', 'xlsm', 'xlsb', 'csv', 'ods', 'ppt', 'pptx', 'pptm', 'ppsx', 'odp'];
 
 export async function importOfficeDocuments(append: boolean): Promise<void> {
   const paths = await pickPaths([{ name: 'Office documents', extensions: OFFICE_EXTENSIONS }], true);

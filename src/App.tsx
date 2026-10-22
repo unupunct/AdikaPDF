@@ -35,7 +35,7 @@ export default function App() {
   const inspectorOpen = usePDFStore((s) => s.inspectorOpen);
   const theme = usePDFStore((s) => s.theme);
   const [fontsReady, setFontsReady] = useState(false);
-  const dragging = useFileDrop();
+  useFileDrop();
   const presentation = usePDFStore((s) => s.presentation);
   const fullscreen = usePDFStore((s) => s.fullscreen);
   const split = useSplit((s) => s.open);
@@ -171,7 +171,7 @@ export default function App() {
         <CommandPalette />
         <Toasts />
         <BusyOverlay />
-        {dragging ? <DropOverlay /> : null}
+        <DropOverlay />
       </div>
     </TooltipProvider>
   );
