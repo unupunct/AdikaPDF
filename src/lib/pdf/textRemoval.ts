@@ -26,6 +26,7 @@ import {
 import { Font as StdFont } from '@pdf-lib/standard-fonts';
 import { STD_ALIASES, glyphNameToUnicode, parseToUnicode, standardMaps, streamBytes } from './fontEncoding';
 import { fontCodes, type FontStyle } from './fontCodes';
+import { viewBox } from './viewBox';
 
 export { parseToUnicode };
 
@@ -1042,7 +1043,7 @@ export function removeGlyphs(doc: PDFDocument, page: PDFPage, boxes: Box[], mode
     if (boxes.some((b) => inside(b, g.cx, g.cy) || (mode === 'redact' && coveredFraction(g.box, b) >= 0.2))) remove.add(i);
   });
 
-  const crop = page.getCropBox();
+  const crop = viewBox(page);
   const bounds = { x0: crop.x, y0: crop.y, x1: crop.x + crop.width, y1: crop.y + crop.height };
   const fallbackKeys = new Map<PDFRef, string>();
   const fallbackKey = (f: FallbackFont) => {

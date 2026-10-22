@@ -6,5 +6,21 @@
     "hu": "A dokumentum egyik oldalát nem sikerült beolvasni.",
     "it": "Non è stato possibile leggere una pagina di questo documento.",
     "es": "No se ha podido leer una página de este documento."
+  },
+  "1 page had no page size; US Letter was assumed.": {
+    "ro": "O pagină nu avea dimensiune; s-a presupus formatul US Letter.",
+    "de": "1 Seite hatte keine Seitengröße; US Letter wurde angenommen.",
+    "fr": "1 page n’avait pas de format ; le format US Letter a été retenu.",
+    "hu": "1 oldalnak nem volt mérete; US Letter méretet feltételeztünk.",
+    "it": "1 pagina non aveva un formato; è stato usato US Letter.",
+    "es": "1 página no tenía tamaño; se ha supuesto US Letter."
+  },
+  "{0} pages had no page size; US Letter was assumed.": {
+    "ro": "{0} pagini nu aveau dimensiune; s-a presupus formatul US Letter.",
+    "de": "{0} Seiten hatten keine Seitengröße; US Letter wurde angenommen.",
+    "fr": "{0} pages n’avaient pas de format ; le format US Letter a été retenu.",
+    "hu": "{0} oldalnak nem volt mérete; US Letter méretet feltételeztünk.",
+    "it": "{0} pagine non avevano un formato; è stato usato US Letter.",
+    "es": "{0} páginas no tenían tamaño; se ha supuesto US Letter."
   }
 }

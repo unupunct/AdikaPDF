@@ -11,6 +11,7 @@ import { analyzePageText, type Box, type Glyph } from './textRemoval';
 import { joinRuns, normalizeForSearch, type SearchOptions } from '@/lib/search';
 import { runRect, type TextRun } from './textGeometry';
 import { loadEditable } from './editable';
+import { viewBox } from './viewBox';
 
 export type Range = [number, number];
 export type Finder = (text: string) => Range[];
@@ -114,7 +115,7 @@ function engineSearch(doc: PDFDocument, ref: PageRef, finder: Finder): { matches
   const page = doc.getPage(ref.sourceIndex);
   const t = analyzePageText(doc, page);
   if (t.partial) return null;
-  const b = page.getCropBox();
+  const b = viewBox(page);
   const inv = invert(displayToPdfMatrix(totalRotation(ref), { x: b.x, y: b.y, width: b.width, height: b.height }));
   const lin: Matrix = [inv[0], inv[1], inv[2], inv[3], 0, 0];
   const out: TextMatch[] = [];

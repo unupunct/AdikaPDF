@@ -111,6 +111,7 @@ import { pressureWidth } from '@/lib/objectFactory';
 const LAYERED = new Set<EditorObject['type']>(['text', 'image', 'signature', 'rect', 'ellipse', 'highlight', 'line', 'arrow', 'pen', 'vector']);
 import { calcOrder, calculate, displayValue, parseNumber } from '@/lib/formLogic';
 import type { FieldValue } from '@/store/usePDFStore';
+import { viewBox } from './viewBox';
 
 export interface ExportInput {
   sources: Record<string, SourceDoc>;
@@ -232,7 +233,7 @@ export function setPageOrder(doc: PDFDocument, pages: PDFPage[]): void {
 }
 
 function visibleBox(page: PDFPage): Rect {
-  const b = page.getCropBox();
+  const b = viewBox(page);
   return { x: b.x, y: b.y, width: b.width, height: b.height };
 }
 

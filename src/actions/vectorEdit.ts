@@ -8,6 +8,7 @@ import { blockedReason, usePDFStore } from '@/store/usePDFStore';
 import { uid } from '@/lib/uid';
 import { displayToPdfMatrix, totalRotation, type Matrix } from '@/lib/geometry';
 import type { PageRef, VectorObject } from '@/types';
+import { viewBox } from '@/lib/pdf/viewBox';
 
 function invert(m: Matrix): Matrix {
   const [a, b, c, d, e, f] = m;
@@ -31,7 +32,7 @@ export async function liftVector(page: PageRef, x: number, y: number): Promise<b
   const [{ PDFDocument }, { vectorPaths, removePath, svgPath }, { dropUnreachableObjects }] = await Promise.all([import('pdf-lib'), import('@/lib/pdf/vectorEdit'), import('@/lib/pdf/prune')]);
   const doc = await PDFDocument.load(src.bytes, { updateMetadata: false });
   const pdfPage = doc.getPage(page.sourceIndex);
-  const box = pdfPage.getCropBox();
+  const box = viewBox(pdfPage);
   const inv = invert(displayToPdfMatrix(totalRotation(page), { x: box.x, y: box.y, width: box.width, height: box.height }));
   const toDisplay = (px: number, py: number): [number, number] => [px * inv[0] + py * inv[2] + inv[4], px * inv[1] + py * inv[3] + inv[5]];
   let paths;

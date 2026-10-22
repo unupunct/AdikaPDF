@@ -239,6 +239,37 @@ describe('more pages in pdf.js than pdf-lib finds', () => {
   });
 });
 
+describe('redaction on a page whose CropBox reaches past the MediaBox', () => {
+  for (const [name, boxes] of [
+    ['CropBox larger than the MediaBox', '/MediaBox [0 0 200 200] /CropBox [0 0 1000 1000]'],
+    ['empty CropBox', '/MediaBox [0 0 200 200] /CropBox [0 0 0 0]'],
+    ['no MediaBox (US Letter)', ''],
+  ] as const) {
+    it(`${name}: the box lands where pdf.js shows the text`, async () => {
+      const bytes = rawPdf([
+        '<< /Type /Catalog /Pages 2 0 R >>',
+        '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+        `<< /Type /Page /Parent 2 0 R ${boxes} /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>`,
+        stream('BT /F1 12 Tf 20 100 Td (SECRET) Tj 0 50 Td (Public) Tj ET'),
+        FONT,
+      ]);
+      const task = pdfjs.getDocument({ data: bytes.slice(), verbosity: 0 });
+      tasks.push(task);
+      const page = await (await task.promise).getPage(1);
+      const [x0, y0, x1, y1] = page.view;
+      const vp = page.getViewport({ scale: 1 });
+      // Display box of "SECRET" (baseline 100, 12 pt) as the viewer computes it.
+      const [ax, ay] = vp.convertToViewportPoint(18, 97);
+      const [bx, by] = vp.convertToViewportPoint(70, 112);
+      const src: SourceDoc = { id: 's', name: 'a.pdf', bytes, pageCount: 1 };
+      const ref = { ...refs(src, 1)[0], width: x1 - x0, height: y1 - y0 };
+      const redact = { id: 'rd', type: 'redact' as const, pageId: 'p0', x: Math.min(ax, bx), y: Math.min(ay, by), width: Math.abs(bx - ax), height: Math.abs(by - ay), rotation: 0, opacity: 1, fill: '#000000' };
+      const out = await buildPdf({ sources: { s: src }, pages: [ref], objects: [redact], fieldValues: {} }, { loadFont, measure, rasterizeRedactedPage: rasterize, fallbackFonts: null });
+      expect(await pdfjsPages(out)).toEqual(['Public']);
+    });
+  }
+});
+
 describe('search on a font the text engine cannot read', () => {
   it('takes the matches from pdf.js when the engine reads other letters', async () => {
     // Glyph names without Unicode meaning: pdf.js recovers such text from the font program, the engine cannot.

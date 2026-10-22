@@ -56,8 +56,8 @@ const MAX_OBJSTM_OBJECTS = 100_000;
 const TRAILER_WINDOW = 64 * 1024;
 /** Depth limit when walking /Parent chains or page trees. */
 const MAX_TREE_DEPTH = 256;
-/** Default MediaBox (A4 portrait, in points). */
-const A4: [number, number, number, number] = [0, 0, 595.28, 841.89];
+/** Default MediaBox: US Letter, as pdf.js shows a page without one. */
+const LETTER: [number, number, number, number] = [0, 0, 612, 792];
 
 const INHERITABLE = ['Resources', 'MediaBox', 'CropBox', 'Rotate'] as const;
 /** Catalog entries carried over from a surviving original catalog. */
@@ -751,7 +751,7 @@ export async function repairPdf(bytes: Uint8Array): Promise<RepairResult> {
       else if (own !== undefined) page.delete(N(key));
     }
     if (!(page.lookup(N('MediaBox')) instanceof PDFArray)) {
-      page.set(N('MediaBox'), context.obj(A4));
+      page.set(N('MediaBox'), context.obj(LETTER));
       defaultedMediaBox++;
     }
     if (page.get(N('Resources')) === undefined) page.set(N('Resources'), context.obj({}));
@@ -817,7 +817,7 @@ export async function repairPdf(bytes: Uint8Array): Promise<RepairResult> {
   if (pagesMissingResources > 0) {
     notes.push(`${plural(pagesMissingResources, 'page references', 'pages reference')} fonts or images that were lost; they may render partially.`);
   }
-  if (defaultedMediaBox > 0) notes.push(`${plural(defaultedMediaBox, 'page had', 'pages had')} no page size; A4 was assumed.`);
+  if (defaultedMediaBox > 0) notes.push(`${plural(defaultedMediaBox, 'page had', 'pages had')} no page size; US Letter was assumed.`);
   const brokenObjects = collected.damaged + collected.truncatedStreams + collected.objStmLost;
   if (brokenObjects > 0) notes.push(`${plural(brokenObjects, 'damaged object was', 'damaged objects were')} skipped.`);
   if (collected.objStmExpanded > 0) notes.push(`${plural(collected.objStmExpanded, 'object stream was', 'object streams were')} unpacked.`);
