@@ -221,6 +221,35 @@ describe('more pages in pdf.js than pdf-lib finds', () => {
   });
 });
 
+describe('search on a font the text engine cannot read', () => {
+  it('takes the matches from pdf.js when the engine reads other letters', async () => {
+    // Glyph names without Unicode meaning: pdf.js recovers such text from the font program, the engine cannot.
+    const bytes = rawPdf([
+      '<< /Type /Catalog /Pages 2 0 R >>',
+      '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+      `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 300] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>`,
+      stream('BT /F1 12 Tf 20 100 Td (ABCDEF) Tj ET'),
+      '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding << /Differences [65 /g1 /g2 /g3 /g4 /g5 /g6] >> >>',
+    ]);
+    const src: SourceDoc = { id: 's', name: 'a.pdf', bytes, pageCount: 1 };
+    const run = { str: 'Secret', origin: [20, 200] as [number, number], dir: [1, 0] as [number, number], size: 12, width: 40, fontName: 'f', fontFamily: null, bold: false, italic: false };
+    const hits = await findTextMatches(refs(src, 1), { s: src }, queryFinder('Secret'), async () => [run]);
+    expect(hits).toHaveLength(1);
+    expect(hits[0].exact).toBe(false);
+    // Where both read the same letters, the engine's exact positions stay.
+    const plain = rawPdf([
+      '<< /Type /Catalog /Pages 2 0 R >>',
+      '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+      `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 300] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>`,
+      stream('BT /F1 12 Tf 20 100 Td (Secret) Tj ET'),
+      FONT,
+    ]);
+    const src2: SourceDoc = { id: 's', name: 'a.pdf', bytes: plain, pageCount: 1 };
+    const exact = await findTextMatches(refs(src2, 1), { s: src2 }, queryFinder('Secret'), async () => [run]);
+    expect(exact.map((h) => h.exact)).toEqual([true]);
+  });
+});
+
 describe('text drawn with a negative font size (upside down)', () => {
   const bytes = rawPdf([
     '<< /Type /Catalog /Pages 2 0 R >>',

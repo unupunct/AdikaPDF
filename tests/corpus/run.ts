@@ -141,7 +141,7 @@ function kept(a: string, b: string): number {
     const n = counts.get(ch) ?? 0;
     if (n > 0) (hit++, counts.set(ch, n - 1));
   }
-  return hit / a.length;
+  return hit / [...a].length;
 }
 
 /** A text item's box in display coordinates (top-left origin, page rotation applied). */
@@ -402,10 +402,20 @@ async function runFile(file: string, index: number): Promise<void> {
   const word = ctx.page1.flatMap((i) => i.str.split(/\s+/)).find((w) => /^[A-Za-z]{5,}$/.test(w));
   if (word) {
     await stage(ctx, 'search', async () => {
-      let fellBack = false;
-      const hits = await findTextMatches(ctx.pages.slice(0, 1), { src: ctx.source! }, queryFinder(word), async () => ((fellBack = true), []));
-      if (fellBack) return 'pdf.js fallback';
-      if (!hits.length) throw new Wrong(`search: "${word}" not found by the text engine`);
+      // As pageTextRuns (the app's fallback): pdf.js runs of page 1 in display space.
+      const vp = page1.getViewport({ scale: 1 });
+      const runs = ctx.page1
+        .filter((it) => it.str.length > 0)
+        .map((it) => {
+          const [a, b, c, d, e, f] = it.transform;
+          const o = vp.convertToViewportPoint(e, f);
+          const al = vp.convertToViewportPoint(e + a, f + b);
+          const len = Math.hypot(al[0] - o[0], al[1] - o[1]) || 1;
+          return { str: it.str, origin: [o[0], o[1]] as [number, number], dir: [(al[0] - o[0]) / len, (al[1] - o[1]) / len] as [number, number], size: Math.hypot(c, d) || 10, width: it.width, fontName: it.fontName, fontFamily: null, bold: false, italic: false };
+        });
+      const hits = await findTextMatches(ctx.pages.slice(0, 1), { src: ctx.source! }, queryFinder(word), async () => runs);
+      if (!hits.length) throw new Wrong(`search: "${word}" not found`);
+      if (!hits[0].exact) return 'pdf.js runs';
     });
   }
   await pdf.loadingTask.destroy();
