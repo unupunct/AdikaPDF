@@ -1,6 +1,6 @@
 // Small synthetic reproductions of failures found by the corpus run (tests/corpus).
 import { afterAll, describe, expect, it } from 'vitest';
-import { PDFDocument } from 'pdf-lib';
+import { PDFDict, PDFDocument, PDFName } from 'pdf-lib';
 import { deflateSync } from 'node:zlib';
 import * as pdfjs from 'pdfjs-dist/legacy/build/pdf.mjs';
 import { editableCopy, loadEditable, pdfLibProblem } from '@/lib/pdf/editable';
@@ -114,15 +114,26 @@ describe('incremental save of a file whose cross-reference table is gone', () =>
 });
 
 describe('incremental save of an XFA form', () => {
-  it('is blocked up front (a full save), not refused while saving', () => {
-    const bytes = rawPdf([
-      '<< /Type /Catalog /Pages 2 0 R /AcroForm << /Fields [] /XFA 4 0 R >> >>',
-      '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
-      '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 200] >>',
-      stream('<xdp:xdp xmlns:xdp="http://ns.adobe.com/xdp/"></xdp:xdp>'),
-    ]);
-    const src: SourceDoc = { id: 's', name: 'a.pdf', bytes, pageCount: 1, original: true };
-    expect(incrementalBlocker({ sources: { s: src }, pages: refs(src, 1), objects: [], fieldValues: {} })).toMatch(/XFA/);
+  const bytes = rawPdf([
+    '<< /Type /Catalog /Pages 2 0 R /AcroForm << /Fields [] /XFA 4 0 R >> >>',
+    '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 200] >>',
+    stream('<xdp:xdp xmlns:xdp="http://ns.adobe.com/xdp/"></xdp:xdp>'),
+  ]);
+  const src: SourceDoc = { id: 's', name: 'a.pdf', bytes, pageCount: 1, original: true };
+
+  it('filled-in values are blocked up front (a full save), not refused while saving', () => {
+    expect(incrementalBlocker({ sources: { s: src }, pages: refs(src, 1), objects: [], fieldValues: { 's::name': 'x' } })).toMatch(/XFA/);
+  });
+
+  it('comments are appended and the XFA stays', async () => {
+    const note = { id: 'n', type: 'note' as const, pageId: 'p0', x: 10, y: 10, width: 20, height: 20, rotation: 0, opacity: 1, text: 'on xfa', color: '#ffd400', author: 'a', createdAt: '2026-01-01T00:00:00Z', modifiedAt: '2026-01-01T00:00:00Z' };
+    const input = { sources: { s: src }, pages: refs(src, 1), objects: [note], fieldValues: {} };
+    expect(incrementalBlocker(input)).toBeNull();
+    const out = await buildIncrementalPdf(input, { loadFont, measure });
+    expect(Buffer.from(out.subarray(0, bytes.length)).equals(Buffer.from(bytes))).toBe(true);
+    const doc = await PDFDocument.load(out);
+    expect(doc.catalog.lookup(PDFName.of('AcroForm'), PDFDict).get(PDFName.of('XFA'))).toBeDefined();
   });
 });
 

@@ -1605,8 +1605,8 @@ export function incrementalBlocker(input: ExportInput, meta?: import('@/store/us
   // An encrypted file is updated with objects encrypted like its own; one Adika could not decrypt is not.
   if (src.password && !src.encryption) return 'The document is encrypted.';
   if (removingProtection) return 'The password protection is being removed.';
-  // An XFA form (its AcroForm names /XFA; in an object stream it is found when saving).
-  if (hasToken(src.bytes, '/XFA')) return 'XFA forms are saved in full.';
+  // Values of an XFA form (its AcroForm names /XFA; in an object stream it is found when saving); comments alone are fine.
+  if (Object.keys(input.fieldValues).some((k) => k.startsWith(`${base}::`)) && hasToken(src.bytes, '/XFA')) return 'XFA forms are saved in full.';
   if (input.pages.length !== src.pageCount || input.pages.some((p, i) => p.kind !== 'source' || p.sourceId !== base || p.sourceIndex !== i || p.userRotation !== 0)) {
     return 'Pages were added, removed, moved or rotated.';
   }
@@ -1647,10 +1647,11 @@ export async function buildIncrementalPdf(input: ExportInput, options: ExportOpt
   const encrypted = src.encryption ? { plain: src.bytes, unlocked: src.encryption.unlocked } : undefined;
   const res = await incrementalUpdate(src.encryption?.file ?? src.bytes, async (doc) => {
     doc.registerFontkit(fontkit);
-    if (xfaKindOf(doc)) throw new ExportError('XFA forms are saved in full.');
     const docPages = doc.getPages();
     if (docPages.length < input.pages.length) throw new ExportError('A page of this document could not be read.');
     const prefix = `${baseSourceId}::`;
+    // Filled-in XFA values also go into its datasets, which only a full save writes; comments do not touch the form.
+    if (Object.keys(input.fieldValues).some((k) => k.startsWith(prefix)) && xfaKindOf(doc)) throw new ExportError('XFA forms are saved in full.');
     const formTouched = Object.keys(input.fieldValues).some((k) => k.startsWith(prefix)) && applyFieldValues(doc, input.fieldValues, baseSourceId);
     const ctx: DrawContext = { doc, fonts: new Map(), fontTexts: collectFontTexts(input.objects), images: new Map(), opts, fieldFont: null, fieldNames: [], fieldObjects: [] };
     if (formTouched) ctx.fieldFont = await doc.embedFont(await opts.loadFont({ family: 'sans', bold: false, italic: false }), { subset: false });
