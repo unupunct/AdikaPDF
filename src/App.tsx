@@ -13,6 +13,7 @@ import { Toasts, BusyOverlay, DropOverlay } from '@/components/shell/Overlays';
 import { Modals } from '@/components/modals/Modals';
 import { CommandPalette } from '@/components/shell/CommandPalette';
 import { HelpHost } from '@/components/help/HelpHost';
+import { FirstRunWelcome } from '@/components/shell/FirstRunWelcome';
 import { SplitView, useSplit } from '@/components/viewer/SplitView';
 import { useShortcuts } from '@/hooks/useShortcuts';
 import { useFileDrop } from '@/hooks/useFileDrop';
@@ -167,6 +168,7 @@ export default function App() {
         {presentation && hasDoc ? <PresentationView /> : null}
         {hasDoc ? <SelectionToolbar /> : null}
         <Modals />
+        <FirstRunWelcome />
         <HelpHost />
         <CommandPalette />
         <Toasts />

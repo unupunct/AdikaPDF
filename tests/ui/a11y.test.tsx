@@ -13,6 +13,8 @@ import { TabBar } from '@/components/shell/TabBar';
 import { usePDFStore, type ModalId } from '@/store/usePDFStore';
 import { HelpHost } from '@/components/help/HelpHost';
 import { useHelp } from '@/store/help';
+import { useUiMode } from '@/store/uiMode';
+import { FirstRunWelcome } from '@/components/shell/FirstRunWelcome';
 import { axeProblems, describeProblems } from './axe';
 
 // The dialogs most people use (and the larger forms), opened without a document.
@@ -33,7 +35,10 @@ const DIALOGS: Array<{ id: ModalId; name: RegExp }> = [
 ];
 
 beforeEach(() => {
-  act(() => usePDFStore.setState({ modal: null, pages: [], ribbonTab: 'home' }));
+  act(() => {
+    usePDFStore.setState({ modal: null, pages: [], ribbonTab: 'home' });
+    useUiMode.setState({ mode: 'full', peek: null, welcome: false });
+  });
 });
 
 describe('accessibility (axe, serious and critical)', () => {
@@ -99,6 +104,38 @@ describe('accessibility (axe, serious and critical)', () => {
       if (problems.length) all.push(`[${t.id}]\n${describeProblems(problems)}`);
     }
     expect(all.join('\n')).toBe('');
+  });
+
+  it('simple ribbon, a full tab shown from it, and a collapsed group', async () => {
+    act(() => useUiMode.setState({ mode: 'simple' }));
+    render(
+      <TooltipProvider>
+        <TopBar />
+        <Ribbon />
+      </TooltipProvider>,
+    );
+    await screen.findByRole('region', { name: 'Simple ribbon' });
+    let problems = await axeProblems(document.body);
+    expect(problems, describeProblems(problems)).toEqual([]);
+    act(() => {
+      useUiMode.getState().setPeek('organize');
+      usePDFStore.setState({ ribbonTab: 'organize' });
+    });
+    await screen.findByTestId('ribbon-back-simple');
+    problems = await axeProblems(document.body);
+    expect(problems, describeProblems(problems)).toEqual([]);
+  });
+
+  it('first-run welcome', async () => {
+    act(() => useUiMode.setState({ welcome: true }));
+    render(
+      <TooltipProvider>
+        <FirstRunWelcome />
+      </TooltipProvider>,
+    );
+    const dlg = await screen.findByRole('dialog', { name: 'Welcome to Adika PDF Editor' });
+    const problems = await axeProblems(dlg);
+    expect(problems, describeProblems(problems)).toEqual([]);
   });
 
   it('start screen, top bar and status bar', async () => {

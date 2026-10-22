@@ -5,6 +5,7 @@ import { DropdownContent, DropdownItem, DropdownMenu, DropdownSeparator, Dropdow
 import { readCurrentPage, readToEnd, saveLastSnapshot, stopReading, togglePauseReading, useMagnifier, useSnapshot } from '@/actions/readingAids';
 import { useReadAloud } from '@/lib/readAloud';
 import { Big, Group, I, i, Small, Stack, ToolBtn } from './ReaderTabs';
+import { SMALL } from './parts';
 
 const RATES = [0.75, 1, 1.25, 1.5, 2];
 
@@ -16,7 +17,7 @@ function VoiceMenu() {
   return (
     <DropdownMenu>
       <DropdownTrigger asChild>
-        <button type="button" data-testid="btn-voice" title="Voice and speed" className="flex h-[19px] items-center gap-1.5 rounded px-1.5 text-[11.5px] hover-app">
+        <button type="button" data-testid="btn-voice" title="Voice and speed" className={`${SMALL} hover-app`}>
           <AudioLines size={i} className="text-brand-600 dark:text-brand-400" />
           <span className="max-w-[92px] truncate">{current ? current.name.replace(/^Microsoft /, '').split(' - ')[0] : 'Voice'}</span>
           <ChevronDown size={10} />

@@ -1,3 +1,5 @@
+// First: decides simple / full ribbon and the welcome before anything stores a setting.
+import { useUiMode } from './store/uiMode';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App';
@@ -15,12 +17,13 @@ void import('./lib/author').then((m) => m.initAuthor());
 
 // Test hooks for the end-to-end suite: only in dev, or when the desktop app
 // was started with ADIKA_E2E=1.
+const e2eMode: Promise<boolean> = (async () => {
+  if (!('__TAURI_INTERNALS__' in window)) return false;
+  const { invoke } = await import('@tauri-apps/api/core');
+  return invoke<boolean>('e2e_mode').catch(() => false);
+})();
 void (async () => {
-  let enabled = import.meta.env.DEV;
-  if (!enabled && '__TAURI_INTERNALS__' in window) {
-    const { invoke } = await import('@tauri-apps/api/core');
-    enabled = await invoke<boolean>('e2e_mode').catch(() => false);
-  }
+  const enabled = import.meta.env.DEV || (await e2eMode);
   if (!enabled) return;
   const [store, dialogs, document, convert, security, sign, platform, signature, search, email, tabs, print, log, pageTools, modalArgs, readingAids, readAloud, measure, autoScroll, updates] = await Promise.all([
     import('./store/usePDFStore'),
@@ -68,6 +71,7 @@ void (async () => {
     i18n: await import('./lib/i18n'),
     anaf: await import('./actions/anaf'),
     customize: (await import('./store/customize')).useCustomize,
+    uiMode: useUiMode,
     // Closes this window without asking (a test closing a window it opened).
     closeWindow: async () => {
       store.usePDFStore.setState({ dirty: false });
@@ -90,6 +94,8 @@ void deployment
   .catch((e) => console.error('Language loading failed', e))
   .finally(async () => {
     if (await commandLine) return;
+    // End-to-end tests drive the full ribbon and must not meet the welcome.
+    if (await e2eMode) useUiMode.getState().e2eDefaults();
     startDomTranslation();
     createRoot(document.getElementById('root')!).render(
       <StrictMode>

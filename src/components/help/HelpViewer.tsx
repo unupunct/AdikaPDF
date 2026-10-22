@@ -5,7 +5,7 @@
  * English). The page text is already translated: the DOM translator skips it.
  */
 import { useEffect, useMemo, useRef, type MouseEvent } from 'react';
-import { ArrowLeft, ArrowRight, Search } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Search, Sparkles } from 'lucide-react';
 import { Button, Dialog, Input } from '@/components/ui/primitives';
 import { useLang } from '@/lib/i18n';
 import { openExternal } from '@/lib/platform';
@@ -13,6 +13,7 @@ import { buildGuide, groupOf, PAGE_GROUPS, resolveLink, searchGuide, type Guide 
 import { renderGuideHtml } from '@/lib/help/render';
 import { GUIDE_FILES, GUIDE_IMAGES } from '@/lib/help/bundle';
 import { useHelp } from '@/store/help';
+import { useUiMode } from '@/store/uiMode';
 import { cn } from '@/lib/cn';
 
 export function HelpViewer() {
@@ -131,6 +132,18 @@ function HelpDialog({ guide }: { guide: Guide }) {
             )}
           </div>
           {guide.fallback ? <p className="px-2 text-[11px] text-muted">The guide is available in English and Romanian.</p> : null}
+          <Button
+            variant="ghost"
+            size="sm"
+            className="justify-start"
+            onClick={() => {
+              close();
+              useUiMode.getState().openWelcome();
+            }}
+            data-testid="help-welcome"
+          >
+            <Sparkles size={14} /> Welcome screen
+          </Button>
         </div>
         <div className="flex min-h-0 flex-col">
           <div className="mb-2 flex items-center gap-1">

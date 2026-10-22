@@ -14,6 +14,7 @@ import { normalizeForSearch } from '@/lib/search';
 import { originalAttr, translate } from '@/lib/i18n';
 import { cn } from '@/lib/cn';
 import { useTabs } from '@/store/tabs';
+import { runRibbonCommand, useUiMode } from '@/store/uiMode';
 import type { RibbonTab } from '@/types';
 
 export const usePalette = create<{ open: boolean }>()(() => ({ open: false }));
@@ -30,11 +31,6 @@ interface Item {
 
 const fold = (s: string) => normalizeForSearch(s, false);
 
-/** Clicks the button with this label in the visible ribbon. */
-function clickRibbon(label: string) {
-  const btn = [...document.querySelectorAll<HTMLButtonElement>('[data-testid="ribbon"] button[aria-label]')].find((b) => b.getAttribute('aria-label') === label);
-  btn?.click();
-}
 
 function extras(): Item[] {
   const s = usePDFStore.getState();
@@ -51,6 +47,8 @@ function extras(): Item[] {
     mk('about', 'About', 'Version, updates, shortcuts and logs', () => s.openModal('about')),
     mk('newwindow', 'Move to a new window', 'Open this document in a window of its own', () => void import('@/actions/windows').then((m) => m.moveTabToWindow(useTabs.getState().activeId))),
     mk('customize', 'Customize', 'Quick Access toolbar and keyboard shortcuts', () => s.openModal('customize')),
+    mk('welcome', 'Welcome screen', 'Common tasks, interface language, simple or full ribbon', () => useUiMode.getState().openWelcome()),
+    ...(useUiMode.getState().mode === 'simple' ? [mk('fullribbon', 'Full ribbon', 'Show every command, in tabs', () => useUiMode.getState().setMode('full'))] : []),
   ];
 }
 
@@ -87,7 +85,7 @@ export function CommandPalette() {
           if (!label || seen.has(`${tab}:${label}`)) return;
           seen.add(`${tab}:${label}`);
           const en = `${originalAttr(b, 'aria-label') ?? ''} ${originalAttr(b, 'data-tip') ?? ''}`;
-          found.push({ key: `${tab}-${i}`, tab, label, tip: tip === label ? '' : tip, hay: fold(`${label} ${tip} ${en}`), disabled: b.disabled, run: () => clickRibbon(label) });
+          found.push({ key: `${tab}-${i}`, tab, label, tip: tip === label ? '' : tip, hay: fold(`${label} ${tip} ${en}`), disabled: b.disabled, run: () => void runRibbonCommand(tab, (x) => x.getAttribute('aria-label') === label) });
         });
       });
       setItems([...found, ...extras()]);
@@ -116,7 +114,6 @@ export function CommandPalette() {
   const run = (it: Item | undefined) => {
     if (!it || it.disabled) return;
     close();
-    if (it.tab) usePDFStore.getState().setRibbonTab(it.tab);
     window.setTimeout(it.run, 60);
   };
 

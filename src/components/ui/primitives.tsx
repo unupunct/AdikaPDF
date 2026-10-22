@@ -166,9 +166,10 @@ export function DropdownContent({ children, align = 'start' }: { children: React
   );
 }
 
-export function DropdownItem({ children, onSelect, disabled, icon }: { children: React.ReactNode; onSelect: () => void; disabled?: boolean; icon?: React.ReactNode }) {
+export function DropdownItem({ children, onSelect, disabled, icon, testId }: { children: React.ReactNode; onSelect: () => void; disabled?: boolean; icon?: React.ReactNode; testId?: string }) {
   return (
     <DropdownPrimitive.Item
+      data-testid={testId}
       disabled={disabled}
       onSelect={onSelect}
       className="flex cursor-default items-center gap-2 rounded-md px-2 py-1.5 text-[13px] outline-none data-[disabled]:opacity-40 data-[highlighted]:bg-brand-700 data-[highlighted]:text-white"
