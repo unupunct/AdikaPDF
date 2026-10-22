@@ -84,3 +84,57 @@ it('ANAF forms', { timeout: 30 * 60_000 }, async () => {
   }
   writeFileSync(join(DIR, `report-${ENGINE}.json`), JSON.stringify(report, null, 1));
 });
+
+/**
+ * ANAF_PACKAGE=<form file name> ANAF_XML=<declaration XML>: the "PDF + XML +
+ * signature" package Acrobat produces after Validare and Sign — the XML as an
+ * embedded file (incremental update) and a PAdES signature with a throwaway
+ * test certificate. Checks what survives: XFA, the UR3 usage rights, the
+ * attachment, the signature.
+ */
+it('ANAF package (attach XML, sign)', { timeout: 10 * 60_000 }, async () => {
+  const name = process.env.ANAF_PACKAGE;
+  const xmlPath = process.env.ANAF_XML;
+  if (!name || !xmlPath) return;
+  const { incrementalUpdate } = await import('../../src/lib/pdf/incremental');
+  const { signPdf, verifyPdfSignatures } = await import('../../src/lib/crypto/digitalSignature');
+  const { issue, identityOf } = await import('../helpers/sigPki');
+  const { PDFName, PDFString, PDFHexString, PDFDict, PDFArray } = await import('pdf-lib');
+  const original = new Uint8Array(readFileSync(join(DIR, name)));
+  const xml = new Uint8Array(readFileSync(xmlPath));
+  const xmlName = xmlPath.split(/[\\/]/).pop()!.replace(/^out-\w+-\w+-/, '');
+  const attached = await incrementalUpdate(original, (d) => {
+    const ef = d.context.flateStream(xml, { Type: 'EmbeddedFile', Subtype: 'text/xml', Params: { Size: xml.length } });
+    const efRef = d.context.register(ef);
+    const spec = d.context.register(d.context.obj({ Type: 'Filespec', F: PDFString.of(xmlName), UF: PDFHexString.fromText(xmlName), EF: { F: efRef } }));
+    let names = d.catalog.lookup(PDFName.of('Names'));
+    if (!(names instanceof PDFDict)) {
+      names = d.context.obj({});
+      d.catalog.set(PDFName.of('Names'), d.context.register(names as PDFDict));
+    }
+    (names as PDFDict).set(PDFName.of('EmbeddedFiles'), d.context.register(d.context.obj({ Names: [PDFString.of(xmlName), spec] })));
+  });
+  const ca = await issue({ cn: 'Test Root', ca: true, bits: 1024 });
+  const leaf = await issue({ cn: 'POPESCU ION', issuer: ca, bits: 1024 });
+  const signed = await signPdf(attached.bytes, { identity: identityOf(leaf, [ca.cert]), pageIndex: 0, rect: [0, 0, 0, 0], pades: true });
+  const out: Record<string, unknown> = {};
+  const check = async (label: string, bytes: Uint8Array) => {
+    const d = await PDFDocument.load(bytes, { updateMetadata: false });
+    const acro = d.catalog.lookup(PDFName.of('AcroForm'));
+    const names = d.catalog.lookup(PDFName.of('Names'));
+    const ef = names instanceof PDFDict ? names.lookup(PDFName.of('EmbeddedFiles')) : null;
+    out[label] = {
+      size: bytes.length,
+      keepsOriginalBytes: Buffer.from(bytes.subarray(0, original.length)).equals(Buffer.from(original)),
+      xfa: acro instanceof PDFDict && acro.has(PDFName.of('XFA')),
+      needsRendering: d.catalog.has(PDFName.of('NeedsRendering')),
+      ur3: d.catalog.lookup(PDFName.of('Perms')) instanceof PDFDict,
+      embeddedFiles: ef instanceof PDFDict ? ((ef.lookup(PDFName.of('Names')) as PDFArray | undefined)?.size() ?? 0) / 2 : 0,
+    };
+  };
+  await check('attached', attached.bytes);
+  await check('signed', signed);
+  out.signatures = (await verifyPdfSignatures(signed)).map((s) => ({ field: s.fieldName, integrity: s.integrity, wholeFile: s.coversWholeFile, signer: s.signerName }));
+  writeFileSync(join(DIR, `package-${name}`), signed);
+  writeFileSync(join(DIR, 'package-report.json'), JSON.stringify(out, null, 1));
+});
