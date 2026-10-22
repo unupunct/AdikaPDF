@@ -16,7 +16,7 @@ import { useDnd } from '@/store/dnd';
 import { switchTab, tabSlice, useTabs } from '@/store/tabs';
 import { askChoice, askConfirm } from '@/store/useDialogs';
 import { fileKind } from '@/lib/fileKinds';
-import { dropLabel, insertText, NOTHING_SUPPORTED, planDrop, planPageDrop, reorderedIds, type DropDoc, type DropEntry, type DropTarget } from '@/lib/dnd';
+import { dropLabel, NOTHING_SUPPORTED, planDrop, planPageDrop, reorderedIds, type DropDoc, type DropEntry, type DropTarget } from '@/lib/dnd';
 import { isDesktop, readFile } from '@/lib/platform';
 import { uid } from '@/lib/uid';
 import { errorMessage, openPdfBytes, openPdfPath, withBusy } from './document';
@@ -324,8 +324,6 @@ export async function folderPdfs(folders: DroppedFile[], deep: boolean): Promise
 
 // ---------------------------------------------------------------- carrying out file drops
 
-const plural = (n: number, one: string, many: string) => (n === 1 ? one : many);
-
 async function openPdfFile(f: DroppedFile): Promise<boolean> {
   return f.path ? openPdfPath(f.path) : openPdfBytes(await f.read(), f.name);
 }
@@ -372,7 +370,7 @@ export async function dropFiles(files: DroppedFile[], target: DropTarget): Promi
         const s = usePDFStore.getState();
         s.commit((st) => ({ objects: [...st.objects, ...objs] }));
         usePDFStore.setState({ selectedIds: objs.map((o) => o.id), tool: 'select' });
-        s.toast(`Placed ${objs.length} ${plural(objs.length, 'picture', 'pictures')} on the page.`, 'success');
+        s.toast(objs.length === 1 ? 'Placed 1 picture on the page.' : `Placed ${objs.length} pictures on the page.`, 'success');
       }
     }
 
@@ -382,10 +380,16 @@ export async function dropFiles(files: DroppedFile[], target: DropTarget): Promi
       let insert = false;
       if (plan.ask && plan.insertAt !== null) {
         const n = pageFiles.length + pageImages.length;
-        const where = insertText(plan.insertAt, usePDFStore.getState().pages.length);
+        const at = plan.insertAt;
+        const count = usePDFStore.getState().pages.length;
         const choice = await askChoice({
           title: n === 1 ? 'Dropped file' : `Dropped ${n} files`,
-          message: `${where} of this document, or open ${n === 1 ? 'the file' : 'the files'} in a new tab?`,
+          message:
+            at <= 0
+              ? 'Insert the pages at the beginning of this document, or open in a new tab?'
+              : at >= count
+                ? 'Insert the pages at the end of this document, or open in a new tab?'
+                : `Insert the pages after page ${at} of this document, or open in a new tab?`,
           confirmLabel: 'Insert pages here',
           altLabel: 'Open in new tab',
         });
@@ -473,8 +477,10 @@ async function openFolders(folders: DroppedFile[]): Promise<void> {
   const ok = await askConfirm({
     title: 'Open the PDFs in this folder?',
     message: many
-      ? `${folderName} has ${pdfs.length} PDFs. Opening them all takes a while and uses a lot of memory. Open all ${pdfs.length}?`
-      : `Open ${pdfs.length} ${plural(pdfs.length, 'PDF', 'PDFs')} from ${folderName}, each in its own tab?`,
+      ? `The folder has ${pdfs.length} PDFs. Opening them all takes a while and uses a lot of memory. Open all of them, each in its own tab?`
+      : pdfs.length === 1
+        ? 'Open the PDF in this folder?'
+        : `Open the ${pdfs.length} PDFs in this folder, each in its own tab?`,
     confirmLabel: many ? `Open all ${pdfs.length}` : 'Open',
   });
   if (!ok) return;

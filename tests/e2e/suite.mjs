@@ -44,6 +44,7 @@ import { registerBatchSignTests } from './batchsign.part.mjs';
 import { registerSigDesignTests } from './sigdesign.part.mjs';
 import { registerA11yTests } from './a11y.part.mjs';
 import { registerHelpTests } from './help.part.mjs';
+import { registerDndTests } from './dnd.part.mjs';
 
 const only = process.argv.slice(2).filter((a) => !a.startsWith('--'));
 const shots = process.argv.includes('--shots');
@@ -880,6 +881,8 @@ registerSigDesignTests(test, { S, page, open, idle, savedFile, assert, F, setToo
 registerA11yTests(test, { S, page, open, assert, F });
 // Round 15, not yet run against a build.
 registerHelpTests(test, { S, page, open, assert, F });
+// Round 16: not run yet.
+registerDndTests(test, { S, page, open, assert, F, idle, dir });
 
 test('dark mode toggle and welcome after close', async () => {
   await page.click('[data-testid="theme-toggle"]');

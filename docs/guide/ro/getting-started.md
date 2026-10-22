@@ -80,6 +80,20 @@ Adika păstrează automat o copie de siguranță a fiecărui document cu modific
 - Butonul **lună / soare** comută între modul luminos și cel întunecat.
 - Butonul **i** (Despre) arată versiunea, comenzile rapide de la tastatură, actualizările și opțiunile de salvare.
 
+<a id="drag-and-drop"></a>
+
+## Tragere și plasare
+
+Trageți fișiere din Explorer peste Adika. PDF-urile se deschid în file; plasate peste miniaturile paginilor sau peste o pagină, Adika vă întreabă dacă le inserează paginile acolo sau le deschide într-o filă nouă. O imagine plasată pe o pagină este așezată acolo unde ați eliberat-o. Fișierele Office și celelalte fișiere sunt convertite mai întâi în PDF. Trageți miniatura unei pagini peste fila altui document, așteptați să se deschidă, apoi plasați pagina printre miniaturile lui pentru a o copia acolo. Listele din Procesare în lot și Semnarea mai multor fișiere primesc și ele PDF-uri și dosare trase acolo.
+
+<a id="report-a-problem"></a>
+
+## Raportarea unei probleme
+
+În **Despre** (butonul **i**) sau în partea de jos a ajutorului, alegeți **Raportare problemă** sau **Propunere funcție**. Adika vă arată textul pe care îl va pune într-un tichet nou pe GitHub: versiunile Adika și Windows, limba interfeței și dacă Adika este instalată sau portabilă. Documentele, numele fișierelor și dosarele dumneavoastră nu sunt incluse niciodată și nu se trimite nimic până când nu trimiteți dumneavoastră tichetul pe GitHub. **Copiere text** copiază același text, de exemplu pentru departamentul IT, când organizația nu permite deschiderea GitHub.
+
+După o eroare gravă, Adika vă propune **Raportare eroare** la următoarea pornire. Dosarele, numele documentelor și numele dumneavoastră de utilizator Windows sunt eliminate mai întâi din raport; citiți-l, modificați-l dacă doriți, apoi deschideți GitHub. Puteți dezactiva aceste propuneri.
+
 ## Pașii următori
 
 - [Citirea unei e-Facturi primite](efactura-read.md)

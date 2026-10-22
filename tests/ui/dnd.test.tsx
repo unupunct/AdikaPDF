@@ -111,7 +111,7 @@ describe('dropping files', () => {
     fireEvent.dragOver(screen.getByTestId('thumb-1'), { dataTransfer: dt });
     fireEvent.drop(screen.getByTestId('thumb-1'), { dataTransfer: dt });
     const dlg = await screen.findByRole('dialog', { name: 'Dropped file' });
-    expect(dlg.textContent).toContain('Insert pages at the end of this document, or open the file in a new tab?');
+    expect(dlg.textContent).toContain('Insert the pages at the end of this document, or open in a new tab?');
     await user.click(screen.getByRole('button', { name: 'Open in new tab' }));
     await waitFor(() => expect(opened).toEqual(['contract.pdf']));
   });

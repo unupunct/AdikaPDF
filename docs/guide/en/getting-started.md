@@ -78,6 +78,16 @@ Adika keeps an automatic backup of every document with unsaved changes, a few se
 - The **moon / sun** button switches between light and dark mode.
 - The **i** button (About) shows the version, keyboard shortcuts, updates and saving options.
 
+## Drag and drop
+
+Drag files from Explorer onto Adika. PDFs open in tabs; dropped on the page thumbnails or on a page, Adika asks whether to insert their pages there or open them in a new tab. A picture dropped on a page is placed where you let go. Office and other files are converted to PDF first. Drag a page thumbnail onto another document's tab, wait until it opens, then drop the page among its thumbnails to copy it there. The Batch and Sign many files lists also take dropped PDFs and folders.
+
+## Report a problem
+
+In **About** (the **i** button) or at the bottom of the help, choose **Report a problem** or **Suggest a feature**. Adika shows the text it will put into a new GitHub issue: the Adika and Windows versions, the interface language and whether Adika is installed or portable. Your documents, file names and folders are never included, and nothing is sent until you submit the issue on GitHub yourself. **Copy text** copies the same text, for example for your IT department when your organisation does not allow opening GitHub.
+
+After a crash, Adika offers **Report this crash** the next time it starts. Folders, document names and your Windows user name are removed from the report first; read it, change it if you wish, and then open GitHub. You can turn these offers off.
+
 ## Next steps
 
 - [Read a received e-Factura](efactura-read.md)
