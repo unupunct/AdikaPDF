@@ -4,9 +4,9 @@
  * previous one), so everything before stays byte for byte identical and
  * existing digital signatures remain valid.
  */
-import { PDFDocument, PDFName, PDFRef, type PDFObject } from 'pdf-lib';
+import { PDFContext, PDFDocument, PDFName, PDFNumber, PDFRawStream, PDFRef, decodePDFRawStream, type PDFObject } from 'pdf-lib';
 import type { Unlocked } from '@/lib/crypto/decrypt';
-import { scanFile } from './repair';
+import { gatherObjects, scanFile } from './repair';
 
 const enc = new TextEncoder();
 
@@ -38,6 +38,23 @@ function lastXref(bytes: Uint8Array): { offset: number; stream: boolean; size: n
   return { offset, stream, size: sm ? Number(sm[1]) : 0 };
 }
 
+/** Object numbers stored in an object stream, in their order (index = position). */
+function objStmNumbers(stream: PDFRawStream): number[] {
+  try {
+    const data = decodePDFRawStream(stream).decode();
+    const first = stream.dict.get(PDFName.of('First'));
+    const count = stream.dict.get(PDFName.of('N'));
+    if (!(first instanceof PDFNumber) || !(count instanceof PDFNumber)) return [];
+    const head = new TextDecoder('latin1').decode(data.subarray(0, first.asNumber()));
+    const ints = (head.match(/\d+/g) ?? []).map(Number);
+    const out: number[] = [];
+    for (let k = 0; k + 1 < ints.length && out.length < count.asNumber(); k += 2) out.push(ints[k]);
+    return out;
+  } catch {
+    return [];
+  }
+}
+
 export interface IncrementalResult {
   bytes: Uint8Array;
   /** Objects written in the update (new or changed). */
@@ -65,16 +82,24 @@ export async function incrementalUpdate(original: Uint8Array, edit: (doc: PDFDoc
   // No usable cross-reference section: the update carries a complete table of the file's objects
   // (found by scanning, the last copy of a number winning as in pdf-lib) instead of pointing back.
   let existing: Map<number, { off: number; gen: number }> | null = null;
+  // Objects stored in object streams: their stream's number and their index in it.
+  const packed = new Map<number, { stm: number; idx: number }>();
   let top = (prev?.size ?? 0) - 1;
   if (!prev) {
     existing = new Map();
-    for (const h of scanFile(original).headers) {
+    const scan = scanFile(original);
+    for (const h of scan.headers) {
       existing.set(h.num, { off: h.start, gen: h.gen });
       top = Math.max(top, h.num);
     }
+    for (const { num, stream } of gatherObjects(original, scan.headers, PDFContext.create()).objStms) {
+      for (const [k, n] of objStmNumbers(stream).entries()) {
+        if (!existing.has(n) && !packed.has(n)) packed.set(n, { stm: num, idx: k });
+        top = Math.max(top, n);
+      }
+    }
     for (const [ref] of doc.context.enumerateIndirectObjects()) {
-      // Objects only inside object streams cannot be listed in a classic table.
-      if (!existing.has(ref.objectNumber)) throw new Error('This PDF has no cross-reference table, so it cannot be updated incrementally.');
+      if (!existing.has(ref.objectNumber) && !packed.has(ref.objectNumber)) throw new Error('This PDF has no cross-reference table, so it cannot be updated incrementally.');
     }
   }
   // pdf-lib does not count object-stream containers or the xref stream itself:
@@ -119,7 +144,26 @@ export async function incrementalUpdate(original: Uint8Array, edit: (doc: PDFDoc
   const common = [`/Root ${refText(trailer.Root)}`, trailer.Info ? `/Info ${refText(trailer.Info)}` : '', idText ? `/ID ${idText}` : '', encryptText, prev ? `/Prev ${prev.offset}` : ''].filter(Boolean).join(' ');
 
   const xrefAt = pos;
-  if (existing) {
+  if (existing && packed.size) {
+    // A complete cross-reference stream: plain objects, objects in object streams, and the update.
+    for (const [n, e] of offsets) {
+      existing.set(n, e);
+      packed.delete(n);
+    }
+    const own = Math.max(doc.context.largestObjectNumber, top) + 1;
+    existing.set(own, { off: xrefAt, gen: 0 });
+    const size = own + 1;
+    const rows = new Uint8Array(size * 7);
+    for (let n = 0; n < size; n++) {
+      const e = existing.get(n);
+      const p = packed.get(n);
+      const [t, a, b] = e ? [1, e.off, e.gen] : p ? [2, p.stm, p.idx] : [0, 0, n === 0 ? 65535 : 0];
+      rows.set([t, (a >>> 24) & 255, (a >>> 16) & 255, (a >>> 8) & 255, a & 255, (b >>> 8) & 255, b & 255], n * 7);
+    }
+    push(enc.encode(`${own} 0 obj\n<< /Type /XRef /Size ${size} /W [1 4 2] ${common} /Length ${rows.length} >>\nstream\n`));
+    push(rows);
+    push(enc.encode(`\nendstream\nendobj\nstartxref\n${xrefAt}\n%%EOF\n`));
+  } else if (existing) {
     for (const [n, e] of offsets) existing.set(n, e);
     const size = Math.max(doc.context.largestObjectNumber, top) + 1;
     let body = `xref\n0 ${size}\n`;

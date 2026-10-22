@@ -111,6 +111,43 @@ describe('incremental save of a file whose cross-reference table is gone', () =>
       expect(await pdfjsPages(out)).toEqual(['Kept text']);
     });
   }
+
+  it('objects in an object stream: the update carries a complete cross-reference stream', async () => {
+    const objs = ['<< /Type /Catalog /Pages 2 0 R >>', '<< /Type /Pages /Kids [3 0 R] /Count 1 >>', '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 200] /Contents 5 0 R /Resources << /Font << /F1 6 0 R >> >> >>'];
+    let head = '';
+    let body = '';
+    objs.forEach((b, i) => {
+      head += `${i + 1} ${body.length} `;
+      body += `${b}\n`;
+    });
+    const data = head + body;
+    const content = 'BT /F1 12 Tf 20 100 Td (Packed text) Tj ET';
+    let s = `%PDF-1.5\n`;
+    const at: number[] = [];
+    at[4] = s.length;
+    s += `4 0 obj\n<< /Type /ObjStm /N 3 /First ${head.length} /Length ${data.length} >>\nstream\n${data}\nendstream\nendobj\n`;
+    at[5] = s.length;
+    s += `5 0 obj\n<< /Length ${content.length} >>\nstream\n${content}\nendstream\nendobj\n`;
+    at[6] = s.length;
+    s += `6 0 obj\n${FONT}\nendobj\n`;
+    at[7] = s.length;
+    // A cross-reference stream (W 1 2 1), but startxref points past the end of the file.
+    const row = (t: number, a: number, b: number) => String.fromCharCode(t, (a >> 8) & 255, a & 255, b);
+    const rows = row(0, 0, 255) + [1, 2, 3].map((i) => row(2, 4, i - 1)).join('') + [4, 5, 6, 7].map((n) => row(1, at[n], 0)).join('');
+    s += `7 0 obj\n<< /Type /XRef /Size 8 /W [1 2 1] /Root 1 0 R /Length ${rows.length} >>\nstream\n${rows}\nendstream\nendobj\nstartxref\n999999\n%%EOF\n`;
+    const bytes = new Uint8Array(Buffer.from(s, 'latin1'));
+    expect(await pdfjsPages(bytes)).toEqual(['Packed text']);
+    const src: SourceDoc = { id: 's', name: 'a.pdf', bytes, pageCount: 1, original: true };
+    const note = { id: 'n', type: 'note' as const, pageId: 'p0', x: 10, y: 10, width: 20, height: 20, rotation: 0, opacity: 1, text: 'added note', color: '#ffd400', author: 'a', createdAt: '2026-01-01T00:00:00Z', modifiedAt: '2026-01-01T00:00:00Z' };
+    const out = await buildIncrementalPdf({ sources: { s: src }, pages: refs(src, 1), objects: [note], fieldValues: {} }, { loadFont, measure });
+    expect(Buffer.from(out.subarray(0, bytes.length)).equals(Buffer.from(bytes))).toBe(true);
+    expect(Buffer.from(out).toString('latin1')).toContain('/Type /XRef');
+    const task = pdfjs.getDocument({ data: out.slice(), verbosity: 0 });
+    tasks.push(task);
+    const annots = await (await (await task.promise).getPage(1)).getAnnotations();
+    expect(annots.some((a) => a.contentsObj?.str === 'added note')).toBe(true);
+    expect(await pdfjsPages(out)).toEqual(['Packed text']);
+  });
 });
 
 describe('incremental save of an XFA form', () => {
