@@ -23,10 +23,10 @@ export const HELP_CONTEXT: Partial<Record<Exclude<ModalId, null>, string>> = {
 /** Help topics of dialogs that are not store modals (opened inside another dialog). */
 export const HELP_TOPICS = {
   sigDesigner: 'signing-appearance',
-  welcome: 'getting-started#the-welcome-screen',
+  welcome: 'the-window#the-welcome-screen',
   welcomeSign: 'signing-sign',
   welcomeInvoice: 'efactura-create',
-  ribbonModes: 'getting-started#simple-and-full-ribbon',
+  ribbonModes: 'the-window#simple-and-full-ribbon',
 } as const;
 
 /** The help topic for the dialog that is open (or the start page). */

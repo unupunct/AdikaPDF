@@ -14,6 +14,7 @@ export const GUIDE_LANGS: GuideLang[] = ['en', 'ro'];
 export const PAGE_ORDER = [
   'index',
   'getting-started',
+  'the-window',
   'efactura-read',
   'efactura-create',
   'efactura-vat-payment',

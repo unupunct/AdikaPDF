@@ -103,7 +103,7 @@ describe('first-run welcome', () => {
     expect(useHelp.getState()).toMatchObject({ open: true, page: 'efactura-create' });
     act(() => useHelp.getState().close());
     await user.click(screen.getByTestId('first-run-help-combine'));
-    expect(useHelp.getState()).toMatchObject({ page: 'getting-started', anchor: 'the-welcome-screen' });
+    expect(useHelp.getState()).toMatchObject({ page: 'the-window', anchor: 'the-welcome-screen' });
     expect(useUiMode.getState().welcome).toBe(true);
   });
 

@@ -11,7 +11,8 @@ New to Adika? Start with [Getting started](getting-started.md).
 
 **Start**
 
-- [Getting started](getting-started.md): opening files, the ribbon, saving, undo, tabs, recovery after a crash, the interface language.
+- [Getting started](getting-started.md): opening files, saving, undo, tabs, recovery after a crash, the interface language, drag and drop, reporting a problem.
+- [The welcome screen and the ribbon](the-window.md): the first-run welcome, simple and full ribbon, where the tools are.
 
 **e-Factura**
 
