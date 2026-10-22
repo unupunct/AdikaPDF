@@ -340,6 +340,26 @@ describe('a font set by a graphics state (gs /Font)', () => {
   });
 });
 
+describe('a Type3 font whose FontMatrix mirrors y', () => {
+  it('a box over the letters as drawn removes them', async () => {
+    const bytes = rawPdf([
+      '<< /Type /Catalog /Pages 2 0 R >>',
+      '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+      `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 300] /Contents 4 0 R /Resources << /Font << /T3 5 0 R >> >> >>`,
+      stream('BT /T3 20 Tf 20 100 Td (aa) Tj ET'),
+      '<< /Type /Font /Subtype /Type3 /FontMatrix [0.001 0 0 -0.001 0 0] /FontBBox [0 0 1000 1000] /FirstChar 97 /LastChar 97 /Widths [1000] /Encoding << /Differences [97 /a] >> /CharProcs << /a 6 0 R >> >>',
+      // Drawn at negative y, which the mirrored matrix puts above the baseline.
+      stream('1000 0 0 -900 900 0 d1 0 -900 900 900 re f'),
+    ]);
+    expect(await pdfjsPages(bytes)).toEqual(['aa']);
+    const src: SourceDoc = { id: 's', name: 'a.pdf', bytes, pageCount: 1 };
+    // Above the baseline: PDF y 100..118 -> display y 182..200, both letters (x 20..60).
+    const redact = { id: 'rd', type: 'redact' as const, pageId: 'p0', x: 18, y: 182, width: 44, height: 18, rotation: 0, opacity: 1, fill: '#000000' };
+    const out = await buildPdf({ sources: { s: src }, pages: [{ ...refs(src, 1)[0], width: 300, height: 300 }], objects: [redact], fieldValues: {} }, { loadFont, measure, rasterizeRedactedPage: rasterize, fallbackFonts: null });
+    expect(await pdfjsPages(out)).toEqual(['']);
+  });
+});
+
 describe('search on a font the text engine cannot read', () => {
   it('takes the matches from pdf.js when the engine reads other letters', async () => {
     // Glyph names without Unicode meaning: pdf.js recovers such text from the font program, the engine cannot.

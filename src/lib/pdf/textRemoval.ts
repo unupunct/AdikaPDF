@@ -387,8 +387,12 @@ function loadFont(doc: PDFDocument, fontObj: unknown): FontInfo {
  * FontMatrix, or each glyph's own d1 box when the FontBBox is all zeros.
  */
 function type3GlyphBoxes(doc: PDFDocument, d: PDFDict, fm: M): FontInfo['glyphBox'] {
+  // A FontMatrix that mirrors y: producers then often draw the glyphs below y = 0 while the
+  // boxes say above; the box covers both sides of the baseline so no letter is missed.
+  const mirrored = fm[0] * fm[3] - fm[1] * fm[2] < 0;
   const box = (x0: number, y0: number, x1: number, y1: number): [number, number, number, number] => {
-    const b = boxOf(fm, x0, y0, x1, y1);
+    const h = Math.max(Math.abs(y0), Math.abs(y1));
+    const b = mirrored ? boxOf(fm, x0, -h, x1, h) : boxOf(fm, x0, y0, x1, y1);
     return [b.x0, b.y0, b.x1, b.y1];
   };
   const bb = d.lookup(PDFName.of('FontBBox'));
