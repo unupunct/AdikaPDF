@@ -10,6 +10,8 @@ La prima pornire a programului Adika se deschide o fereastră de bun venit peste
 
 La **Ce doriți să faceți?** puteți începe imediat una dintre cele mai obișnuite activități:
 
+![Fereastra de bun venit cu activitățile](../img/ro/welcome.png)
+
 - **Semnați un PDF**: alegeți PDF-ul, apoi plasați semnătura olografă (Completare și semnare). Pentru o semnătură digitală cu certificat sau token, vedeți [Semnarea unui document](signing-sign.md).
 - **Emiteți o e-Factură**: deschide editorul de facturi. Vedeți [Emiterea unei facturi](efactura-create.md).
 - **Editați textul dintr-un PDF**: alegeți PDF-ul, apoi faceți clic pe orice rând de text și scrieți. Textul nou este scris cu fontul documentului.
@@ -29,6 +31,8 @@ Panglica este banda de comenzi din partea de sus a ferestrei. Are două forme:
 
 - **Panglica simplă** arată pe un singur rând aproximativ douăzeci dintre cele mai folosite comenzi, grupate după activitate: **Fișier** (Deschidere, Salvare, Imprimare, E-mail), **Editare și comentarii** (Editare text, Adăugare text, Evidențiere, Notă), **Semnare** (Completare și semnare, Semnătură digitală, Semnare multiplă, Verificare), **Pagini** (Combinare PDF-uri, Organizare, Comprimare, OCR), **Conversie**, **Protejare** (parolă, anonimizare, informații ascunse) și **e-Factura** (factură nouă, deschiderea unei facturi, ANAF). Butoanele cu o săgeată mică deschid un meniu.
 - **Panglica completă** are toate comenzile, în file (vedeți tabelul de mai jos).
+
+![Panglica simplă](../img/ro/ribbon-simple.png)
 
 Instalările noi pornesc cu panglica simplă; dacă ați mai folosit Adika, păstrați panglica completă. Pentru a schimba:
 

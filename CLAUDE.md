@@ -1,6 +1,6 @@
 # Adika PDF Editor
 
-Privacy-first, offline Windows PDF editor (read, comment, edit, sign, organise, protect, OCR, convert). Version 1.15.0. MIT. Repo: https://github.com/unupunct/AdikaPDF (branch `main`).
+Privacy-first, offline Windows PDF editor (read, comment, edit, sign, organise, protect, OCR, convert). Version 1.16.0. MIT. Repo: https://github.com/unupunct/AdikaPDF (branch `main`).
 
 ## Architecture
 - **Tauri 2 desktop app.** Almost all logic runs in the WebView (React 19 + TypeScript 7 (native `tsc`; `scripts/i18n-extract.cjs` uses the JS compiler API from `@typescript/typescript6`) + Vite 8 (Rolldown, oxc minify) + Vitest 5 + Tailwind 4, state in zustand, canvas via Konva, rendering via pdf.js, writing via pdf-lib).

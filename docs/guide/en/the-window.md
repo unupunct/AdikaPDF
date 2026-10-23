@@ -8,6 +8,8 @@ The first time you start Adika, a welcome window opens over the start screen. Ev
 
 Under **What would you like to do?** you can start one of the most common tasks straight away:
 
+![The welcome window with the task cards](../img/en/welcome.png)
+
 - **Sign a PDF**: choose the PDF, then place your handwritten signature (Fill & Sign). For a digital signature with a certificate or token, see [Sign a document](signing-sign.md).
 - **Create an e-Factura**: opens the invoice editor. See [Create an invoice](efactura-create.md).
 - **Edit text in a PDF**: choose the PDF, then click any line of text and type. The new text is written in the document's own font.
@@ -25,6 +27,8 @@ The ribbon is the band of commands at the top of the window. It has two forms:
 
 - The **simple ribbon** shows about twenty of the most common commands in one row, grouped by task: **File** (Open, Save, Print, E-mail), **Edit & comment** (Edit text, Add text, Highlight, Note), **Sign** (Fill & Sign, Digital signature, Sign many files, Verify), **Pages** (Combine PDFs, Organize, Compress, OCR), **Convert**, **Protect** (password, redaction, hidden information) and **e-Factura** (new invoice, open an invoice, ANAF). Buttons with a small arrow open a menu.
 - The **full ribbon** has every command, in tabs (see the table below).
+
+![The simple ribbon](../img/en/ribbon-simple.png)
 
 New installations start with the simple ribbon; if you used Adika before, you keep the full ribbon. To switch:
 
