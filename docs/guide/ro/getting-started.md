@@ -4,6 +4,8 @@ Această pagină arată cum deschideți documente, cum vă orientați în fereas
 
 ![Fereastra Adika fără niciun document deschis](../img/ro/start-screen.png)
 
+Fereastra de bun venit, panglica simplă și cea completă și filele panglicii sunt descrise în [Fereastra de bun venit și panglica](the-window.md).
+
 ## Deschiderea unui document
 
 - Faceți clic pe **Deschidere** în fila **Pornire** sau apăsați **Ctrl+O** și alegeți fișierul.
@@ -13,28 +15,6 @@ Această pagină arată cum deschideți documente, cum vă orientați în fereas
 Adika deschide fișiere PDF, imagini (JPG, PNG, HEIC, TIFF…), documente Office (Word, Excel, PowerPoint, dacă Microsoft Office este instalat) și facturi electronice (fișiere XML e-Factura și arhivele ZIP descărcate din SPV-ul ANAF). Imaginile, documentele Office și facturile sunt transformate în PDF la deschidere; fișierul original nu se modifică.
 
 Dacă un PDF este protejat cu parolă, Adika v-o cere.
-
-## Panglica pe scurt
-
-Comenzile sunt grupate în file, în partea de sus a ferestrei:
-
-| Filă | Ce găsiți acolo |
-| --- | --- |
-| **Pornire** | Deschidere, Salvare, Imprimare, E-mail, Anulare / Refacere, selectarea textului, zoom, Căutare, Completare și semnare |
-| **Vizualizare** | Aranjarea paginilor, rotirea afișării, modul de citire, citirea cu voce tare, panourile laterale (pagini, marcaje, atașamente, comentarii) |
-| **Editare** | Editarea textului, adăugarea de text, imagini, legături, antete și subsoluri, forme desenate |
-| **Comentariu** | Note, evidențiere, ștampile, desene, lista comentariilor |
-| **Semnare** | Semnătura olografă (Completare și semnare), semnături digitale cu certificat, token, certificat Windows sau semnătură în cloud, **Semnare multiplă**, **Verificare** |
-| **Organizare** | Pagini: inserare, ștergere, mutare, rotire, împărțire, combinarea fișierelor |
-| **Formulare** | Câmpuri de formular, completare, detectarea câmpurilor |
-| **Securitate** | Parole, permisiuni, anonimizare (înnegrire), eliminarea informațiilor ascunse, accesibilitate |
-| **Conversie** | PDF în Word, Excel, imagini; PDF/A; OCR; comprimare; **Factură electronică**, **Factură electronică nouă**, **ANAF e-Factura** |
-
-Nu știți unde se află o comandă? Faceți clic pe **Căutare instrumente…** în partea de sus a ferestrei (sau apăsați **Ctrl+K**) și scrieți ce doriți să faceți, de exemplu „factură” sau „semnare”.
-
-![Fila Conversie cu grupul Factură electronică](../img/ro/ribbon-convert.png)
-
-Majoritatea butoanelor afișează o scurtă explicație când țineți mouse-ul deasupra lor. Apăsați **Alt** pentru a ajunge la panglică de la tastatură, apoi folosiți săgețile și Enter.
 
 ## Salvarea
 
@@ -79,6 +59,20 @@ Adika păstrează automat o copie de siguranță a fiecărui document cu modific
 - **Butonul de limbă** din dreapta sus (afișează limba curentă, de exemplu **RO**) schimbă interfața între English, Română, Deutsch, Français, Magyar, Italiano și Español. Acest ghid există în engleză și română; pentru celelalte limbi este afișat în engleză.
 - Butonul **lună / soare** comută între modul luminos și cel întunecat.
 - Butonul **i** (Despre) arată versiunea, comenzile rapide de la tastatură, actualizările și opțiunile de salvare.
+
+<a id="drag-and-drop"></a>
+
+## Tragere și plasare
+
+Trageți fișiere din Explorer peste Adika. PDF-urile se deschid în file; plasate peste miniaturile paginilor sau peste o pagină, Adika vă întreabă dacă le inserează paginile acolo sau le deschide într-o filă nouă. O imagine plasată pe o pagină este așezată acolo unde ați eliberat-o. Fișierele Office și celelalte fișiere sunt convertite mai întâi în PDF. Trageți miniatura unei pagini peste fila altui document, așteptați să se deschidă, apoi plasați pagina printre miniaturile lui pentru a o copia acolo. Listele din Procesare în lot și Semnarea mai multor fișiere primesc și ele PDF-uri și dosare trase acolo.
+
+<a id="report-a-problem"></a>
+
+## Raportarea unei probleme
+
+În **Despre** (butonul **i**) sau în partea de jos a ajutorului, alegeți **Raportare problemă** sau **Propunere funcție**. Adika vă arată textul pe care îl va pune într-un tichet nou pe GitHub: versiunile Adika și Windows, limba interfeței și dacă Adika este instalată sau portabilă. Documentele, numele fișierelor și dosarele dumneavoastră nu sunt incluse niciodată și nu se trimite nimic până când nu trimiteți dumneavoastră tichetul pe GitHub. **Copiere text** copiază același text, de exemplu pentru departamentul IT, când organizația nu permite deschiderea GitHub.
+
+După o eroare gravă, Adika vă propune **Raportare eroare** la următoarea pornire. Dosarele, numele documentelor și numele dumneavoastră de utilizator Windows sunt eliminate mai întâi din raport; citiți-l, modificați-l dacă doriți, apoi deschideți GitHub. Puteți dezactiva aceste propuneri.
 
 ## Pașii următori
 

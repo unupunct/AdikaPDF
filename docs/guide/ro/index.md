@@ -11,7 +11,8 @@ Folosiți Adika pentru prima dată? Începeți cu [Primii pași](getting-started
 
 **Început**
 
-- [Primii pași](getting-started.md): deschiderea fișierelor, panglica, salvarea, anularea, filele, recuperarea după o închidere neașteptată, limba interfeței.
+- [Primii pași](getting-started.md): deschiderea fișierelor, salvarea, anularea, filele, recuperarea după o închidere neașteptată, limba interfeței, tragerea și plasarea, raportarea unei probleme.
+- [Fereastra de bun venit și panglica](the-window.md): fereastra de la prima pornire, panglica simplă și cea completă, unde se află instrumentele.
 
 **e-Factura**
 

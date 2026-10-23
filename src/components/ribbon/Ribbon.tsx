@@ -2,8 +2,9 @@
  * Top ribbon: Home, Edit, Sign, Organize, Forms, Security, Convert. Every
  * button maps to a store action or an operation in src/actions.
  */
-import { useEffect, useRef, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject } from 'react';
 import {
+  ArrowLeft,
   ArrowUpRight,
   Cloud,
   Scaling,
@@ -88,13 +89,17 @@ import { useXfa } from '@/actions/xfaForms';
 import { blockedReason, toolEditKind, usePDFStore, type EditKind } from '@/store/usePDFStore';
 import { useStorePick, type StoreState } from '@/hooks/useStorePick';
 import type { RibbonTab, ToolId } from '@/types';
-import { Tooltip, DropdownMenu, DropdownTrigger, DropdownContent, DropdownItem } from '@/components/ui/primitives';
+import { DropdownMenu, DropdownTrigger, DropdownContent, DropdownItem } from '@/components/ui/primitives';
 import { cn } from '@/lib/cn';
 import { mergeDialog, saveDocument } from '@/actions/document';
 import { exportFormCsv } from '@/actions/security';
 import { flattenCurrent, pickImagesAsDataUrls } from '@/actions/convert';
 import { useModalArgs, type ImportKind } from '@/store/useModalArgs';
 import { removeAllPageMarks } from '@/actions/pageTools';
+import { BIG, Big, CollapsedGroups, Group, I, i, ROW, Small, Stack } from './parts';
+import { SimpleRibbon } from './SimpleRibbon';
+import { useUiMode } from '@/store/uiMode';
+import { useLang } from '@/lib/i18n';
 
 function openMarks(tab: 'watermark' | 'header' | 'background') {
   useModalArgs.setState({ pageMarksTab: tab });
@@ -143,8 +148,13 @@ export function Ribbon() {
   const tab = usePDFStore((s) => s.ribbonTab);
   const setTab = usePDFStore((s) => s.setRibbonTab);
   const hasDoc = usePDFStore((s) => s.pages.length > 0);
+  const mode = useUiMode((u) => u.mode);
+  const peek = useUiMode((u) => u.peek);
+  const simple = mode === 'simple' && !peek;
   const listRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
   const focusTab = (id: RibbonTab) => listRef.current?.querySelector<HTMLButtonElement>(`[data-testid="tab-${id}"]`)?.focus();
+  const collapsed = useCollapse(panelRef, `${simple ? 'simple' : tab}`);
 
   // Pressing and releasing Alt on its own moves the focus to the ribbon tabs (as in Office).
   useEffect(() => {
@@ -158,7 +168,8 @@ export function Ribbon() {
       const st = usePDFStore.getState();
       if (st.modal || st.busy || st.presentation) return;
       e.preventDefault();
-      focusTab(st.ribbonTab);
+      if (listRef.current) focusTab(st.ribbonTab);
+      else panelRef.current?.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus();
     };
     const reset = () => (armed = false);
     window.addEventListener('keydown', down, true);
@@ -184,105 +195,104 @@ export function Ribbon() {
     focusTab(RIBBON_TABS[next].id);
   };
 
+  if (simple) {
+    return (
+      <div className="shrink-0 border-b border-app bg-panel" data-ribbon-mode="simple">
+        <CollapsedGroups.Provider value={collapsed}>
+          <div ref={panelRef} data-testid="ribbon" role="region" aria-label="Simple ribbon" className="flex h-[90px] items-stretch gap-0 overflow-x-auto px-1.5 py-0.5">
+            <SimpleRibbon />
+          </div>
+        </CollapsedGroups.Provider>
+      </div>
+    );
+  }
+
   return (
-    <div className="shrink-0 border-b border-app bg-panel">
-      <div ref={listRef} role="tablist" aria-label="Ribbon" className="flex h-8 items-end gap-0.5 px-2" onKeyDown={onTabKey}>
-        {RIBBON_TABS.map((t) => (
-          <button
-            key={t.id}
-            role="tab"
-            type="button"
-            data-testid={`tab-${t.id}`}
-            aria-selected={tab === t.id}
-            tabIndex={tab === t.id ? 0 : -1}
-            onClick={() => setTab(t.id)}
-            className={cn(
-              'relative h-7 rounded-t-md px-3 text-[13px] font-medium',
-              tab === t.id ? 'text-brand-700 dark:text-brand-300' : 'text-muted hover:text-[var(--text)]',
-            )}
-          >
-            {t.label}
-            {tab === t.id ? <span className="absolute inset-x-2 -bottom-px h-0.5 rounded bg-brand-600" /> : null}
+    <div className="shrink-0 border-b border-app bg-panel" data-ribbon-mode="full">
+      <div className="flex h-8 items-end">
+        <div ref={listRef} role="tablist" aria-label="Ribbon" className="flex h-8 min-w-0 flex-1 items-end gap-0.5 px-2" onKeyDown={onTabKey}>
+          {RIBBON_TABS.map((t) => (
+            <button
+              key={t.id}
+              role="tab"
+              type="button"
+              data-testid={`tab-${t.id}`}
+              aria-selected={tab === t.id}
+              tabIndex={tab === t.id ? 0 : -1}
+              onClick={() => setTab(t.id)}
+              className={cn(
+                'relative h-7 rounded-t-md px-3 text-[13px] font-medium',
+                tab === t.id ? 'text-brand-700 dark:text-brand-300' : 'text-muted hover:text-[var(--text)]',
+              )}
+            >
+              {t.label}
+              {tab === t.id ? <span className="absolute inset-x-2 -bottom-px h-0.5 rounded bg-brand-600" /> : null}
+            </button>
+          ))}
+        </div>
+        {peek ? (
+          <button type="button" data-testid="ribbon-back-simple" onClick={() => useUiMode.getState().setPeek(null)} className="mb-0.5 mr-2 flex h-7 shrink-0 items-center gap-1 rounded-md px-2 text-[12px] font-medium text-brand-700 hover-app dark:text-brand-300">
+            <ArrowLeft size={14} /> Back to the simple ribbon
           </button>
-        ))}
+        ) : null}
       </div>
-      <div data-testid="ribbon" role="tabpanel" className={cn('flex h-[84px] items-stretch gap-0 overflow-x-auto border-t border-app px-1.5 py-1.5', !hasDoc && tab !== 'home' && tab !== 'convert' && tab !== 'view' && 'opacity-60')}>
-        <TabContent tab={tab} />
-      </div>
+      <CollapsedGroups.Provider value={collapsed}>
+        <div ref={panelRef} data-testid="ribbon" role="tabpanel" className={cn('flex h-[90px] items-stretch gap-0 overflow-x-auto border-t border-app px-1.5 py-0.5', !hasDoc && tab !== 'home' && tab !== 'convert' && tab !== 'view' && 'opacity-60')}>
+          <TabContent tab={tab} />
+        </div>
+      </CollapsedGroups.Provider>
     </div>
   );
+}
+
+/**
+ * Groups that do not fit collapse into one button each, from the right,
+ * until the ribbon fits; all of them open again when the window grows or
+ * another tab is shown.
+ */
+function useCollapse(panel: RefObject<HTMLDivElement | null>, key: string): ReadonlySet<string> {
+  const [collapsed, setCollapsed] = useState<string[]>([]);
+  const [width, setWidth] = useState(0);
+  const enabled = useUiMode((u) => u.collapse);
+  const lang = useLang((l) => l.lang);
+  const current = useRef(collapsed);
+  current.current = collapsed;
+
+  // Collapses one more group when the ribbon overflows: the rightmost one that gets narrower as one button.
+  const check = useCallback(() => {
+    const el = panel.current;
+    if (!enabled || !el || el.scrollWidth <= el.clientWidth + 1) return;
+    const done = current.current;
+    const groups = [...el.querySelectorAll<HTMLElement>(':scope > [data-ribbon-group]')].filter((g) => !done.includes(g.dataset.ribbonGroup ?? '') && g.offsetWidth > 90);
+    const last = groups[groups.length - 1]?.dataset.ribbonGroup;
+    if (last) setCollapsed([...done, last]);
+  }, [enabled, panel]);
+
+  useEffect(() => {
+    const el = panel.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => setWidth(el.clientWidth));
+    ro.observe(el);
+    // Labels change after rendering (the interface translation): measure again.
+    let t = 0;
+    const mo = new MutationObserver(() => {
+      window.clearTimeout(t);
+      t = window.setTimeout(check, 50);
+    });
+    mo.observe(el, { subtree: true, childList: true, characterData: true });
+    t = window.setTimeout(check, 50);
+    return () => {
+      ro.disconnect();
+      mo.disconnect();
+      window.clearTimeout(t);
+    };
+  }, [panel, key, check]);
+  useLayoutEffect(() => setCollapsed([]), [key, width, enabled, lang]);
+  useLayoutEffect(check, [collapsed, check]);
+  return useMemo(() => new Set(collapsed), [collapsed]);
 }
 
 // ------------------------------------------------------------------ building blocks
-
-function Group({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <div className="flex shrink-0 flex-col border-r border-app px-1.5 last:border-r-0">
-      <div className="flex flex-1 items-start gap-0.5">{children}</div>
-      <div className="text-center text-[10px] leading-3 text-muted">{label}</div>
-    </div>
-  );
-}
-
-interface BtnProps {
-  icon: ReactNode;
-  label: string;
-  onClick?: () => void;
-  active?: boolean;
-  disabled?: boolean;
-  tip?: string;
-  testId?: string;
-}
-
-function Big({ icon, label, onClick, active, disabled, tip, testId }: BtnProps) {
-  return (
-    <Tooltip content={tip ?? label}>
-      <button
-        type="button"
-        data-testid={testId}
-        aria-label={label}
-        data-tip={tip}
-        aria-pressed={active}
-        disabled={disabled}
-        onClick={onClick}
-        className={cn(
-          'flex h-[60px] min-w-[54px] flex-col items-center justify-center gap-1 rounded-md px-1.5 text-[11px] leading-tight disabled:opacity-40',
-          active ? 'bg-brand-100 text-brand-800 ring-1 ring-brand-300 dark:bg-brand-900/50 dark:text-brand-100 dark:ring-brand-700' : 'hover-app',
-        )}
-      >
-        <span className={cn(active ? 'text-brand-700 dark:text-brand-200' : 'text-brand-600 dark:text-brand-400')}>{icon}</span>
-        <span className="max-w-[72px] text-center">{label}</span>
-      </button>
-    </Tooltip>
-  );
-}
-
-function Small({ icon, label, onClick, active, disabled, tip, testId }: BtnProps) {
-  return (
-    <Tooltip content={tip ?? label}>
-      <button
-        type="button"
-        data-testid={testId}
-        aria-label={label}
-        data-tip={tip}
-        aria-pressed={active}
-        disabled={disabled}
-        onClick={onClick}
-        className={cn(
-          'flex h-[19px] items-center gap-1.5 rounded px-1.5 text-[11.5px] disabled:opacity-40',
-          active ? 'bg-brand-100 text-brand-800 dark:bg-brand-900/50 dark:text-brand-100' : 'hover-app',
-        )}
-      >
-        <span className="text-brand-600 dark:text-brand-400">{icon}</span>
-        {label}
-      </button>
-    </Tooltip>
-  );
-}
-
-function Stack({ children }: { children: ReactNode }) {
-  return <div className="flex flex-col justify-start gap-px py-0.5">{children}</div>;
-}
 
 function ToolBtn({ tool, icon, label, tip, big = true }: { tool: ToolId; icon: ReactNode; label: string; tip?: string; big?: boolean }) {
   const active = usePDFStore((s) => s.tool === tool);
@@ -304,8 +314,6 @@ function useAllowed(kind: EditKind): boolean {
   return usePDFStore((st) => st.pages.length > 0 && !blockedReason(st, kind));
 }
 
-const I = 22;
-const i = 14;
 
 // ------------------------------------------------------------------ tabs
 
@@ -314,20 +322,20 @@ function StyleQuick() {
   const setStyle = usePDFStore((s) => s.setStyle);
   return (
     <Stack>
-      <label className="flex h-[19px] items-center gap-1.5 px-1 text-[11.5px]">
+      <label className={`flex ${ROW} items-center gap-1.5 px-1 text-[11.5px]`}>
         <span className="w-10 text-muted">Stroke</span>
-        <input type="color" aria-label="Stroke colour" value={style.stroke} onChange={(e) => setStyle({ stroke: e.target.value })} className="h-4 w-7 rounded border border-app" />
+        <input type="color" aria-label="Stroke colour" value={style.stroke} onChange={(e) => setStyle({ stroke: e.target.value })} className="h-6 w-8 rounded border border-app" />
       </label>
-      <label className="flex h-[19px] items-center gap-1.5 px-1 text-[11.5px]">
+      <label className={`flex ${ROW} items-center gap-1.5 px-1 text-[11.5px]`}>
         <span className="w-10 text-muted">Fill</span>
-        <input type="color" aria-label="Fill colour" value={style.fill ?? '#ffffff'} onChange={(e) => setStyle({ fill: e.target.value })} className="h-4 w-7 rounded border border-app" />
-        <button type="button" className={cn('rounded px-1 text-[10px]', style.fill === null ? 'bg-brand-700 text-white' : 'hover-app')} onClick={() => setStyle({ fill: null })}>
+        <input type="color" aria-label="Fill colour" value={style.fill ?? '#ffffff'} onChange={(e) => setStyle({ fill: e.target.value })} className="h-6 w-8 rounded border border-app" />
+        <button type="button" className={cn('h-6 min-w-6 rounded px-1 text-[10px]', style.fill === null ? 'bg-brand-700 text-white' : 'hover-app')} onClick={() => setStyle({ fill: null })}>
           none
         </button>
       </label>
-      <label className="flex h-[19px] items-center gap-1.5 px-1 text-[11.5px]">
+      <label className={`flex ${ROW} items-center gap-1.5 px-1 text-[11.5px]`}>
         <span className="w-10 text-muted">Width</span>
-        <input type="range" aria-label="Stroke width" min={0.5} max={12} step={0.5} value={style.strokeWidth} onChange={(e) => setStyle({ strokeWidth: Number(e.target.value) })} className="w-16" />
+        <input type="range" aria-label="Stroke width" min={0.5} max={12} step={0.5} value={style.strokeWidth} onChange={(e) => setStyle({ strokeWidth: Number(e.target.value) })} className="h-6 w-16" />
         <span className="w-6 tabular-nums">{style.strokeWidth}</span>
       </label>
     </Stack>
@@ -425,7 +433,7 @@ function SavedSignaturesMenu() {
   return (
     <DropdownMenu>
       <DropdownTrigger asChild disabled={!editable || saved.length === 0}>
-        <button type="button" className="flex h-[60px] min-w-[54px] flex-col items-center justify-center gap-1 rounded-md px-1.5 text-[11px] hover-app disabled:opacity-40">
+        <button type="button" className={`${BIG} hover-app`}>
           <Stamp size={I} className="text-brand-600 dark:text-brand-400" />
           <span className="flex items-center gap-0.5">
             Saved <ChevronDown size={10} />
@@ -603,49 +611,49 @@ function ConvertTab() {
       <Group label="Create PDF from">
         <Big icon={<FileType2 size={I} />} label="Office" onClick={() => openImport('office')} tip="Word, Excel, PowerPoint (uses Microsoft Office on this PC)" testId="btn-import-office" />
         <Big icon={<ScanLine size={I} />} label="Scan" onClick={() => s.openModal('scan')} tip="Scan to PDF: flatbed or document feeder, cleanup, blank pages and separator sheets, OCR" testId="btn-scan" />
-        <Big icon={<FileImage size={I} />} label="Images" onClick={() => openImport('images')} tip="PNG, JPG, WebP, TIFF, GIF, BMP" testId="btn-import-images" />
         <Stack>
-          <Small icon={<FileCode2 size={i} />} label="HTML / URL" onClick={() => openImport('html')} />
-          <Small icon={<FileText size={i} />} label="Markdown / text" onClick={() => openImport('markdown')} />
+          <Small icon={<FileImage size={i} />} label="Images" onClick={() => openImport('images')} tip="PNG, JPG, WebP, TIFF, GIF, BMP" testId="btn-import-images" />
           <Small icon={<Camera size={i} />} label="Camera" onClick={() => openImport('scan')} />
+          <Small icon={<FileCode2 size={i} />} label="HTML / URL" onClick={() => openImport('html')} />
         </Stack>
         <Stack>
+          <Small icon={<FileText size={i} />} label="Markdown / text" onClick={() => openImport('markdown')} />
           <Small icon={<BookCopy size={i} />} label="EPUB / e-mail / XPS" onClick={() => openImport('documents')} testId="btn-import-documents" />
           <Small icon={<PenTool size={i} />} label="CAD (DXF)" onClick={() => openImport('cad')} testId="btn-import-cad" />
         </Stack>
       </Group>
       <Group label="Export PDF to">
         <Big icon={<FileInput size={I} />} label="Word" disabled={!hasDoc} onClick={() => openExport('docx')} testId="btn-export-docx" />
-        <Big icon={<FileSpreadsheet size={I} />} label="Excel" disabled={!hasDoc} onClick={() => openExport('xlsx')} />
-        <Big icon={<Presentation size={I} />} label="PowerPoint" disabled={!hasDoc} onClick={() => openExport('pptx')} />
         <Stack>
+          <Small icon={<FileSpreadsheet size={i} />} label="Excel" disabled={!hasDoc} onClick={() => openExport('xlsx')} />
+          <Small icon={<Presentation size={i} />} label="PowerPoint" disabled={!hasDoc} onClick={() => openExport('pptx')} />
           <Small icon={<FileImage size={i} />} label="Images" disabled={!hasDoc} onClick={() => openExport('png')} />
+        </Stack>
+        <Stack>
           <Small icon={<ImageDown size={i} />} label="Export pictures (ZIP)" disabled={!hasDoc} onClick={() => void import('@/actions/pageOps').then((m) => m.exportImages())} testId="btn-export-images" />
           <Small icon={<PenTool size={i} />} label="SVG" disabled={!hasDoc} onClick={() => openExport('svg')} />
-          <Small icon={<FileCode2 size={i} />} label="HTML / Markdown" disabled={!hasDoc} onClick={() => openExport('html')} />
+          <Small icon={<TableProperties size={i} />} label="CSV / JSON" disabled={!hasDoc} onClick={() => openExport('csv')} />
         </Stack>
         <Stack>
           <Small icon={<FileText size={i} />} label="ODT / RTF" disabled={!hasDoc} onClick={() => openExport('odt')} />
+          <Small icon={<FileCode2 size={i} />} label="HTML / Markdown" disabled={!hasDoc} onClick={() => openExport('html')} />
           <Small icon={<BookCopy size={i} />} label="EPUB" disabled={!hasDoc} onClick={() => openExport('epub')} />
-          <Small icon={<TableProperties size={i} />} label="CSV / JSON" disabled={!hasDoc} onClick={() => openExport('csv')} />
         </Stack>
       </Group>
       <Group label="Optimize">
         <Big icon={<ScanText size={I} />} label="OCR" disabled={!hasDoc} onClick={() => s.openModal('ocr')} tip="Make scanned pages searchable" testId="btn-ocr" />
         <Big icon={<FileArchive size={I} />} label="Compress" disabled={!hasDoc} onClick={() => s.openModal('compress')} testId="btn-compress" />
-        <Big icon={<FileCheck2 size={I} />} label="PDF/A" disabled={!hasDoc} onClick={() => s.openModal('pdfa')} tip="Archival PDF/A-2b" />
-        <Big icon={<Stamp size={I} />} label="Flatten" disabled={!hasDoc} onClick={() => void flattenCurrent()} />
-      </Group>
-      <Group label="Print shop">
-        <Big icon={<Printer size={I} />} label="Print production" disabled={!hasDoc} onClick={() => s.openModal('printprod')} tip="PDF/X preflight and conversion, grey or CMYK colours, ink preview, bleed and printer marks" testId="btn-printprod" />
+        <Stack>
+          <Small icon={<FileCheck2 size={i} />} label="PDF/A" disabled={!hasDoc} onClick={() => s.openModal('pdfa')} tip="Archival PDF/A-2b" />
+          <Small icon={<Stamp size={i} />} label="Flatten" disabled={!hasDoc} onClick={() => void flattenCurrent()} />
+          <Small icon={<Printer size={i} />} label="Print production" disabled={!hasDoc} onClick={() => s.openModal('printprod')} tip="PDF/X preflight and conversion, grey or CMYK colours, ink preview, bleed and printer marks" testId="btn-printprod" />
+        </Stack>
+        <Big icon={<FileStack size={I} />} label="Batch" onClick={() => s.openModal('batch')} tip="OCR, compress, watermark, page numbers, PDF/A, protect, sanitize or flatten many PDFs at once, one operation or a saved sequence of steps" testId="btn-batch" />
       </Group>
       <Group label="E-invoice">
         <Big icon={<Receipt size={I} />} label="E-invoice" onClick={() => s.openModal('einvoice')} tip="e-Factura, UBL and Factur-X / ZUGFeRD: open invoice XML as a readable PDF, show the invoice inside a PDF, embed an invoice XML" testId="btn-einvoice" />
         <Big icon={<ReceiptText size={I} />} label="New e-invoice" onClick={() => void import('@/actions/einvoiceCreate').then((m) => m.openNewEInvoice())} tip="Issue an e-Factura (ANAF), Peppol or Factur-X invoice: saved sellers, customers and products, live totals and checks" testId="btn-einvoice-new" />
         <Big icon={<Landmark size={I} />} label="ANAF e-Factura" onClick={() => void import('@/actions/anaf').then((m) => m.openAnafDialog())} tip="Send e-Factura invoices to ANAF's SPV, follow their status, list and download received invoices (needs an application registered with ANAF)" testId="btn-anaf" />
-      </Group>
-      <Group label="Many files">
-        <Big icon={<FileStack size={I} />} label="Batch" onClick={() => s.openModal('batch')} tip="OCR, compress, watermark, page numbers, PDF/A, protect, sanitize or flatten many PDFs at once, one operation or a saved sequence of steps" testId="btn-batch" />
       </Group>
     </>
   );

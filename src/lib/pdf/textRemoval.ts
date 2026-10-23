@@ -26,6 +26,7 @@ import {
 import { Font as StdFont } from '@pdf-lib/standard-fonts';
 import { STD_ALIASES, glyphNameToUnicode, parseToUnicode, standardMaps, streamBytes } from './fontEncoding';
 import { fontCodes, type FontStyle } from './fontCodes';
+import { viewBox } from './viewBox';
 
 export { parseToUnicode };
 
@@ -386,8 +387,12 @@ function loadFont(doc: PDFDocument, fontObj: unknown): FontInfo {
  * FontMatrix, or each glyph's own d1 box when the FontBBox is all zeros.
  */
 function type3GlyphBoxes(doc: PDFDocument, d: PDFDict, fm: M): FontInfo['glyphBox'] {
+  // A FontMatrix that mirrors y: producers then often draw the glyphs below y = 0 while the
+  // boxes say above; the box covers both sides of the baseline so no letter is missed.
+  const mirrored = fm[0] * fm[3] - fm[1] * fm[2] < 0;
   const box = (x0: number, y0: number, x1: number, y1: number): [number, number, number, number] => {
-    const b = boxOf(fm, x0, y0, x1, y1);
+    const h = Math.max(Math.abs(y0), Math.abs(y1));
+    const b = mirrored ? boxOf(fm, x0, -h, x1, h) : boxOf(fm, x0, y0, x1, y1);
     return [b.x0, b.y0, b.x1, b.y1];
   };
   const bb = d.lookup(PDFName.of('FontBBox'));
@@ -641,7 +646,8 @@ function interpret(doc: PDFDocument, page: PDFPage): Interpretation {
           origin: o,
           dir: [(e[0] - o[0]) / len, (e[1] - o[1]) / len],
           size: Math.hypot(up[0] - o[0], up[1] - o[1]),
-          advance: advance * Math.hypot(mul(Tm, gs.ctm)[0], mul(Tm, gs.ctm)[1]),
+          // Along `dir`, which a negative font size (or horizontal scaling) turns around.
+          advance: advance * Math.sign(gs.fs * gs.Th || 1) * Math.hypot(mul(Tm, gs.ctm)[0], mul(Tm, gs.ctm)[1]),
           font: f.baseName,
           color: gs.fill,
           mode: gs.Tr,
@@ -695,6 +701,18 @@ function interpret(doc: PDFDocument, page: PDFPage): Interpretation {
         Tlm = I;
         positioned = true;
         break;
+      case 'gs': {
+        // A graphics state can set the font too (/Font [font size]).
+        const egs = res?.lookup(PDFName.of('ExtGState'));
+        const st = egs instanceof PDFDict && a[0]?.k === 'name' ? egs.lookup(PDFName.of(a[0].v)) : undefined;
+        const fa = st instanceof PDFDict ? st.lookup(PDFName.of('Font')) : undefined;
+        if (fa instanceof PDFArray && fa.size() >= 2) {
+          gs.font = loadFont(doc, fa.get(0));
+          gs.fontKey = '';
+          gs.fs = num(fa.lookup(1));
+        }
+        break;
+      }
       case 'Tf': {
         const name = a[0]?.k === 'name' ? a[0].v : '';
         let f = fontCache.get(name);
@@ -1041,7 +1059,7 @@ export function removeGlyphs(doc: PDFDocument, page: PDFPage, boxes: Box[], mode
     if (boxes.some((b) => inside(b, g.cx, g.cy) || (mode === 'redact' && coveredFraction(g.box, b) >= 0.2))) remove.add(i);
   });
 
-  const crop = page.getCropBox();
+  const crop = viewBox(page);
   const bounds = { x0: crop.x, y0: crop.y, x1: crop.x + crop.width, y1: crop.y + crop.height };
   const fallbackKeys = new Map<PDFRef, string>();
   const fallbackKey = (f: FallbackFont) => {
@@ -1316,6 +1334,8 @@ function editSpan(it: Interpretation, remove: Set<number>, e: LineEdit): number[
   });
   if (!R.length) return null;
   const ref = it.glyphs[R[0]].run;
+  // A font set by a graphics state has no resource name to write new text with.
+  if (!ref.key) return null;
   if (R.some((i) => it.glyphs[i].run.key !== ref.key || Math.abs(it.glyphs[i].run.fs - ref.fs) > 1e-3)) return null;
   return R;
 }

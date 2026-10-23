@@ -294,6 +294,16 @@ async function run() {
   await shot('ribbon-convert', null, { clip: { x: 0, y: 0, width: 1280, height: 172 } });
   await page.click('[data-testid="tab-sign"]');
   await shot('ribbon-sign', null, { clip: { x: 0, y: 0, width: 1280, height: 172 } });
+  // Simple ribbon and the welcome window (E2E mode starts in the full ribbon without the welcome).
+  await S(() => window.__adika.uiMode.getState().setMode('simple'));
+  await settle();
+  await shot('ribbon-simple', null, { clip: { x: 0, y: 0, width: 1280, height: 172 } });
+  await S(() => window.__adika.uiMode.getState().setMode('full'));
+  await closeAll();
+  await S(() => window.__adika.uiMode.getState().openWelcome());
+  await shot('welcome', '[data-testid="first-run"]', { wait: 500 });
+  await page.click('[data-testid="first-run-close"]');
+  await settle();
 
   // ---------------------------------------------------------------- reading a received invoice
   await closeAll();

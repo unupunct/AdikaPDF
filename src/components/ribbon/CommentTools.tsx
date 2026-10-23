@@ -1,38 +1,13 @@
 /** Ribbon menus of the Comment tab: stamps, and comment import / export / summary / compare. */
-import { ChevronDown, FileInput, FileOutput, GitCompare, ImageUp, ListChecks, MessagesSquare, Stamp } from 'lucide-react';
+import { FileInput, FileOutput, GitCompare, ImageUp, ListChecks, MessagesSquare, Stamp } from 'lucide-react';
 import { blockedReason, usePDFStore } from '@/store/usePDFStore';
-import { DropdownContent, DropdownItem, DropdownMenu, DropdownSeparator, DropdownTrigger } from '@/components/ui/primitives';
+import { DropdownContent, DropdownItem, DropdownMenu, DropdownSeparator } from '@/components/ui/primitives';
 import { STAMP_PRESETS, stampDate, type StampTemplate } from '@/lib/objectFactory';
 import { pickImagesAsDataUrls } from '@/actions/convert';
 import { compareVisually, compareWithFile, exportComments, importComments, summarizeCommentsAction } from '@/actions/pageTools';
 import { getAuthor } from '@/lib/author';
 import { translate } from '@/lib/i18n';
-import { I } from './ReaderTabs';
-import { cn } from '@/lib/cn';
-
-function MenuButton({ icon, label, active, disabled, testId, tip }: { icon: React.ReactNode; label: string; active?: boolean; disabled?: boolean; testId?: string; tip: string }) {
-  return (
-    <DropdownTrigger asChild disabled={disabled}>
-        <button
-          type="button"
-          data-testid={testId}
-          aria-label={label}
-          title={tip}
-          disabled={disabled}
-          className={cn(
-            'flex h-[60px] min-w-[54px] flex-col items-center justify-center gap-1 rounded-md px-1.5 text-[11px] leading-tight disabled:opacity-40',
-            active ? 'bg-brand-100 text-brand-800 ring-1 ring-brand-300 dark:bg-brand-900/50 dark:text-brand-100 dark:ring-brand-700' : 'hover-app',
-          )}
-        >
-          <span className="text-brand-600 dark:text-brand-400">{icon}</span>
-          <span className="flex items-center gap-0.5">
-            {label}
-            <ChevronDown size={10} />
-          </span>
-        </button>
-    </DropdownTrigger>
-  );
-}
+import { I, MenuButton } from './parts';
 
 function choose(t: StampTemplate) {
   const s = usePDFStore.getState();

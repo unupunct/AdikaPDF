@@ -1,4 +1,4 @@
-import { CircleHelp, Info, Languages, Moon, PanelLeft, PanelRight, Search, Settings2, Sun } from 'lucide-react';
+import { CircleHelp, Info, Languages, Moon, PanelLeft, PanelRight, PanelTop, Search, Settings2, Sun } from 'lucide-react';
 import { QuickAccessBar } from './CustomizeModal';
 import { usePalette } from './CommandPalette';
 import { LANGS, useLang } from '@/lib/i18n';
@@ -7,6 +7,7 @@ import { Button, DropdownContent, DropdownItem, DropdownMenu, DropdownTrigger, T
 import { AdikaLogo } from './AdikaLogo';
 import { openHelp } from '@/store/help';
 import { currentHelpTopic } from '@/components/help/HelpHost';
+import { useUiMode } from '@/store/uiMode';
 
 export function TopBar() {
   const fileName = usePDFStore((s) => s.fileName);
@@ -60,6 +61,7 @@ export function TopBar() {
             {theme === 'dark' ? <Sun size={17} /> : <Moon size={17} />}
           </Button>
         </Tooltip>
+        <RibbonModeButton />
         <LanguageButton />
         <Tooltip content="Customize the Quick Access toolbar and keyboard shortcuts">
           <Button variant="ghost" size="icon" aria-label="Customize" data-testid="customize-open" onClick={() => s.openModal('customize')}>
@@ -78,6 +80,19 @@ export function TopBar() {
         </Tooltip>
       </div>
     </header>
+  );
+}
+
+/** Simple ribbon on or off (pressed: the simple ribbon is shown). */
+function RibbonModeButton() {
+  const simple = useUiMode((u) => u.mode === 'simple');
+  return (
+    <Tooltip content={simple ? 'Showing the most common commands: click for the full ribbon with every command' : 'Show only the most common commands'}>
+      <Button variant="ghost" size="sm" className="h-8 gap-1 px-2 text-[11.5px]" aria-pressed={simple} data-testid="ribbon-mode" onClick={() => useUiMode.getState().setMode(simple ? 'full' : 'simple')}>
+        <PanelTop size={15} />
+        Simple ribbon
+      </Button>
+    </Tooltip>
   );
 }
 

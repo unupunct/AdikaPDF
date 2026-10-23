@@ -2,6 +2,7 @@
 import { usePDFStore } from '@/store/usePDFStore';
 import { displayToPdfMatrix, totalRotation, transformRectBounds, type Rect } from '@/lib/geometry';
 import type { PageRef } from '@/types';
+import { viewBox } from '@/lib/pdf/viewBox';
 
 /** Most common fill colour of the letters inside `rects` (display space), or null. */
 export async function pageTextColor(page: PageRef, rects: Rect[]): Promise<string | null> {
@@ -11,7 +12,7 @@ export async function pageTextColor(page: PageRef, rects: Rect[]): Promise<strin
     const [{ PDFDocument }, { analyzePageText }] = await Promise.all([import('pdf-lib'), import('@/lib/pdf/textRemoval')]);
     const doc = await PDFDocument.load(src.bytes, { updateMetadata: false });
     const p = doc.getPage(page.sourceIndex);
-    const box = p.getCropBox();
+    const box = viewBox(p);
     const m = displayToPdfMatrix(totalRotation(page), { x: box.x, y: box.y, width: box.width, height: box.height });
     const boxes = rects.map((r) => transformRectBounds(m, r));
     const counts = new Map<string, number>();

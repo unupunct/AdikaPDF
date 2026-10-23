@@ -133,3 +133,91 @@ pub fn logs_path() -> String {
 pub fn open_logs_folder() -> Result<(), String> {
     std::process::Command::new("explorer.exe").arg(dir()).spawn().map(|_| ()).map_err(|e| e.to_string())
 }
+
+/// `crash-YYYYMMDD-HHMMSS-mmm-<pid>.log` and nothing else (no paths).
+fn is_crash_name(name: &str) -> bool {
+    name.len() <= 64
+        && name.starts_with("crash-")
+        && name.ends_with(".log")
+        && name["crash-".len()..name.len() - 4].chars().all(|c| c.is_ascii_digit() || c == '-')
+}
+
+#[derive(serde::Serialize)]
+pub struct CrashReport {
+    name: String,
+    /// Milliseconds since 1970.
+    modified: u64,
+}
+
+/// Crash reports of the last 14 days, newest first (for "Report this crash").
+#[tauri::command]
+pub fn crash_reports() -> Vec<CrashReport> {
+    let Ok(entries) = fs::read_dir(dir()) else { return Vec::new() };
+    let limit = std::time::Duration::from_secs(14 * 24 * 3600);
+    let mut out: Vec<CrashReport> = entries
+        .flatten()
+        .filter_map(|e| {
+            let name = e.file_name().to_string_lossy().into_owned();
+            let modified = e.metadata().and_then(|m| m.modified()).ok()?;
+            if !is_crash_name(&name) || modified.elapsed().map(|a| a > limit).unwrap_or(false) {
+                return None;
+            }
+            let ms = modified.duration_since(std::time::UNIX_EPOCH).ok()?.as_millis() as u64;
+            Some(CrashReport { name, modified: ms })
+        })
+        .collect();
+    out.sort_by(|a, b| b.modified.cmp(&a.modified));
+    out
+}
+
+/// One crash report's text (at most 256 KB).
+#[tauri::command]
+pub fn crash_report_read(name: String) -> Result<String, String> {
+    if !is_crash_name(&name) {
+        return Err("Not a crash report".into());
+    }
+    let bytes = fs::read(dir().join(&name)).map_err(|e| e.to_string())?;
+    let end = bytes.len().min(256 * 1024);
+    Ok(String::from_utf8_lossy(&bytes[..end]).into_owned())
+}
+
+/// "Windows 11 24H2 (build 26200.6899)" for problem reports.
+#[tauri::command]
+pub fn os_version() -> String {
+    #[cfg(windows)]
+    {
+        use crate::deploy::{reg, RegValue};
+        let v = reg::read_values(reg::HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Windows NT\CurrentVersion");
+        let text = |k: &str| match v.get(k) {
+            Some(RegValue::Text(t)) => Some(t.clone()),
+            Some(RegValue::Number(n)) => Some(n.to_string()),
+            _ => None,
+        };
+        let build = text("CurrentBuildNumber").or_else(|| text("CurrentBuild")).unwrap_or_default();
+        let number: u32 = build.parse().unwrap_or(0);
+        // ProductName still says "Windows 10" on Windows 11.
+        let product = text("ProductName").unwrap_or_else(|| "Windows".into());
+        let product = if number >= 22000 { product.replacen("Windows 10", "Windows 11", 1) } else { product };
+        let release = text("DisplayVersion").or_else(|| text("ReleaseId")).map(|r| format!(" {r}")).unwrap_or_default();
+        let ubr = text("UBR").map(|u| format!(".{u}")).unwrap_or_default();
+        format!("{product}{release} (build {build}{ubr}, {})", std::env::consts::ARCH)
+    }
+    #[cfg(not(windows))]
+    {
+        format!("{} {}", std::env::consts::OS, std::env::consts::ARCH)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn only_crash_report_names_are_read() {
+        assert!(is_crash_name("crash-20261022-101500-123-4567.log"));
+        assert!(!is_crash_name("adika-2026-10-22.log"));
+        assert!(!is_crash_name(r"crash-..\..\secret.log"));
+        assert!(!is_crash_name("crash-1/../x.log"));
+        assert!(crash_report_read("..\\x.log".into()).is_err());
+    }
+}

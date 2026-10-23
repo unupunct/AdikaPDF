@@ -5,6 +5,7 @@ import { usePDFStore } from '@/store/usePDFStore';
 import { closeTabAction, openDialog } from '@/actions/document';
 import { cn } from '@/lib/cn';
 import { translate } from '@/lib/i18n';
+import { useDnd } from '@/store/dnd';
 
 /** Document tabs (hidden while only the welcome screen is open). */
 export function TabBar() {
@@ -13,6 +14,8 @@ export function TabBar() {
   // Re-render when the active document's name/dirty flag change.
   usePDFStore((s) => `${s.fileName}|${s.dirty}`);
   const hasDoc = usePDFStore((s) => s.pages.length > 0);
+  // A drag hovering a tab: it opens after a moment (actions/dnd.ts).
+  const dragOver = useDnd((s) => (s.active && s.target?.kind === 'tab' ? s.target.tabId : null));
   if (tabs.length === 1 && !hasDoc) return null;
   // Arrow keys, Home and End move between documents (one tab stop for the list); Ctrl+W closes.
   const onKey = (e: ReactKeyboardEvent<HTMLDivElement>) => {
@@ -56,6 +59,7 @@ export function TabBar() {
             className={cn(
               'group flex h-7 max-w-[220px] min-w-[120px] cursor-default items-center gap-1.5 rounded-t-md border border-b-0 px-2 text-[12px]',
               active ? 'border-app bg-panel font-medium' : 'border-transparent text-muted hover:bg-panel/60',
+              dragOver === t.id && !active && 'bg-brand-100 ring-2 ring-inset ring-brand-500 dark:bg-brand-900/40',
             )}
             title={info.name ? `${info.name} — ${translate('drag out of the window to open it in a window of its own')}` : translate('New tab')}
           >

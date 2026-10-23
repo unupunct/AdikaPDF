@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { usePDFStore } from '@/store/usePDFStore';
+import { followSystemTheme, usePDFStore } from '@/store/usePDFStore';
 import { TooltipProvider } from '@/components/ui/primitives';
 import { TopBar } from '@/components/shell/TopBar';
 import { Ribbon } from '@/components/ribbon/Ribbon';
@@ -13,6 +13,7 @@ import { Toasts, BusyOverlay, DropOverlay } from '@/components/shell/Overlays';
 import { Modals } from '@/components/modals/Modals';
 import { CommandPalette } from '@/components/shell/CommandPalette';
 import { HelpHost } from '@/components/help/HelpHost';
+import { FirstRunWelcome } from '@/components/shell/FirstRunWelcome';
 import { SplitView, useSplit } from '@/components/viewer/SplitView';
 import { useShortcuts } from '@/hooks/useShortcuts';
 import { useFileDrop } from '@/hooks/useFileDrop';
@@ -35,7 +36,7 @@ export default function App() {
   const inspectorOpen = usePDFStore((s) => s.inspectorOpen);
   const theme = usePDFStore((s) => s.theme);
   const [fontsReady, setFontsReady] = useState(false);
-  const dragging = useFileDrop();
+  useFileDrop();
   const presentation = usePDFStore((s) => s.presentation);
   const fullscreen = usePDFStore((s) => s.fullscreen);
   const split = useSplit((s) => s.open);
@@ -46,6 +47,8 @@ export default function App() {
   useEffect(() => {
     document.documentElement.classList.toggle('dark', theme === 'dark');
   }, [theme]);
+
+  useEffect(() => followSystemTheme(), []);
 
   useEffect(() => {
     ensureFontsLoaded()
@@ -72,6 +75,8 @@ export default function App() {
       void ensurePrintWatcher();
       maybeAutoCheck();
       void import('@/actions/automation').then((m) => m.restartWatching());
+      // A crash report from an earlier run: offered once for reporting (never sent by itself).
+      void import('@/actions/report').then((m) => m.offerCrashReport());
       // Crash recovery: offer what an earlier run left, then back up from now on.
       void import('@/lib/recovery').then(async (r) => {
         const items = await r.listBackups();
@@ -167,11 +172,12 @@ export default function App() {
         {presentation && hasDoc ? <PresentationView /> : null}
         {hasDoc ? <SelectionToolbar /> : null}
         <Modals />
+        <FirstRunWelcome />
         <HelpHost />
         <CommandPalette />
         <Toasts />
         <BusyOverlay />
-        {dragging ? <DropOverlay /> : null}
+        <DropOverlay />
       </div>
     </TooltipProvider>
   );

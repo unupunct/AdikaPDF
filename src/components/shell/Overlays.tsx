@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
-import { CheckCircle2, Info, Upload, X, XCircle } from 'lucide-react';
+import { Ban, CheckCircle2, Info, Upload, X, XCircle } from 'lucide-react';
 import { usePDFStore } from '@/store/usePDFStore';
+import { useDnd } from '@/store/dnd';
 import { Button, Progress } from '@/components/ui/primitives';
 import { cn } from '@/lib/cn';
 
@@ -92,14 +93,31 @@ export function BusyOverlay() {
   );
 }
 
+/**
+ * While files (or page thumbnails) are dragged over the window: what a drop
+ * here does, or why it is refused. Files get a frame around the window; pages
+ * only the label. The label is a live region, so screen readers hear it too.
+ */
 export function DropOverlay() {
+  const { active, label, rejected } = useDnd();
+  if (!active) return null;
+  const files = active === 'files';
   return (
-    <div className="pointer-events-none fixed inset-3 z-[85] flex items-center justify-center rounded-2xl border-2 border-dashed border-brand-500 bg-brand-500/10">
-      <div className="flex flex-col items-center gap-2 rounded-xl bg-panel px-8 py-6 text-center shadow-xl">
-        <Upload className="text-brand-600" size={28} />
-        <div className="text-sm font-medium">Drop to open</div>
-        <div className="text-xs text-muted">PDF opens · with a document open, PDFs and images are added · Office files are converted</div>
-      </div>
+    <div
+      data-testid="drop-overlay"
+      data-rejected={rejected ? 'true' : undefined}
+      className={cn(
+        'pointer-events-none fixed inset-3 z-[85] flex items-end justify-center rounded-2xl pb-14',
+        files && 'border-2 border-dashed',
+        files && (rejected ? 'border-rose-500 bg-rose-500/5' : 'border-brand-500 bg-brand-500/5'),
+      )}
+    >
+      {label ? (
+        <div className={cn('flex max-w-[min(520px,90vw)] items-center gap-2 rounded-xl bg-panel px-4 py-2.5 text-[13px] font-medium shadow-xl ring-1', rejected ? 'text-rose-700 ring-rose-300 dark:text-rose-300' : 'ring-brand-300')} role="status" aria-live="polite" data-testid="drop-label">
+          {rejected ? <Ban size={18} className="shrink-0" /> : <Upload className="shrink-0 text-brand-600" size={18} />}
+          <span>{label}</span>
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -21,6 +21,7 @@ mod shellops;
 mod pathguard;
 mod fonts;
 mod deploy;
+mod droppaths;
 
 use percent_encoding::percent_decode_str;
 use std::path::PathBuf;
@@ -190,6 +191,11 @@ pub fn run() {
             logging::log_crash,
             logging::logs_path,
             logging::open_logs_folder,
+            logging::crash_reports,
+            logging::crash_report_read,
+            logging::os_version,
+            droppaths::drop_paths_install,
+            droppaths::drop_paths_take,
             e2e_mode,
             deploy::deployment_info,
             recovery::recovery_write,

@@ -13,7 +13,7 @@
 import { create } from 'zustand';
 import { LANGS, type Lang } from './i18n';
 
-export type OnlineFeature = 'updates' | 'revocation' | 'timestamp' | 'trustedList' | 'cloudSign' | 'anaf' | 'urlConvert' | 'ocrLanguages' | 'network';
+export type OnlineFeature = 'updates' | 'revocation' | 'timestamp' | 'trustedList' | 'cloudSign' | 'anaf' | 'urlConvert' | 'ocrLanguages' | 'report' | 'network';
 
 type Kind = 'flag' | 'lang' | 'url' | 'list';
 
@@ -174,6 +174,7 @@ const FEATURE_NAMES: Record<OnlineFeature, string> = {
   anaf: 'The ANAF connection',
   urlConvert: 'Converting a web page',
   ocrLanguages: 'Downloading OCR languages',
+  report: 'Opening GitHub to report a problem',
   network: 'This online feature',
 };
 

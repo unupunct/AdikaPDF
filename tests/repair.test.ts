@@ -376,7 +376,7 @@ describe('repairPdf — edge cases', () => {
     const res = await repairPdf(new TextEncoder().encode(pdf));
     expect(res.pagesRecovered).toBe(2);
     expect(res.notes.join(' ')).toMatch(/1 page content was cut off/);
-    expect(res.notes.join(' ')).toMatch(/A4 was assumed/);
+    expect(res.notes.join(' ')).toMatch(/US Letter was assumed/);
     const r = await probe(res.bytes);
     expect(r.error).toBeUndefined();
     expect(r.pages).toBe(2);

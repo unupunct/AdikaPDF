@@ -38,6 +38,8 @@ import { permissionsFromP } from '@/lib/crypto/permissions';
 import type { PdfPermissions } from '@/lib/crypto/encrypt';
 
 const HISTORY_LIMIT = 200;
+/** Files up to this size are checked for pdf-lib problems when opened (see editable.ts). */
+const EDITABLE_CHECK_MAX = 40 * 1024 * 1024;
 export const MIN_ZOOM = 0.1;
 export const MAX_ZOOM = 8;
 
@@ -311,14 +313,33 @@ function persistSignatures(list: SavedSignature[]): void {
   }
 }
 
-function initialTheme(): 'light' | 'dark' {
+/** The theme the user chose (null: none yet, the app follows Windows). */
+function storedTheme(): 'light' | 'dark' | null {
   try {
     const t = localStorage.getItem(THEME_KEY);
     if (t === 'light' || t === 'dark') return t;
   } catch {
     /* ignore */
   }
-  return window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  return null;
+}
+
+function initialTheme(): 'light' | 'dark' {
+  return storedTheme() ?? (window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+}
+
+/**
+ * Until the user picks a theme, the app follows the Windows light / dark
+ * setting when it changes while Adika runs (not only the one seen at start).
+ * Returns the unsubscribe function.
+ */
+export function followSystemTheme(mq: Pick<MediaQueryList, 'addEventListener' | 'removeEventListener'> | undefined = window.matchMedia?.('(prefers-color-scheme: dark)')): () => void {
+  if (!mq?.addEventListener) return () => {};
+  const onChange = (e: { matches: boolean }) => {
+    if (storedTheme() === null) usePDFStore.setState({ theme: e.matches ? 'dark' : 'light' });
+  };
+  mq.addEventListener('change', onChange);
+  return () => mq.removeEventListener('change', onChange);
 }
 
 function snapshot(s: UndoableState): UndoableState {
@@ -568,6 +589,16 @@ export const usePDFStore = create<PDFState>()((set, get) => ({
     }
     const source: SourceDoc = { id, name, bytes, pageCount: doc.numPages, ...(password ? { password } : {}), ...(original ? { original } : {}), ...(encryption ? { encryption } : {}) };
     set((s) => ({ sources: { ...s.sources, [id]: source } }));
+    // pdf.js recovers some damaged files pdf-lib (which writes every edit) cannot use: those are edited from a
+    // repaired copy. Large files are checked when saved instead (buildPdf), not on every open.
+    if (bytes.length <= EDITABLE_CHECK_MAX) {
+      const plain = bytes;
+      void import('@/lib/pdf/editable')
+        .then((m) => m.editableCopy(plain, count))
+        .then((fixed) => {
+          if (fixed) set((s) => (s.sources[id]?.bytes === plain ? { sources: { ...s.sources, [id]: { ...s.sources[id], bytes: fixed, original: false } } } : {}));
+        });
+    }
     return { source, pages };
   },
 

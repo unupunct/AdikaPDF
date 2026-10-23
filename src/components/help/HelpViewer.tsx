@@ -5,7 +5,7 @@
  * English). The page text is already translated: the DOM translator skips it.
  */
 import { useEffect, useMemo, useRef, type MouseEvent } from 'react';
-import { ArrowLeft, ArrowRight, Search } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Search, Sparkles } from 'lucide-react';
 import { Button, Dialog, Input } from '@/components/ui/primitives';
 import { useLang } from '@/lib/i18n';
 import { openExternal } from '@/lib/platform';
@@ -13,6 +13,7 @@ import { buildGuide, groupOf, PAGE_GROUPS, resolveLink, searchGuide, type Guide 
 import { renderGuideHtml } from '@/lib/help/render';
 import { GUIDE_FILES, GUIDE_IMAGES } from '@/lib/help/bundle';
 import { useHelp } from '@/store/help';
+import { useUiMode } from '@/store/uiMode';
 import { cn } from '@/lib/cn';
 
 export function HelpViewer() {
@@ -131,6 +132,25 @@ function HelpDialog({ guide }: { guide: Guide }) {
             )}
           </div>
           {guide.fallback ? <p className="px-2 text-[11px] text-muted">The guide is available in English and Romanian.</p> : null}
+          <div className="flex flex-col items-start gap-0.5 border-t border-app px-1 pt-2 text-[12px]">
+            <button type="button" className="rounded px-1 py-0.5 text-brand-700 underline-offset-2 hover:underline dark:text-brand-300" onClick={() => void import('@/actions/report').then((m) => m.openReport('bug'))} data-testid="help-report">
+              Report a problem
+            </button>
+            <button type="button" className="rounded px-1 py-0.5 text-brand-700 underline-offset-2 hover:underline dark:text-brand-300" onClick={() => void import('@/actions/report').then((m) => m.openReport('feature'))} data-testid="help-suggest">
+              Suggest a feature
+            </button>
+            <button
+              type="button"
+              className="flex items-center gap-1 rounded px-1 py-0.5 text-brand-700 underline-offset-2 hover:underline dark:text-brand-300"
+              onClick={() => {
+                close();
+                useUiMode.getState().openWelcome();
+              }}
+              data-testid="help-welcome"
+            >
+              <Sparkles size={12} /> Welcome screen
+            </button>
+          </div>
         </div>
         <div className="flex min-h-0 flex-col">
           <div className="mb-2 flex items-center gap-1">

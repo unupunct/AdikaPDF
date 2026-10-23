@@ -26,6 +26,7 @@ import {
 } from 'pdf-lib';
 import { analyzePageText, pageContent, parseContent, removeGlyphsWhere, resourcesOf, type Glyph } from './textRemoval';
 import { dropUnreachableObjects } from './prune';
+import { loadEditable } from './editable';
 
 export type HiddenKind =
   | 'metadata'
@@ -449,7 +450,7 @@ export function scanHiddenDoc(doc: PDFDocument, bytes?: Uint8Array): HiddenFindi
 }
 
 export async function scanHiddenInfo(bytes: Uint8Array): Promise<HiddenFinding[]> {
-  const doc = await PDFDocument.load(bytes, { updateMetadata: false, ignoreEncryption: true });
+  const doc = await loadEditable(bytes, { updateMetadata: false, ignoreEncryption: true });
   return scanHiddenDoc(doc, bytes);
 }
 

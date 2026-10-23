@@ -1,0 +1,61 @@
+name: Report a problem
+description: Something does not work as it should in Adika PDF Editor.
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for reporting a problem. Please do not attach confidential documents; describe the file instead (or share a sample without private data).
+        *Vă mulțumim! Puteți scrie și în limba română. Vă rugăm să nu atașați documente confidențiale.*
+        In Adika, **Help → Report a problem** (About dialog or the help viewer) fills in the version fields for you.
+  # The field ids below are filled from the address Adika opens (src/lib/report.ts): keep them in step.
+  - type: input
+    id: version
+    attributes:
+      label: Adika version
+      description: About (the "i" button in the top bar) shows it.
+      placeholder: "1.16.0"
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: Windows version
+      placeholder: "Windows 11 Pro 24H2 (build 26200)"
+  - type: input
+    id: language
+    attributes:
+      label: Interface language
+      placeholder: "en (English)"
+  - type: input
+    id: install
+    attributes:
+      label: Installed or portable
+      placeholder: "Installed"
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What did you see? An error message, a wrong result, a crash…
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps
+      description: How can we make it happen? What kind of file was it (scanned, signed, a form, how many pages…)?
+      placeholder: |
+        1. Open a scanned PDF with 20 pages
+        2. Comment → Text box
+        3. …
+  - type: textarea
+    id: crash-log
+    attributes:
+      label: Crash report
+      description: Adika offers "Report this crash" after a crash and removes paths, file names and your user name first. Paste it here if it did not fit in the address.
+      render: text

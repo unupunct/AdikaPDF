@@ -1,117 +1,81 @@
 /**
- * Window-wide file drop. PDFs open (or are appended when a document is
- * open), images become pages (or are placed as images), Office files are
- * converted through the desktop app.
+ * Window-wide drag and drop: files from Explorer and page thumbnails dragged
+ * between documents. The target under the pointer decides what a drop does
+ * (actions/dnd.ts); the overlay names it while dragging.
  */
-import { useEffect, useRef, useState } from 'react';
-import { usePDFStore } from '@/store/usePDFStore';
-import { openPdfBytes, withBusy } from '@/actions/document';
-import { CAD_EXTENSIONS, DOCUMENT_EXTENSIONS, deliverPdf, documentToPdf, imagesToPdf, OFFICE_EXTENSIONS, IMAGE_EXTENSIONS } from '@/actions/convert';
-import { loadFontBytes } from '@/lib/fonts';
-import { imageFileToDataUrl } from '@/lib/objectFactory';
-import { decodeTiff } from '@/lib/images';
+import { useEffect } from 'react';
+import { kindFromMime } from '@/lib/fileKinds';
+import type { DropEntry } from '@/lib/dnd';
+import { captureDrop, dropFiles, dropPages, endDrag, installDropPaths, previewDrag, resolveTarget, useDnd } from '@/actions/dnd';
 
-export function useFileDrop(): boolean {
-  const [dragging, setDragging] = useState(false);
-  const depth = useRef(0);
+export const PAGE_MIME = 'text/x-adika-page';
 
+const has = (e: DragEvent, type: string) => Array.from(e.dataTransfer?.types ?? []).includes(type);
+
+/** File kinds visible during the drag (MIME types only; names come with the drop). Unknown ones count as PDFs. */
+function dragEntries(dt: DataTransfer | null): DropEntry[] {
+  return Array.from(dt?.items ?? [])
+    .filter((i) => i.kind === 'file')
+    .map((i) => ({ kind: kindFromMime(i.type) ?? 'pdf' }));
+}
+
+export function useFileDrop(): void {
   useEffect(() => {
-    const hasFiles = (e: DragEvent) => Array.from(e.dataTransfer?.types ?? []).includes('Files');
+    installDropPaths();
+    let depth = 0;
+    const kindOf = (e: DragEvent): 'files' | 'pages' | null => (has(e, 'Files') ? 'files' : has(e, PAGE_MIME) || useDnd.getState().pageDrag ? 'pages' : null);
     const enter = (e: DragEvent) => {
-      if (!hasFiles(e)) return;
+      if (!kindOf(e)) return;
       e.preventDefault();
-      depth.current++;
-      setDragging(true);
+      depth++;
     };
     const over = (e: DragEvent) => {
-      if (hasFiles(e)) e.preventDefault();
+      const kind = kindOf(e);
+      if (!kind) return;
+      e.preventDefault();
+      const target = resolveTarget(e.target instanceof Element ? e.target : null, e.clientX, e.clientY);
+      const effect = previewDrag(kind, target, dragEntries(e.dataTransfer));
+      if (e.dataTransfer) e.dataTransfer.dropEffect = effect;
     };
     const leave = (e: DragEvent) => {
-      if (!hasFiles(e)) return;
-      depth.current = Math.max(0, depth.current - 1);
-      if (depth.current === 0) setDragging(false);
+      if (!kindOf(e)) return;
+      depth = Math.max(0, depth - 1);
+      // Left the window (Explorer drags have no dragend here).
+      if (depth === 0 && !e.relatedTarget) useDnd.setState({ active: null, target: null, label: '' });
     };
     const drop = (e: DragEvent) => {
-      if (!hasFiles(e)) return;
+      const kind = kindOf(e);
+      if (!kind) return;
       e.preventDefault();
-      depth.current = 0;
-      setDragging(false);
-      void handleFiles(Array.from(e.dataTransfer?.files ?? []));
+      depth = 0;
+      const target = resolveTarget(e.target instanceof Element ? e.target : null, e.clientX, e.clientY);
+      if (kind === 'files') {
+        const read = captureDrop(e.dataTransfer!);
+        endDrag();
+        void read().then((files) => dropFiles(files, target));
+      } else {
+        void dropPages(target).finally(endDrag);
+      }
+    };
+    // A page drag that ends anywhere (also outside the window, or cancelled with Esc).
+    const end = () => {
+      depth = 0;
+      if (useDnd.getState().active || useDnd.getState().pageDrag) endDrag();
     };
     window.addEventListener('dragenter', enter);
     window.addEventListener('dragover', over);
     window.addEventListener('dragleave', leave);
     window.addEventListener('drop', drop);
+    window.addEventListener('dragend', end);
+    // The dragged thumbnail can be gone (its tab was switched away), then no dragend comes.
+    window.addEventListener('pointerdown', end);
     return () => {
+      window.removeEventListener('pointerdown', end);
       window.removeEventListener('dragenter', enter);
       window.removeEventListener('dragover', over);
       window.removeEventListener('dragleave', leave);
       window.removeEventListener('drop', drop);
+      window.removeEventListener('dragend', end);
     };
   }, []);
-
-  return dragging;
-}
-
-export async function handleFiles(files: File[]): Promise<void> {
-  if (files.length === 0) return;
-  const ext = (f: File) => f.name.split('.').pop()?.toLowerCase() ?? '';
-  const pdfs = files.filter((f) => ext(f) === 'pdf');
-  const images = files.filter((f) => IMAGE_EXTENSIONS.includes(ext(f)));
-  const office = files.filter((f) => OFFICE_EXTENSIONS.includes(ext(f)));
-  const docs = files.filter((f) => DOCUMENT_EXTENSIONS.includes(ext(f)) || CAD_EXTENSIONS.includes(ext(f)));
-  const store = usePDFStore.getState();
-  const hasDoc = store.pages.length > 0;
-  for (const f of files.filter((x) => ['xml', 'zip'].includes(ext(x)))) {
-    const { openEInvoice } = await import('@/actions/einvoice');
-    await openEInvoice(new Uint8Array(await f.arrayBuffer()), f.name);
-  }
-
-  if (office.length) {
-    store.toast('Office files dropped from Explorer: use Convert → Office to pick them (the converter needs their location on disk).', 'info');
-    store.openModal('import');
-  }
-  if (pdfs.length) {
-    if (!hasDoc) {
-      const [first, ...rest] = pdfs;
-      const ok = await openPdfBytes(new Uint8Array(await first.arrayBuffer()), first.name);
-      for (const f of ok ? rest : []) await usePDFStore.getState().mergeDocument(new Uint8Array(await f.arrayBuffer()), f.name);
-    } else {
-      await withBusy('Adding pages…', async () => {
-        for (const f of pdfs) await usePDFStore.getState().mergeDocument(new Uint8Array(await f.arrayBuffer()), f.name);
-      });
-      usePDFStore.getState().toast(`Added ${pdfs.length} PDF${pdfs.length > 1 ? 's' : ''} at the end.`, 'success');
-    }
-  }
-  for (const f of docs) {
-    await withBusy(`Converting ${f.name}…`, async () => {
-      const bytes = new Uint8Array(await f.arrayBuffer());
-      let pdf: Uint8Array;
-      if (ext(f) === 'dxf') {
-        const { DXF_DEFAULT_OPTIONS, decodeDxf, dxfToPdf } = await import('@/lib/pdf/dxf');
-        pdf = (await dxfToPdf(decodeDxf(bytes), { ...DXF_DEFAULT_OPTIONS, loadFont: () => loadFontBytes({ family: 'sans', bold: false, italic: false }) })).bytes;
-      } else {
-        pdf = (await documentToPdf(bytes, f.name, { pageSize: 'A4', landscape: false, marginMm: 15 })).bytes;
-      }
-      const st = usePDFStore.getState();
-      await deliverPdf(pdf, f.name, st.pages.length > 0 && !st.readOnlyReason);
-    });
-  }
-  if (images.length) {
-    const decoded: Array<{ src: string; width: number; height: number }> = [];
-    for (const f of images) {
-      const bytes = new Uint8Array(await f.arrayBuffer());
-      if (/tiff?$/.test(ext(f))) decoded.push(...decodeTiff(bytes));
-      else decoded.push(await imageFileToDataUrl(bytes, f.name));
-    }
-    const s = usePDFStore.getState();
-    if (s.pages.length > 0 && decoded.length === 1 && !s.readOnlyReason) {
-      s.setPendingImage(decoded[0]);
-      s.toast('Click on the page to place the image.', 'info');
-    } else {
-      await withBusy('Creating PDF from images…', async () => {
-        await deliverPdf(await imagesToPdf(decoded, { pageSize: 'a4', orientation: 'auto', marginMm: 10 }), `${images[0].name}.pdf`, usePDFStore.getState().pages.length > 0);
-      });
-    }
-  }
 }

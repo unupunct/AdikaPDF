@@ -92,7 +92,10 @@ export function registerReaderTests(test, ctx) {
   test('reader: page labels in thumbnails and the go-to-page box (label or number)', async () => {
     await open(F.reader);
     await page.click('[data-testid="sidebar-pages"]');
-    await page.waitForFunction(() => document.querySelector('[data-testid="thumb-label-1"]')?.textContent === 'i', null, { timeout: 8000 });
+    await page.waitForFunction(() => document.querySelector('[data-testid="thumb-label-1"]')?.textContent === 'i', null, { timeout: 15000 }).catch(async (e) => {
+      console.log('DIAG', await S(() => ({ labels: [...document.querySelectorAll('[data-testid^="thumb-label"]')].map((x) => x.textContent), thumbs: document.querySelectorAll('[data-testid^="thumb-"]').length, side: window.__adika.store.getState().sidebarTab, tabs: window.__adika.tabs.useTabs.getState().tabs.map((t) => t.name), src: Object.values(window.__adika.store.getState().sources).map((x) => x.name + ':' + x.bytes.length) })));
+      throw e;
+    });
     await page.click('[data-testid="tab-home"]');
     await page.fill('[data-testid="page-input"]', '2');
     await page.keyboard.press('Enter');

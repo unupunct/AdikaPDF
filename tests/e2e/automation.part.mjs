@@ -47,6 +47,8 @@ export function registerAutomationTests(test, ctx) {
     await page.waitForSelector('[data-testid="watch-events"]', { timeout: 10000 });
     // Stop watching.
     await page.click('[data-testid="watch-item"] button[aria-label="Stop watching this folder"]');
+    // Leave the dialog on its usual view for later tests.
+    await page.click('[data-testid="batch-modal"] [role="tab"]:has-text("One operation")');
     await page.keyboard.press('Escape');
   });
 
